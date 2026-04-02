@@ -1,0 +1,865 @@
+"use client";
+
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { LeftPanel } from "./LeftPanel/LeftPanel";
+import { RightPanel } from "./RightPanel/RightPanel";
+import { Question, Answer } from "./LeftPanel/QuestionCard";
+import { PromptVersion } from "./LeftPanel/VersionsTab";
+import { useToast } from "@/components/ui/toast";
+import { useAuth } from "@/hooks/useAuth";
+import { UpgradeModal } from "@/components/trial/UpgradeModal";
+
+/** Extract lazy prompt and additional context from a stored user message. */
+function parseLazyPromptFromMessage(content: string): {
+  lazyPrompt: string;
+  context: string;
+} {
+  const lazyMatch = content.match(
+    /^Lazy prompt: ([\s\S]+?)(?=\n\nPrompt type:|\n\nAnswers to|\n\nAdditional context:|$)/
+  );
+  const lazyPrompt = lazyMatch ? lazyMatch[1].trim() : "";
+
+  const contextMatch = content.match(/Additional context:\n([\s\S]+?)$/);
+  const context = contextMatch ? contextMatch[1].trim() : "";
+
+  return { lazyPrompt, context };
+}
+
+export interface NextSuggestion {
+  title: string;
+  description: string;
+  suggestion: string;
+}
+
+export interface Suggestions {
+  tryNext: NextSuggestion;
+  wildCard: NextSuggestion;
+}
+
+interface PromptStudioShellProps {
+  threadId: string;
+  initialLazyPrompt?: string;
+  promptType?: string;
+}
+
+export function PromptStudioShell({
+  threadId,
+  initialLazyPrompt = "",
+  promptType = "auto",
+}: PromptStudioShellProps) {
+  const { addToast } = useToast();
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const userInitial = (() => {
+    if (!user) return "Y";
+    const name = user.user_metadata?.full_name;
+    if (name) {
+      const parts = name.trim().split(" ");
+      return parts.length >= 2
+        ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+        : parts[0][0].toUpperCase();
+    }
+    return user.email ? user.email[0].toUpperCase() : "Y";
+  })();
+
+  // Left panel state
+  const [lazyPrompt, setLazyPrompt] = useState(initialLazyPrompt);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [answers, setAnswers] = useState<Answer[]>([]);
+  const [context, setContext] = useState("");
+
+  // Right panel state
+  const [refinedPrompt, setRefinedPrompt] = useState("");
+  const [promptTitle, setPromptTitle] = useState("Refined Prompt");
+  const [generatedTitle, setGeneratedTitle] = useState("");
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
+  const [isPublished, setIsPublished] = useState(false);
+  const [resolvedPromptType, setResolvedPromptType] = useState(promptType);
+
+  // Mobile panel view toggle ("left" = Inputs, "right" = Result)
+  const [mobilePanel, setMobilePanel] = useState<"left" | "right">("left");
+
+  // Bookmark state
+  const [isBookmarked, setIsBookmarked] = useState(false);
+
+  // What's Next suggestions
+  const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
+  const [isSuggestingNext, setIsSuggestingNext] = useState(false);
+
+  // Versions
+  const [versions, setVersions] = useState<PromptVersion[]>([]);
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+
+  // Loading states
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
+
+  // Trial / upgrade state
+  const [isTrial, setIsTrial] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeReason, setUpgradeReason] = useState<"limit" | "cta">("cta");
+  const [upgradeResetDate, setUpgradeResetDate] = useState<string | undefined>();
+
+  // Track what prompt was used when questions were generated, to know when to regenerate
+  const lastQuestionsPromptRef = useRef<string>("");
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const answersSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // All users authenticated via WP JWT are subscribers — isTrial is always false
+
+  // Persist answers to localStorage and DB so they survive page reloads
+  useEffect(() => {
+    if (!threadId || answers.length === 0) return;
+    localStorage.setItem(`ps-answers-${threadId}`, JSON.stringify(answers));
+    // Debounce DB save so rapid answer updates don't flood the API
+    if (answersSaveTimerRef.current) clearTimeout(answersSaveTimerRef.current);
+    answersSaveTimerRef.current = setTimeout(() => {
+      fetch(`/api/apps/prompt-studio/threads/${threadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers }),
+      }).catch(() => {});
+    }, 800);
+  }, [answers, threadId]);
+
+  // Mirror versions in a ref so callbacks can read the latest count without stale closures
+  const versionsRef = useRef<PromptVersion[]>([]);
+  // Prevent auto-draft from firing more than once per lazy-prompt session
+  const autoGeneratedDraftRef = useRef(false);
+
+  useEffect(() => {
+    versionsRef.current = versions;
+  }, [versions]);
+
+  // Load existing versions and thread title from DB on mount
+  useEffect(() => {
+    const loadVersions = async () => {
+      // Restore any previously saved answers for this thread
+      try {
+        const savedAnswers = localStorage.getItem(`ps-answers-${threadId}`);
+        if (savedAnswers) {
+          const parsed = JSON.parse(savedAnswers);
+          if (Array.isArray(parsed)) setAnswers(parsed);
+        }
+      } catch {}
+
+      try {
+        const [messagesRes, threadRes] = await Promise.all([
+          fetch(`/api/apps/prompt-studio/messages/${threadId}`),
+          fetch(`/api/apps/prompt-studio/threads/${threadId}`),
+        ]);
+
+        let savedThreadQuestions: Question[] | null = null;
+        if (threadRes.ok) {
+          const thread = await threadRes.json();
+          if (thread.title && thread.title !== "New Conversation") {
+            setPromptTitle(thread.title);
+          }
+          // Restore saved questions from DB (avoids unnecessary AI regeneration on refresh)
+          if (Array.isArray(thread.questions) && thread.questions.length > 0) {
+            savedThreadQuestions = thread.questions;
+            setQuestions(thread.questions);
+          }
+          // Restore saved answers from DB (overrides localStorage)
+          if (Array.isArray(thread.answers) && thread.answers.length > 0) {
+            setAnswers(thread.answers);
+            localStorage.setItem(`ps-answers-${threadId}`, JSON.stringify(thread.answers));
+          }
+        }
+
+        if (!messagesRes.ok) return;
+        const allMessages = await messagesRes.json();
+        if (!Array.isArray(allMessages) || allMessages.length === 0) return;
+
+        // Sort all messages chronologically
+        const sorted = [...allMessages].sort(
+          (a: any, b: any) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+
+        // Build versions by pairing each assistant message with its preceding user message
+        const assistantMessages: PromptVersion[] = [];
+        for (let i = 0; i < sorted.length; i++) {
+          const msg = sorted[i];
+          if (msg.role === "assistant" && msg.content) {
+            // Find the closest user message before this assistant message
+            const precedingUser = sorted
+              .slice(0, i)
+              .reverse()
+              .find(
+                (m: any) =>
+                  m.role === "user" && m.content?.startsWith("Lazy prompt:")
+              );
+            const { lazyPrompt: vLazy, context: vContext } = precedingUser
+              ? parseLazyPromptFromMessage(precedingUser.content)
+              : { lazyPrompt: "", context: "" };
+
+            assistantMessages.unshift({
+              id: msg.id,
+              content: msg.content,
+              created_at: msg.created_at,
+              lazyPrompt: vLazy,
+              context: vContext,
+            });
+          }
+        }
+
+        setVersions(assistantMessages);
+        versionsRef.current = assistantMessages; // sync immediately so generateQuestions sees the right count
+        if (assistantMessages.length > 0) {
+          const latest = assistantMessages[0];
+          setRefinedPrompt(latest.content);
+          setActiveMessageId(latest.id);
+          setActiveVersionId(latest.id);
+
+          // Check if latest version is bookmarked
+          fetch("/api/apps/prompt-studio/saved")
+            .then((r) => r.ok ? r.json() : [])
+            .then((saved: any[]) => {
+              setIsBookmarked(saved.some((s) => s.message_id === latest.id));
+            })
+            .catch(() => {});
+
+          // Generate What's Next suggestions for the loaded version
+          triggerSuggestNext(latest.content, latest.lazyPrompt || "", promptType);
+
+          // Restore lazy prompt + context from the latest version
+          if (latest.lazyPrompt && !initialLazyPrompt) {
+            setLazyPrompt(latest.lazyPrompt);
+            if (latest.context) setContext(latest.context);
+            if (savedThreadQuestions) {
+              // Questions already loaded from DB — just anchor the ref so the
+              // debounce effect doesn't think the prompt is new and regenerate
+              lastQuestionsPromptRef.current = latest.lazyPrompt;
+            } else if (latest.lazyPrompt.length >= 15) {
+              await generateQuestions(latest.lazyPrompt);
+            }
+          }
+        }
+      } catch {
+        // Silently fail
+      }
+    };
+    loadVersions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId]);
+
+  // Auto-generate questions when lazy prompt changes (debounced)
+  useEffect(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    const trimmed = lazyPrompt.trim();
+
+    // Need at least 15 chars to trigger
+    if (trimmed.length < 15) {
+      if (trimmed.length === 0) {
+        setQuestions([]);
+        lastQuestionsPromptRef.current = "";
+        autoGeneratedDraftRef.current = false; // allow fresh auto-draft if user retypes
+      }
+      return;
+    }
+
+    // Did the prompt change substantially from when we last generated?
+    const prevPrompt = lastQuestionsPromptRef.current;
+    const changedEnough =
+      !prevPrompt ||
+      Math.abs(trimmed.length - prevPrompt.length) > 20 ||
+      trimmed.slice(0, 40) !== prevPrompt.slice(0, 40);
+
+    if (!changedEnough) return;
+
+    debounceTimerRef.current = setTimeout(async () => {
+      if (isGeneratingQuestions || isRefining) return;
+      // Prompt changed substantially — clear old questions and answers
+      setAnswers([]);
+      localStorage.removeItem(`ps-answers-${threadId}`);
+      if (threadId) {
+        fetch(`/api/apps/prompt-studio/threads/${threadId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questions: null, answers: null }),
+        }).catch(() => {});
+      }
+      await generateQuestions(trimmed);
+    }, 1200);
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lazyPrompt]);
+
+  // Auto-switch to Result panel on mobile when refinement starts
+  useEffect(() => {
+    if (isRefining) {
+      setMobilePanel("right");
+    }
+  }, [isRefining]);
+
+  /** Fire suggest-next in the background and populate the What's Next section. */
+  const triggerSuggestNext = useCallback(
+    (refined: string, lazy: string, type: string) => {
+      if (!refined.trim()) return;
+      setIsSuggestingNext(true);
+      setSuggestions(null);
+      fetch("/api/apps/prompt-studio/suggest-next", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          refinedPrompt: refined,
+          lazyPrompt: lazy,
+          promptType: type,
+        }),
+      })
+        .then(async (r) => {
+          if (!r.ok) { console.error("suggest-next failed:", r.status, await r.text()); return null; }
+          return r.json();
+        })
+        .then((data) => {
+          if (data?.tryNext && data?.wildCard) setSuggestions(data);
+        })
+        .catch((err) => console.error("suggest-next error:", err))
+        .finally(() => setIsSuggestingNext(false));
+    },
+    []
+  );
+
+  /** Stream an initial draft prompt with no answers. Called automatically after questions load. */
+  const generateDraft = useCallback(
+    async (prompt: string, type: string, titleHint: string) => {
+      // Abort any previous stream
+      abortControllerRef.current?.abort();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
+      setIsRefining(true);
+      setRefinedPrompt("");
+      setActiveMessageId(null);
+      setIsPublished(false);
+      setSuggestions(null);
+
+      const earlyTitle = titleHint || prompt.slice(0, 60) + (prompt.length > 60 ? "..." : "");
+      setPromptTitle(earlyTitle);
+
+      try {
+        const response = await fetch("/api/apps/prompt-studio/refine-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lazyPrompt: prompt,
+            answers: [],
+            threadId,
+            context,
+            promptType: type,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (response.status === 429) {
+            const err = await response.json();
+            setUpgradeReason("limit");
+            setUpgradeResetDate(err.resetDate);
+            setShowUpgradeModal(true);
+          }
+          return;
+        }
+
+        const newMessageId = response.headers.get("X-Assistant-Message-Id");
+
+        const reader = response.body!.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          setRefinedPrompt(accumulated);
+        }
+
+        if (newMessageId) {
+          setActiveMessageId(newMessageId);
+          setActiveVersionId(newMessageId);
+          const newVersion: PromptVersion = {
+            id: newMessageId,
+            content: accumulated,
+            created_at: new Date().toISOString(),
+            lazyPrompt: prompt,
+            context,
+          };
+          setVersions([newVersion]);
+        }
+
+        // Set thread title from the draft
+        try {
+          await fetch(`/api/apps/prompt-studio/threads/${threadId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: earlyTitle }),
+          });
+          window.dispatchEvent(new CustomEvent("threads-refresh"));
+        } catch {
+          // Silently fail
+        }
+
+        // Notify sidebar to refresh trial usage meter (delay lets server finish incrementing)
+        setTimeout(() => window.dispatchEvent(new Event("trial-usage-updated")), 800);
+
+        // Kick off "What's Next?" suggestions in background
+        triggerSuggestNext(accumulated, prompt, type);
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
+        // Silently fail — auto-draft is best-effort; user can still click Improve Prompt
+      } finally {
+        setIsRefining(false);
+      }
+    },
+    [threadId, context, triggerSuggestNext]
+  );
+
+  const generateQuestions = useCallback(
+    async (prompt: string) => {
+      setIsGeneratingQuestions(true);
+      setQuestions([]);
+      lastQuestionsPromptRef.current = prompt;
+
+      try {
+        const response = await fetch(
+          "/api/apps/prompt-studio/generate-questions",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lazyPrompt: prompt, promptType }),
+          }
+        );
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || "Failed to generate questions");
+        }
+
+        const { questions: newQuestions, resolvedType, suggestedTitle } = await response.json();
+        if (Array.isArray(newQuestions) && newQuestions.length > 0) {
+          setQuestions(newQuestions);
+          // Persist questions to DB so they survive page refreshes
+          if (threadId) {
+            fetch(`/api/apps/prompt-studio/threads/${threadId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ questions: newQuestions }),
+            }).catch(() => {});
+          }
+        }
+        if (resolvedType) {
+          setResolvedPromptType(resolvedType);
+        }
+        if (suggestedTitle) {
+          setGeneratedTitle(suggestedTitle);
+        }
+
+        // Auto-generate an initial draft the first time questions appear on a fresh thread
+        if (versionsRef.current.length === 0 && !autoGeneratedDraftRef.current) {
+          autoGeneratedDraftRef.current = true;
+          // Fire without await so questions render immediately
+          generateDraft(prompt, resolvedType || promptType, suggestedTitle || "");
+        }
+      } catch (err: any) {
+        lastQuestionsPromptRef.current = ""; // Reset so it can retry
+        addToast({
+          title: "Error",
+          description: err.message || "Failed to generate questions",
+          variant: "destructive",
+        });
+      } finally {
+        setIsGeneratingQuestions(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [addToast, generateDraft]
+  );
+
+  const handleAnswer = useCallback((answer: Answer) => {
+    setAnswers((prev) => {
+      const existing = prev.findIndex((a) => a.questionId === answer.questionId);
+      if (existing >= 0) {
+        const next = [...prev];
+        next[existing] = answer;
+        return next;
+      }
+      return [...prev, answer];
+    });
+  }, []);
+
+  const handleImprove = useCallback(async () => {
+    if (!lazyPrompt.trim() || isRefining) return;
+
+    // If questions haven't generated yet, do that first
+    if (questions.length === 0 && !isGeneratingQuestions) {
+      await generateQuestions(lazyPrompt.trim());
+      return;
+    }
+
+    // Abort any in-progress refinement
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsRefining(true);
+    setRefinedPrompt("");
+    setActiveMessageId(null);
+    setIsPublished(false);
+    setSuggestions(null);
+
+    // Set title immediately so the right panel shows it during streaming
+    if (versions.length === 0) {
+      const earlyTitle = generatedTitle ||
+        lazyPrompt.trim().slice(0, 60) +
+        (lazyPrompt.trim().length > 60 ? "..." : "");
+      setPromptTitle(earlyTitle);
+    }
+
+    try {
+      const filteredAnswers = answers.filter((a) => a.answer.trim().length > 0);
+
+      const response = await fetch("/api/apps/prompt-studio/refine-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lazyPrompt: lazyPrompt.trim(),
+          answers: filteredAnswers,
+          threadId,
+          context,
+          promptType: resolvedPromptType,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          const err = await response.json();
+          setUpgradeReason("limit");
+          setUpgradeResetDate(err.resetDate);
+          setShowUpgradeModal(true);
+          return;
+        }
+        const err = await response.json();
+        throw new Error(err.error || "Failed to refine prompt");
+      }
+
+      const newMessageId = response.headers.get("X-Assistant-Message-Id");
+
+      // Stream text
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        setRefinedPrompt(accumulated);
+      }
+
+      if (newMessageId) {
+        setActiveMessageId(newMessageId);
+        setActiveVersionId(newMessageId);
+        const newVersion: PromptVersion = {
+          id: newMessageId,
+          content: accumulated,
+          created_at: new Date().toISOString(),
+          lazyPrompt: lazyPrompt.trim(),
+          context,
+        };
+        setVersions((prev) => [newVersion, ...prev]);
+      }
+
+      // Set thread title on first refinement
+      if (versions.length === 0) {
+        const title = generatedTitle ||
+          lazyPrompt.trim().slice(0, 60) +
+          (lazyPrompt.trim().length > 60 ? "..." : "");
+        setPromptTitle(title);
+        try {
+          await fetch(`/api/apps/prompt-studio/threads/${threadId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title }),
+          });
+          window.dispatchEvent(new CustomEvent("threads-refresh"));
+        } catch {
+          // Silently fail
+        }
+      }
+
+      // Notify sidebar to refresh trial usage meter
+      window.dispatchEvent(new Event("trial-usage-updated"));
+
+      // Fetch "What's Next?" suggestions in background
+      triggerSuggestNext(accumulated, lazyPrompt.trim(), resolvedPromptType);
+    } catch (err: any) {
+      if (err.name === "AbortError") return;
+      addToast({
+        title: "Error",
+        description: err.message || "Failed to refine prompt",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefining(false);
+    }
+  }, [
+    lazyPrompt,
+    questions,
+    answers,
+    context,
+    threadId,
+    isRefining,
+    isGeneratingQuestions,
+    versions.length,
+    generatedTitle,
+    addToast,
+    generateQuestions,
+    triggerSuggestNext,
+  ]);
+
+  const handleRegenerateQuestions = useCallback(async () => {
+    if (!lazyPrompt.trim() || isGeneratingQuestions || isRefining) return;
+    lastQuestionsPromptRef.current = ""; // bypass change-detection guard
+    setAnswers([]);
+    localStorage.removeItem(`ps-answers-${threadId}`);
+    if (threadId) {
+      fetch(`/api/apps/prompt-studio/threads/${threadId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questions: null, answers: null }),
+      }).catch(() => {});
+    }
+    await generateQuestions(lazyPrompt.trim());
+  }, [lazyPrompt, isGeneratingQuestions, isRefining, generateQuestions]);
+
+  const handleBookmark = useCallback(async () => {
+    if (!activeMessageId) return;
+    try {
+      const res = await fetch("/api/apps/prompt-studio/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: activeMessageId }),
+      });
+      const data = await res.json();
+      setIsBookmarked(data.saved ?? !isBookmarked);
+      addToast({
+        title: data.saved ? "Bookmarked" : "Removed",
+        description: data.saved
+          ? "Prompt saved to your Bookmarks."
+          : "Removed from your Bookmarks.",
+      });
+    } catch {
+      addToast({ title: "Error", description: "Failed to update bookmark", variant: "destructive" });
+    }
+  }, [activeMessageId, isBookmarked, addToast]);
+
+  const handleStartPrompt = useCallback((suggestionText: string) => {
+    router.push(
+      `/apps/prompt-studio/chat?prefill=${encodeURIComponent(suggestionText)}`
+    );
+  }, [router]);
+
+  const handleSelectVersion = useCallback(
+    async (version: PromptVersion) => {
+      setRefinedPrompt(version.content);
+      setActiveMessageId(version.id);
+      setActiveVersionId(version.id);
+      setIsPublished(false);
+      setIsBookmarked(false); // will re-check below
+
+      // Fetch What's Next for the selected version
+      triggerSuggestNext(version.content, version.lazyPrompt || "", resolvedPromptType);
+
+      // Restore the lazy prompt + context for this version
+      if (version.lazyPrompt) {
+        setLazyPrompt(version.lazyPrompt);
+        setContext(version.context ?? "");
+        setAnswers([]);
+        localStorage.removeItem(`ps-answers-${threadId}`);
+        if (threadId) {
+          fetch(`/api/apps/prompt-studio/threads/${threadId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questions: null, answers: null }),
+          }).catch(() => {});
+        }
+        lastQuestionsPromptRef.current = ""; // force regeneration
+        if (version.lazyPrompt.length >= 15) {
+          await generateQuestions(version.lazyPrompt);
+        }
+      }
+    },
+    [generateQuestions, triggerSuggestNext, resolvedPromptType]
+  );
+
+  const handlePublish = useCallback(
+    async (messageId: string) => {
+      try {
+        let title: string | null = null;
+        let description: string | null = null;
+        let topic: string | null = null;
+
+        try {
+          const metaResponse = await fetch(
+            "/api/apps/prompt-studio/prompts/generate-metadata",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ content: refinedPrompt }),
+            }
+          );
+          if (metaResponse.ok) {
+            const meta = await metaResponse.json();
+            title = meta.title || null;
+            description = meta.description || null;
+            topic = meta.topic || null;
+          }
+        } catch {
+          // Continue without metadata
+        }
+
+        const response = await fetch(
+          `/api/apps/prompt-studio/prompts/${messageId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              is_public: true,
+              title,
+              description,
+              topic,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || "Failed to publish prompt");
+        }
+
+        setIsPublished(true);
+        addToast({
+          title: "Published!",
+          description:
+            "Your prompt has been published to the Community Library.",
+        });
+      } catch (err: any) {
+        addToast({
+          title: "Error",
+          description: err.message || "Failed to publish prompt",
+          variant: "destructive",
+        });
+        throw err;
+      }
+    },
+    [refinedPrompt, addToast]
+  );
+
+  const bgStyle = {
+    background: `
+      radial-gradient(ellipse 55% 60% at 0% 0%, rgba(49,219,165,0.13) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 55% at 100% 100%, rgba(28,76,138,0.12) 0%, transparent 65%),
+      radial-gradient(ellipse 40% 40% at 100% 0%, rgba(49,219,165,0.06) 0%, transparent 60%),
+      hsl(var(--background))
+    `,
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden" style={bgStyle}>
+      {/* Mobile panel toggle — hidden on md+ */}
+      <div className="flex md:hidden shrink-0 mx-3 mt-3 rounded-lg border border-border bg-muted/50 p-0.5">
+        <button
+          type="button"
+          onClick={() => setMobilePanel("left")}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            mobilePanel === "left"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground"
+          }`}
+        >
+          Inputs
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobilePanel("right")}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            mobilePanel === "right"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground"
+          }`}
+        >
+          Prompt
+        </button>
+      </div>
+
+      {/* Panels */}
+      <div className="flex flex-1 overflow-hidden p-3 sm:p-4 gap-3 sm:gap-4 pt-0">
+        {/* Left panel: full-width on mobile, fixed width on md+ */}
+        <div
+          className={`${mobilePanel === "left" ? "flex" : "hidden"} md:flex h-full w-full md:w-auto`}
+        >
+          <LeftPanel
+            lazyPrompt={lazyPrompt}
+            onLazyPromptChange={setLazyPrompt}
+            questions={questions}
+            answers={answers}
+            onAnswer={handleAnswer}
+            onImprove={handleImprove}
+            onRegenerateQuestions={handleRegenerateQuestions}
+            isGeneratingQuestions={isGeneratingQuestions}
+            isRefining={isRefining}
+            context={context}
+            onContextChange={setContext}
+            versions={versions}
+            activeVersionId={activeVersionId}
+            onSelectVersion={handleSelectVersion}
+            versionsExist={versions.length > 0}
+          />
+        </div>
+
+        {/* Right panel: full-width on mobile, flex-1 on md+ */}
+        <div
+          className={`${mobilePanel === "right" ? "flex" : "hidden"} md:flex flex-1 min-w-0 h-full`}
+        >
+          <RightPanel
+            promptTitle={promptTitle}
+            generatedTitle={generatedTitle}
+            promptContent={refinedPrompt}
+            lazyPrompt={lazyPrompt}
+            resolvedPromptType={resolvedPromptType}
+            isStreaming={isRefining}
+            activeMessageId={activeMessageId}
+            onPublish={handlePublish}
+            isPublished={isPublished}
+            isBookmarked={isBookmarked}
+            onBookmark={handleBookmark}
+            suggestions={suggestions}
+            isSuggestingNext={isSuggestingNext}
+            onStartPrompt={handleStartPrompt}
+            userInitial={userInitial}
+            isTrial={isTrial}
+          />
+        </div>
+      </div>
+
+      {/* Upgrade modal — shown for trial limits and CTA clicks */}
+      <UpgradeModal
+        open={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        reason={upgradeReason}
+        resetDate={upgradeResetDate}
+      />
+    </div>
+  );
+}

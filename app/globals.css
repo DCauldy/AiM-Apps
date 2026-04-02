@@ -1,0 +1,337 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --chat-color-primary: #31DBA5;
+    --chat-color-secondary: #1C4C8A;
+    --chat-color-background: #ffffff;
+    --chat-color-font: #2D323C;
+    --background: 0 0% 100%;
+    --foreground: 45 13% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 45 13% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 45 13% 20%;
+    --primary: 210 60% 35%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-space-grotesk), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 400;
+  }
+  
+  /* Ensure text is selectable in chat messages */
+  .chat-messages,
+  .chat-messages * {
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+  }
+  
+  /* Animated flowing gradient text */
+  .gradient-text-flow {
+    background: linear-gradient(90deg, #1C4C8A 0%, #31DBA5 50%, #1C4C8A 100%);
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradient-flow 6s ease-in-out infinite;
+  }
+  
+  /* Animated gradient for SVG icons */
+  .gradient-icon svg {
+    stroke: url(#promptGradient);
+  }
+  
+  .gradient-icon-stroke {
+    stroke: url(#promptGradient);
+  }
+  
+  @keyframes gradient-flow {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  
+  /* Animated gradient border for modal - gradient colors flow around border */
+  .rotating-gradient-border-wrapper {
+    position: relative;
+    padding: 3px;
+    border-radius: 0.5rem;
+    display: inline-block;
+    max-width: 100%;
+    z-index: 50;
+    background: white;
+    overflow: hidden;
+  }
+  
+  .rotating-gradient-border-wrapper::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 200%;
+    height: 200%;
+    background: conic-gradient(
+      from 0deg,
+      #1C4C8A 0deg,
+      #31DBA5 90deg,
+      #1C4C8A 180deg,
+      #31DBA5 270deg,
+      #1C4C8A 360deg
+    );
+    animation: rotate-gradient-border-angle 6s linear infinite;
+    z-index: 0;
+    border-radius: 50%;
+    transform-origin: center center;
+  }
+  
+  .rotating-gradient-border-wrapper::after {
+    content: '';
+    position: absolute;
+    inset: 3px;
+    border-radius: calc(0.5rem - 3px);
+    background: white;
+    z-index: 1;
+  }
+  
+  .rotating-gradient-border-wrapper > * {
+    position: relative;
+    z-index: 2;
+    background: white;
+    border-radius: calc(0.5rem - 3px);
+  }
+  
+  @keyframes rotate-gradient-border-angle {
+    0% {
+      transform: translate(-50%, -50%) rotate(0deg);
+    }
+    100% {
+      transform: translate(-50%, -50%) rotate(360deg);
+    }
+  }
+}
+
+/* Chat message styles - Claude/ChatGPT style */
+/* AI messages: no background bubble, just plain text */
+/* User messages: light grey background */
+
+/* Scrollbar styling */
+.chat-messages::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: #d1d1d6;
+  border-radius: 3px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a6;
+}
+
+/* Typing indicator animation */
+@keyframes aim-blink {
+  0%, 80%, 100% { opacity: 0.3; }
+  40% { opacity: 1; }
+}
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #888;
+  border-radius: 50%;
+  animation: aim-blink 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Fade in animation for streaming content */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+}
+
+/* Textarea blinking cursor */
+textarea {
+  caret-color: #1C4C8A;
+}
+
+/* Sparkle animation for help icon */
+@keyframes sparkle {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  25% {
+    transform: scale(1.1) rotate(-5deg);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.15) rotate(5deg);
+    opacity: 1;
+  }
+  75% {
+    transform: scale(1.1) rotate(-3deg);
+    opacity: 0.9;
+  }
+}
+
+/* Wiggle animation alternative */
+@keyframes wiggle {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-8deg);
+  }
+  75% {
+    transform: rotate(8deg);
+  }
+}
+
+/* Help icon with gradient and animation */
+.help-icon-wrapper {
+  position: relative;
+  display: inline-block;
+  animation: sparkle 2s ease-in-out infinite;
+  /* Set color - lucide icons use currentColor */
+  color: #31DBA5;
+}
+
+/* Let lucide-react handle the default styling - just ensure it uses currentColor */
+.help-icon-wrapper svg {
+  /* Use currentColor so icon inherits the wrapper's color */
+  stroke: currentColor;
+  /* Don't override fill - let the icon use its default fill behavior */
+}
+
+/* Override prose code block styles to ensure single container */
+.prose pre {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.prose pre > div {
+  margin: 0 !important;
+}
+
+.prose pre code {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Style code blocks like ChatGPT/Claude - no borders, subtle background */
+pre {
+  background: #f6f6f6 !important;
+  border: none !important;
+  border-radius: 0.5rem;
+  padding: 1rem !important;
+  margin: 1rem 0 !important;
+  overflow-x: auto;
+}
+
+pre code {
+  background: transparent !important;
+  padding: 0 !important;
+  color: #1f2937;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+/* Dark mode code blocks */
+.dark pre {
+  background: #1e1e1e !important;
+}
+
+.dark pre code {
+  color: #e5e7eb;
+}
+
+
+.typing-dot {
+  width: 6px;
+  height: 6px;
+  background-color: #888;
+  border-radius: 50%;
+  animation: aim-blink 1.4s infinite;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
