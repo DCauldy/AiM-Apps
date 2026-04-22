@@ -32,7 +32,9 @@ export function useAuth() {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    window.location.href = "/login";
+    window.location.href = process.env.NEXT_PUBLIC_AIM_BASE_URL
+      ? `${process.env.NEXT_PUBLIC_AIM_BASE_URL}/dashboard/`
+      : "https://aimarketingacademy.com/dashboard/";
   };
 
   return { user, loading, signOut };
