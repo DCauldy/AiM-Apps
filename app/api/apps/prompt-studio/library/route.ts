@@ -14,6 +14,23 @@ export async function GET(req: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
+    // Block standalone users from Community Prompts
+    if (user) {
+      const serviceClient = createServiceRoleClient();
+      const { data: profile } = await serviceClient
+        .from("profiles")
+        .select("account_type")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.account_type === "standalone") {
+        return new Response(
+          JSON.stringify({ error: "Community Prompts are available to AiM members" }),
+          { status: 403, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Get public prompts - RLS policy allows anyone to view public messages
     const { data: messages, error: messagesError } = await supabase
       .from("messages")

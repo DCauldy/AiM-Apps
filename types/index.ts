@@ -54,6 +54,8 @@ export interface PublicPrompt {
   has_upvoted: boolean;
   is_saved: boolean;
   created_at: string;
+  access_tier?: "free" | "member";
+  locked?: boolean;
 }
 
 export type PromptTopic = 

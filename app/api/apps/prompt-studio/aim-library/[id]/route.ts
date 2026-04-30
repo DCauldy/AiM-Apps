@@ -30,7 +30,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { content, title, description, topic } = body;
+    const { content, title, description, topic, access_tier } = body;
 
     if (content !== undefined && !content.trim()) {
       return new Response(JSON.stringify({ error: "content cannot be empty" }), {
@@ -46,6 +46,7 @@ export async function PATCH(
     if (title !== undefined) updateData.title = title?.trim() || null;
     if (description !== undefined) updateData.description = description?.trim() || null;
     if (topic !== undefined) updateData.topic = topic || null;
+    if (access_tier !== undefined) updateData.access_tier = access_tier;
 
     const { data: updated, error: updateError } = await serviceClient
       .from("aim_prompts")
@@ -79,6 +80,8 @@ export async function PATCH(
       has_upvoted: false,
       is_saved: false,
       created_at: updated.created_at,
+      access_tier: updated.access_tier || "member",
+      locked: false,
     };
 
     return new Response(JSON.stringify(formatted), {

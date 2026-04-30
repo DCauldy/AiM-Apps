@@ -1,46 +1,67 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import { TurnstileWidget } from "./TurnstileWidget";
 
 export function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const supabase = createClient();
   const { addToast } = useToast();
+
+  const handleTurnstileVerify = useCallback((token: string) => {
+    setTurnstileToken(token);
+  }, []);
+
+  const handleTurnstileExpire = useCallback(() => {
+    setTurnstileToken(null);
+  }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY && !turnstileToken) {
+      addToast({
+        title: "Verification required",
+        description: "Please complete the verification challenge.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          fullName,
+          turnstileToken,
+        }),
       });
 
-      if (error) throw error;
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create account");
+      }
 
       addToast({
-        title: "Success",
-        description: "Account created! Please check your email to verify your account.",
+        title: "Account created",
+        description: "Welcome to Prompt Studio!",
       });
 
-      router.push("/apps");
+      router.push("/apps/prompt-studio/chat");
       router.refresh();
     } catch (error: any) {
       addToast({
@@ -54,85 +75,57 @@ export function SignupForm() {
   };
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <div className="flex justify-center mb-4">
-          <Image
-            src="/logo.svg"
-            alt="AiM Academy"
-            width={180}
-            height={51}
-            className="h-12 w-auto dark:hidden"
-            priority
-          />
-          <Image
-            src="/logo-dark.svg"
-            alt="AiM Academy"
-            width={180}
-            height={51}
-            className="h-12 w-auto hidden dark:block"
-            priority
-          />
-        </div>
-        <CardTitle>Create Account</CardTitle>
-        <CardDescription>Sign up to start optimizing your prompts</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSignup} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="fullName" className="text-sm font-medium">
-              Full Name
-            </label>
-            <Input
-              id="fullName"
-              type="text"
-              placeholder="John Doe"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-              disabled={loading}
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
-            </label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              disabled={loading}
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              disabled={loading}
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account..." : "Sign Up"}
-          </Button>
-        </form>
-        <div className="mt-4 text-center text-sm">
-          <a href="/login" className="text-primary hover:underline">
-            Already have an account? Sign in
-          </a>
-        </div>
-      </CardContent>
-    </Card>
+    <form onSubmit={handleSignup} className="space-y-4">
+      <div className="space-y-2">
+        <label htmlFor="signup-name" className="text-sm font-medium">
+          Full Name
+        </label>
+        <Input
+          id="signup-name"
+          type="text"
+          placeholder="John Doe"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          required
+          disabled={loading}
+        />
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="signup-email" className="text-sm font-medium">
+          Email
+        </label>
+        <Input
+          id="signup-email"
+          type="email"
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          disabled={loading}
+        />
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="signup-password" className="text-sm font-medium">
+          Password
+        </label>
+        <Input
+          id="signup-password"
+          type="password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={6}
+          disabled={loading}
+        />
+      </div>
+      <TurnstileWidget
+        onVerify={handleTurnstileVerify}
+        onExpire={handleTurnstileExpire}
+      />
+      <Button type="submit" className="w-full" disabled={loading}>
+        {loading ? "Creating account..." : "Create Account"}
+      </Button>
+    </form>
   );
 }
-

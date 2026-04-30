@@ -44,6 +44,10 @@ export type TrialStatus = {
   limit: number;
   remaining: number;
   resetDate: string;
+  bonusRemaining: number;
+  effectiveRemaining: number;
+  accountType: "standalone" | "aim_member";
+  nudge: boolean;
 };
 
 /** Fetch usage for a user against their plan-based monthly_limit (server-side only). */
@@ -52,13 +56,15 @@ export async function getTrialStatus(userId: string): Promise<TrialStatus> {
 
   const { data: profile } = await serviceClient
     .from("profiles")
-    .select("monthly_limit, created_at")
+    .select("monthly_limit, created_at, bonus_prompts, account_type")
     .eq("id", userId)
     .single();
 
-  const limit     = (profile?.monthly_limit as number | null) ?? 10;
-  const createdAt = new Date(profile?.created_at ?? new Date());
-  const period    = getCurrentPeriod(createdAt);
+  const limit        = (profile?.monthly_limit as number | null) ?? 10;
+  const createdAt    = new Date(profile?.created_at ?? new Date());
+  const bonusPrompts = (profile?.bonus_prompts as number | null) ?? 0;
+  const accountType  = (profile?.account_type as "standalone" | "aim_member") ?? "standalone";
+  const period       = getCurrentPeriod(createdAt);
 
   const { data: usageRow } = await serviceClient
     .from("prompt_studio_usage")
@@ -67,33 +73,68 @@ export async function getTrialStatus(userId: string): Promise<TrialStatus> {
     .eq("period", period)
     .maybeSingle();
 
-  const usage = (usageRow?.count as number | null) ?? 0;
+  const usage     = (usageRow?.count as number | null) ?? 0;
+  const remaining = Math.max(0, limit - usage);
+
+  // Effective remaining = monthly remaining + bonus credits
+  const effectiveRemaining = remaining + bonusPrompts;
+
+  // Show nudge when >= 80% of monthly limit used and no bonus credits
+  const nudge = limit > 0 && usage >= Math.floor(limit * 0.8) && remaining > 0 && bonusPrompts === 0;
 
   return {
     usage,
     limit,
-    remaining: Math.max(0, limit - usage),
+    remaining,
     resetDate: getResetDate(createdAt),
+    bonusRemaining: bonusPrompts,
+    effectiveRemaining,
+    accountType,
+    nudge,
   };
 }
 
-/** Atomically increment usage by 1. */
+/**
+ * Atomically increment usage by 1.
+ * Uses monthly quota first, then bonus credits.
+ */
 export async function incrementUsage(userId: string): Promise<void> {
   const serviceClient = createServiceRoleClient();
 
   const { data: profile } = await serviceClient
     .from("profiles")
-    .select("created_at")
+    .select("created_at, monthly_limit, bonus_prompts")
     .eq("id", userId)
     .single();
 
-  const createdAt = new Date(profile?.created_at ?? new Date());
-  const period    = getCurrentPeriod(createdAt);
+  const createdAt    = new Date(profile?.created_at ?? new Date());
+  const limit        = (profile?.monthly_limit as number | null) ?? 10;
+  const bonusPrompts = (profile?.bonus_prompts as number | null) ?? 0;
+  const period       = getCurrentPeriod(createdAt);
 
-  await serviceClient.rpc("increment_trial_usage", {
-    p_user_id: userId,
-    p_period:  period,
-  });
+  // Check current monthly usage
+  const { data: usageRow } = await serviceClient
+    .from("prompt_studio_usage")
+    .select("count")
+    .eq("user_id", userId)
+    .eq("period", period)
+    .maybeSingle();
+
+  const currentUsage = (usageRow?.count as number | null) ?? 0;
+
+  if (currentUsage < limit) {
+    // Monthly quota still available — increment normal usage
+    await serviceClient.rpc("increment_trial_usage", {
+      p_user_id: userId,
+      p_period:  period,
+    });
+  } else if (bonusPrompts > 0) {
+    // Monthly exhausted, use bonus credits
+    await serviceClient.rpc("decrement_bonus_prompts", {
+      p_user_id: userId,
+    });
+  }
+  // If both are zero, this shouldn't be called (gated by route)
 }
 
 /** @deprecated Use incrementUsage instead */

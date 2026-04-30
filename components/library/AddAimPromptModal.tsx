@@ -44,6 +44,7 @@ export function AddAimPromptModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [topic, setTopic] = useState<string>("__none__");
+  const [accessTier, setAccessTier] = useState<string>("member");
   const [isGeneratingMeta, setIsGeneratingMeta] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contentError, setContentError] = useState("");
@@ -55,6 +56,7 @@ export function AddAimPromptModal({
       setTitle(editingPrompt.title || "");
       setDescription(editingPrompt.description || "");
       setTopic(editingPrompt.topic || "__none__");
+      setAccessTier(editingPrompt.access_tier || "member");
       setContentError("");
     }
   }, [editingPrompt]);
@@ -64,6 +66,7 @@ export function AddAimPromptModal({
     setTitle("");
     setDescription("");
     setTopic("__none__");
+    setAccessTier("member");
     setIsGeneratingMeta(false);
     setIsSubmitting(false);
     setContentError("");
@@ -130,6 +133,7 @@ export function AddAimPromptModal({
           title: title.trim() || null,
           description: description.trim() || null,
           topic: topic === "__none__" ? null : topic,
+          access_tier: accessTier,
         }),
       });
 
@@ -243,6 +247,19 @@ export function AddAimPromptModal({
                         {opt.label}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Access Tier</label>
+                <Select value={accessTier} onValueChange={setAccessTier}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select access tier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free (visible to all users)</SelectItem>
+                    <SelectItem value="member">Member (AiM members only)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

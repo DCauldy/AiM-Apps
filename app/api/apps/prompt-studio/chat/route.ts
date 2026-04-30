@@ -70,13 +70,14 @@ export async function POST(req: NextRequest) {
 
     // Monthly usage gate — applies to all subscribers
     const trialStatus = await getTrialStatus(user.id);
-    if (trialStatus.remaining <= 0) {
+    if (trialStatus.effectiveRemaining <= 0) {
       return new Response(
         JSON.stringify({
           error: "trial_limit_reached",
           usage: trialStatus.usage,
           limit: trialStatus.limit,
           resetDate: trialStatus.resetDate,
+          accountType: trialStatus.accountType,
         }),
         { status: 429, headers: { "Content-Type": "application/json" } }
       );

@@ -31,12 +31,18 @@ export function useAuth() {
   }, [supabase]);
 
   const signOut = async () => {
+    const accountType = user?.app_metadata?.account_type;
     await supabase.auth.signOut();
-    window.location.href = process.env.NEXT_PUBLIC_AIM_BASE_URL
-      ? `${process.env.NEXT_PUBLIC_AIM_BASE_URL}/dashboard/`
-      : "https://aimarketingacademy.com/dashboard/";
+
+    if (accountType === "standalone") {
+      window.location.href = "/login";
+    } else {
+      // AiM members redirect to WordPress dashboard
+      window.location.href = process.env.NEXT_PUBLIC_AIM_BASE_URL
+        ? `${process.env.NEXT_PUBLIC_AIM_BASE_URL}/dashboard/`
+        : "https://aimarketingacademy.com/dashboard/";
+    }
   };
 
   return { user, loading, signOut };
 }
-

@@ -1,10 +1,11 @@
 "use client";
 
 import { X, Sparkles, Check } from "lucide-react";
+import { FEATURES } from "@/lib/feature-flags";
 
 const AIM_UPGRADE_URL =
   process.env.NEXT_PUBLIC_AIM_UPGRADE_URL ||
-  "https://aimarketingacademy.com/profile?aim_modal=upgrade";
+  "https://aimarketingacademy.com?aim_modal=upgrade";
 
 interface UpgradeModalProps {
   open: boolean;
@@ -12,10 +13,12 @@ interface UpgradeModalProps {
   /** 'limit' = hit monthly cap, 'cta' = user-initiated upgrade click */
   reason?: "limit" | "cta";
   resetDate?: string;
+  accountType?: "standalone" | "aim_member";
+  onBuyPack?: () => void;
 }
 
 const FULL_FEATURES = [
-  "Unlimited Prompt Studio access",
+  "Higher monthly Prompt Studio limits",
   "150+ hours of on-demand AI marketing training",
   "Monthly strategy sessions & live labs",
   "Full prompt library & marketing templates",
@@ -24,12 +27,22 @@ const FULL_FEATURES = [
   "New content added every week",
 ];
 
-export function UpgradeModal({ open, onClose, reason = "cta", resetDate }: UpgradeModalProps) {
+export function UpgradeModal({
+  open,
+  onClose,
+  reason = "cta",
+  resetDate,
+  accountType = "aim_member",
+  onBuyPack,
+}: UpgradeModalProps) {
   if (!open) return null;
 
   const resetFormatted = resetDate
     ? new Date(resetDate).toLocaleDateString([], { month: "long", day: "numeric" })
     : null;
+
+  const isStandalone = accountType === "standalone";
+  const showPackPurchase = !isStandalone && FEATURES.PROMPT_PACKS && reason === "limit";
 
   return (
     <>
@@ -42,7 +55,6 @@ export function UpgradeModal({ open, onClose, reason = "cta", resetDate }: Upgra
           className="relative w-full max-w-md rounded-2xl border bg-background shadow-2xl overflow-hidden pointer-events-auto"
           style={{ borderColor: "rgba(49,219,165,0.3)" }}
         >
-          {/* Close */}
           <button
             type="button"
             onClick={onClose}
@@ -73,9 +85,13 @@ export function UpgradeModal({ open, onClose, reason = "cta", resetDate }: Upgra
                   Monthly limit reached
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {resetFormatted
-                    ? `Your limit resets on ${resetFormatted}. Upgrade your plan for a higher monthly limit.`
-                    : "You've used all your prompts for this month. Upgrade your plan for a higher monthly limit."}
+                  {isStandalone
+                    ? `You've used all your free prompts for this month.${resetFormatted ? ` Your prompts reset on ${resetFormatted}.` : ""} Become an AiM member for a higher monthly limit and full library access.`
+                    : showPackPurchase
+                      ? "You've used all your prompts for this month. Get more prompts instantly, or wait for your limit to reset."
+                      : resetFormatted
+                        ? `Your limit resets on ${resetFormatted}. Upgrade your plan for a higher monthly limit.`
+                        : "You've used all your prompts for this month. Upgrade your plan for a higher monthly limit."}
                 </p>
               </>
             ) : (
@@ -90,32 +106,61 @@ export function UpgradeModal({ open, onClose, reason = "cta", resetDate }: Upgra
             )}
           </div>
 
-          {/* Features list */}
-          <div className="px-6 py-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              What you get with AiM
-            </p>
-            <ul className="space-y-2">
-              {FULL_FEATURES.map((feature) => (
-                <li key={feature} className="flex items-center gap-2 text-sm text-foreground">
-                  <Check className="h-3.5 w-3.5 shrink-0" style={{ color: "#31DBA5" }} />
-                  {feature}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Features list — shown for standalone or CTA */}
+          {(isStandalone || reason === "cta") && (
+            <div className="px-6 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                What you get with AiM
+              </p>
+              <ul className="space-y-2">
+                {FULL_FEATURES.map((feature) => (
+                  <li key={feature} className="flex items-center gap-2 text-sm text-foreground">
+                    <Check className="h-3.5 w-3.5 shrink-0" style={{ color: "#31DBA5" }} />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          {/* CTA */}
-          <div className="px-6 pb-6">
-            <a
-              href={AIM_UPGRADE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block w-full text-center py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-              style={{ background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)" }}
-            >
-              Upgrade Plan →
-            </a>
+          {/* Reset date for AiM members without pack purchase */}
+          {!isStandalone && reason === "limit" && !showPackPurchase && resetFormatted && (
+            <div className="px-6 py-4">
+              <p className="text-sm text-muted-foreground">
+                Your limit resets on <span className="font-medium text-foreground">{resetFormatted}</span>.
+              </p>
+            </div>
+          )}
+
+          {/* CTAs */}
+          <div className="px-6 pb-6 space-y-3">
+            {/* Primary CTA: Become AiM Member (standalone) or Upgrade (aim_member) */}
+            {(isStandalone || reason === "cta") && (
+              <a
+                href={AIM_UPGRADE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full text-center py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)" }}
+              >
+                {isStandalone ? "Become an AiM Member" : "Upgrade Plan"} →
+              </a>
+            )}
+
+            {/* Buy prompt packs button for AiM members */}
+            {showPackPurchase && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onBuyPack?.();
+                }}
+                className="block w-full text-center py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)" }}
+              >
+                Get More Prompts →
+              </button>
+            )}
           </div>
         </div>
       </div>

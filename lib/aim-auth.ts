@@ -46,7 +46,10 @@ export async function verifyAimToken(token: string): Promise<AimJwtPayload | nul
 /**
  * Create a Supabase session for the given AiM JWT payload.
  * Cookies are set directly on `redirectResponse` so they survive the redirect.
- * Also upserts the profile with monthly_limit and memberstack_id.
+ * Also upserts the profile with monthly_limit, memberstack_id, and account_type.
+ *
+ * If a standalone user already exists with the same email, this silently
+ * upgrades their account to aim_member while preserving their UUID and data.
  *
  * Returns true on success, false on any failure.
  */
@@ -56,15 +59,16 @@ export async function loginWithAimPayload(
   redirectResponse: NextResponse
 ): Promise<boolean> {
   const { email, name, memberstackId, apps } = payload;
-  const monthlyLimit = apps?.["prompt-studio"]?.monthlyLimit ?? 10;
+  const monthlyLimit = apps?.["prompt-studio"]?.monthlyLimit ?? 15;
 
   const supabaseAdmin = createServiceRoleClient();
 
-  // Create user if they don't exist yet
+  // Create user if they don't exist yet — includes account_type metadata
   const createResult = await supabaseAdmin.auth.admin.createUser({
     email,
     email_confirm: true,
-    user_metadata: { full_name: name },
+    user_metadata: { full_name: name, account_type: "aim_member" },
+    app_metadata: { account_type: "aim_member" },
   });
   if (createResult.error && createResult.error.code !== "email_exists") {
     console.error("[aim-auth] createUser failed:", createResult.error);
@@ -109,7 +113,7 @@ export async function loginWithAimPayload(
     return false;
   }
 
-  // Upsert profile
+  // Upsert profile — upgrades standalone → aim_member on email match
   const { data: profileData } = await supabaseAdmin
     .from("profiles")
     .select("id")
@@ -122,9 +126,16 @@ export async function loginWithAimPayload(
       .update({
         monthly_limit: monthlyLimit,
         memberstack_id: memberstackId,
+        account_type: "aim_member",
+        full_name: name,
         linked_at: new Date().toISOString(),
       })
       .eq("id", profileData.id);
+
+    // Update auth user metadata so client-side reads reflect the upgrade
+    await supabaseAdmin.auth.admin.updateUserById(profileData.id, {
+      app_metadata: { account_type: "aim_member" },
+    });
   }
 
   return true;

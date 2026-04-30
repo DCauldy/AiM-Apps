@@ -15,6 +15,8 @@ interface InputsTabProps {
   isGeneratingQuestions: boolean;
   isRefining: boolean;
   versionsExist?: boolean;
+  limitReached?: boolean;
+  onShowUpgrade?: () => void;
 }
 
 export function InputsTab({
@@ -28,6 +30,8 @@ export function InputsTab({
   isGeneratingQuestions,
   isRefining,
   versionsExist = false,
+  limitReached = false,
+  onShowUpgrade,
 }: InputsTabProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -166,37 +170,53 @@ export function InputsTab({
         </div>
       )}
 
-      {/* Improve button */}
-      <div className="p-3 border-t border-border flex gap-2">
-        {questions.length > 0 && (
-          <button
-            type="button"
-            onClick={onRegenerateQuestions}
-            disabled={isLoading || !lazyPrompt.trim()}
-            title="Regenerate questions"
-            className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-          >
-            <RotateCcw className={`h-3.5 w-3.5 ${isGeneratingQuestions ? "animate-spin" : ""}`} />
-          </button>
+      {/* Improve button / limit banner */}
+      <div className="p-3 border-t border-border">
+        {limitReached ? (
+          <div className="rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-700 px-3 py-2.5 text-center space-y-1.5">
+            <p className="text-xs font-medium text-foreground">Monthly limit reached</p>
+            <button
+              type="button"
+              onClick={onShowUpgrade}
+              className="inline-block px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)" }}
+            >
+              View Options
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            {questions.length > 0 && (
+              <button
+                type="button"
+                onClick={onRegenerateQuestions}
+                disabled={isLoading || !lazyPrompt.trim()}
+                title="Regenerate questions"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                <RotateCcw className={`h-3.5 w-3.5 ${isGeneratingQuestions ? "animate-spin" : ""}`} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onImprove}
+              disabled={isLoading || !lazyPrompt.trim() || (questions.length > 0 && answeredCount === 0 && !versionsExist)}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {isGeneratingQuestions ? "Generating questions..." : "Refining prompt..."}
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-4 w-4" />
+                  {questions.length === 0 ? "Generate Questions" : "Improve Prompt"}
+                </>
+              )}
+            </button>
+          </div>
         )}
-        <button
-          type="button"
-          onClick={onImprove}
-          disabled={isLoading || !lazyPrompt.trim() || (questions.length > 0 && answeredCount === 0 && !versionsExist)}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isLoading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {isGeneratingQuestions ? "Generating questions..." : "Refining prompt..."}
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4" />
-              {questions.length === 0 ? "Generate Questions" : "Improve Prompt"}
-            </>
-          )}
-        </button>
       </div>
     </div>
   );

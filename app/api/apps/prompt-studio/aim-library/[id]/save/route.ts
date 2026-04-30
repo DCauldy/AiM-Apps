@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 
 export async function POST(
@@ -19,6 +19,33 @@ export async function POST(
         status: 401,
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    const serviceClient = createServiceRoleClient();
+
+    // Check user's account_type and prompt's access_tier
+    const [profileRes, promptRes] = await Promise.all([
+      serviceClient
+        .from("profiles")
+        .select("account_type")
+        .eq("id", user.id)
+        .single(),
+      serviceClient
+        .from("aim_prompts")
+        .select("access_tier")
+        .eq("id", id)
+        .single(),
+    ]);
+
+    const accountType = profileRes.data?.account_type || "standalone";
+    const accessTier = promptRes.data?.access_tier || "member";
+
+    // Standalone users cannot save member-tier prompts
+    if (accountType === "standalone" && accessTier === "member") {
+      return new Response(
+        JSON.stringify({ error: "Upgrade to AiM membership to save this prompt" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      );
     }
 
     // Check if already saved

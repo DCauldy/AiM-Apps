@@ -13,6 +13,9 @@ interface ChatWindowProps {
   onMakePublic?: (messageId: string) => Promise<void>;
   threadId?: string;
   initialValue?: string;
+  /** When true, the chat input is disabled because the user has hit their monthly limit */
+  limitReached?: boolean;
+  onShowUpgrade?: () => void;
 }
 
 export function ChatWindow({
@@ -22,6 +25,8 @@ export function ChatWindow({
   onMakePublic,
   threadId,
   initialValue,
+  limitReached = false,
+  onShowUpgrade,
 }: ChatWindowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -371,14 +376,31 @@ export function ChatWindow({
             
             {/* Centered input with space for dropdown */}
             <div className="flex justify-center pb-4">
-              <ChatInput
-                onSend={(message, promptType) => onSend(message, promptType)}
-                disabled={isLoading}
-                promptType={selectedPromptType}
-                onPromptTypeChange={setSelectedPromptType}
-                initialValue={initialValue}
-                centered={true}
-              />
+              {limitReached ? (
+                <div className="w-full max-w-2xl">
+                  <div className="rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-700 px-5 py-4 text-center space-y-2">
+                    <p className="text-sm font-medium text-foreground">You&apos;ve reached your monthly prompt limit</p>
+                    <p className="text-xs text-muted-foreground">You can still browse your chat history and libraries.</p>
+                    <button
+                      type="button"
+                      onClick={onShowUpgrade}
+                      className="mt-1 inline-block px-4 py-2 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                      style={{ background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)" }}
+                    >
+                      View Options
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <ChatInput
+                  onSend={(message, promptType) => onSend(message, promptType)}
+                  disabled={isLoading}
+                  promptType={selectedPromptType}
+                  onPromptTypeChange={setSelectedPromptType}
+                  initialValue={initialValue}
+                  centered={true}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -471,14 +493,28 @@ export function ChatWindow({
           </div>
           <div className="flex justify-center bg-background pt-4 pb-4">
             <div className="w-full max-w-4xl px-4">
-              <ChatInput
-                onSend={(message, promptType) => onSend(message, promptType)}
-                disabled={isLoading}
-                promptType={selectedPromptType}
-                onPromptTypeChange={setSelectedPromptType}
-                initialValue={initialValue}
-                centered={false}
-              />
+              {limitReached ? (
+                <div className="rounded-xl border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-700 px-5 py-3 text-center space-y-1">
+                  <p className="text-sm font-medium text-foreground">Monthly prompt limit reached</p>
+                  <button
+                    type="button"
+                    onClick={onShowUpgrade}
+                    className="inline-block px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)" }}
+                  >
+                    View Options
+                  </button>
+                </div>
+              ) : (
+                <ChatInput
+                  onSend={(message, promptType) => onSend(message, promptType)}
+                  disabled={isLoading}
+                  promptType={selectedPromptType}
+                  onPromptTypeChange={setSelectedPromptType}
+                  initialValue={initialValue}
+                  centered={false}
+                />
+              )}
             </div>
           </div>
         </>

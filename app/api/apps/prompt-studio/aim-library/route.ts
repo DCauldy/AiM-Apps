@@ -14,10 +14,21 @@ export async function GET(req: NextRequest) {
 
     const serviceClient = createServiceRoleClient();
 
-    // Fetch all AiM prompts — all subscribers see the full library
+    // Fetch user's account_type to determine access
+    let accountType: string = "standalone";
+    if (user) {
+      const { data: profile } = await serviceClient
+        .from("profiles")
+        .select("account_type")
+        .eq("id", user.id)
+        .single();
+      accountType = profile?.account_type || "standalone";
+    }
+
+    // Fetch all AiM prompts including access_tier
     const query = serviceClient
       .from("aim_prompts")
-      .select("id, content, title, description, topic, created_by, created_at, author_name")
+      .select("id, content, title, description, topic, created_by, created_at, author_name, access_tier")
       .order("created_at", { ascending: false });
 
     const { data: prompts, error: promptsError } = await query;
@@ -67,21 +78,30 @@ export async function GET(req: NextRequest) {
       userSavedRes.data?.forEach((s: any) => userSavedSet.add(s.aim_prompt_id));
     }
 
-    const formatted = prompts.map((p: any) => ({
-      id: p.id,
-      message_id: p.id,
-      content: p.content,
-      title: p.title || null,
-      description: p.description || null,
-      topic: p.topic || null,
-      user_id: p.created_by || null,
-      author_name: p.author_name || "AiM Prompts",
-      author_email: null,
-      upvote_count: upvoteCounts.get(p.id) || 0,
-      has_upvoted: userUpvoteSet.has(p.id),
-      is_saved: userSavedSet.has(p.id),
-      created_at: p.created_at,
-    }));
+    const isStandalone = accountType === "standalone";
+
+    const formatted = prompts.map((p: any) => {
+      const accessTier = p.access_tier || "member";
+      const locked = isStandalone && accessTier === "member";
+
+      return {
+        id: p.id,
+        message_id: p.id,
+        content: locked ? "" : p.content,
+        title: p.title || null,
+        description: p.description || null,
+        topic: p.topic || null,
+        user_id: p.created_by || null,
+        author_name: p.author_name || "AiM Prompts",
+        author_email: null,
+        upvote_count: upvoteCounts.get(p.id) || 0,
+        has_upvoted: userUpvoteSet.has(p.id),
+        is_saved: userSavedSet.has(p.id),
+        created_at: p.created_at,
+        access_tier: accessTier,
+        locked,
+      };
+    });
 
     if (sort === "popular") {
       formatted.sort((a: any, b: any) => b.upvote_count - a.upvote_count);
@@ -123,7 +143,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { content, title, description, topic } = body;
+    const { content, title, description, topic, access_tier } = body;
 
     if (!content?.trim()) {
       return new Response(JSON.stringify({ error: "content is required" }), {
@@ -142,6 +162,7 @@ export async function POST(req: NextRequest) {
         description: description?.trim() || null,
         topic: topic || null,
         created_by: user.id,
+        access_tier: access_tier || "member",
       })
       .select()
       .single();
@@ -164,6 +185,8 @@ export async function POST(req: NextRequest) {
       has_upvoted: false,
       is_saved: false,
       created_at: prompt.created_at,
+      access_tier: prompt.access_tier || "member",
+      locked: false,
     };
 
     return new Response(JSON.stringify(formatted), {

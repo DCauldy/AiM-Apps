@@ -1,10 +1,18 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useThreads } from "@/hooks/useThreads";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { useToast } from "@/components/ui/toast";
+import { UpgradeModal } from "@/components/trial/UpgradeModal";
+import { FEATURES } from "@/lib/feature-flags";
+import dynamic from "next/dynamic";
 import type { PromptType } from "@/types";
+
+const PurchasePackModal = FEATURES.PROMPT_PACKS
+  ? dynamic(() => import("@/components/trial/PurchasePackModal").then((m) => m.PurchasePackModal), { ssr: false })
+  : () => null;
 
 export default function ChatPage() {
   const router = useRouter();
@@ -13,6 +21,27 @@ export default function ChatPage() {
   const { addToast } = useToast();
 
   const prefill = searchParams?.get("prefill") || "";
+
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [upgradeResetDate, setUpgradeResetDate] = useState<string | undefined>();
+  const [upgradeAccountType, setUpgradeAccountType] = useState<"standalone" | "aim_member" | undefined>();
+  const [limitReached, setLimitReached] = useState(false);
+
+  // Check trial status on mount
+  useEffect(() => {
+    fetch("/api/apps/prompt-studio/trial-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        if (data.effectiveRemaining <= 0) {
+          setLimitReached(true);
+          setUpgradeAccountType(data.accountType);
+          setUpgradeResetDate(data.resetDate);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSend = async (content: string, promptType?: PromptType) => {
     try {
@@ -42,12 +71,33 @@ export default function ChatPage() {
   }
 
   return (
-    <ChatWindow
-      messages={[]}
-      isLoading={false}
-      onSend={handleSend}
-      threadId={undefined}
-      initialValue={prefill}
-    />
+    <>
+      <ChatWindow
+        messages={[]}
+        isLoading={false}
+        onSend={handleSend}
+        threadId={undefined}
+        initialValue={prefill}
+        limitReached={limitReached}
+        onShowUpgrade={() => setShowUpgradeModal(true)}
+      />
+      <UpgradeModal
+        open={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        reason="limit"
+        resetDate={upgradeResetDate}
+        accountType={upgradeAccountType}
+        onBuyPack={() => {
+          setShowUpgradeModal(false);
+          setShowPurchaseModal(true);
+        }}
+      />
+      <PurchasePackModal
+        open={showPurchaseModal}
+        onClose={() => {
+          setShowPurchaseModal(false);
+        }}
+      />
+    </>
   );
 }

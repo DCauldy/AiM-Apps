@@ -9,6 +9,12 @@ import { PromptVersion } from "./LeftPanel/VersionsTab";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/hooks/useAuth";
 import { UpgradeModal } from "@/components/trial/UpgradeModal";
+import { FEATURES } from "@/lib/feature-flags";
+import dynamic from "next/dynamic";
+
+const PurchasePackModal = FEATURES.PROMPT_PACKS
+  ? dynamic(() => import("@/components/trial/PurchasePackModal").then((m) => m.PurchasePackModal), { ssr: false })
+  : () => null;
 
 /** Extract lazy prompt and additional context from a stored user message. */
 function parseLazyPromptFromMessage(content: string): {
@@ -99,8 +105,11 @@ export function PromptStudioShell({
   // Trial / upgrade state
   const [isTrial, setIsTrial] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [upgradeReason, setUpgradeReason] = useState<"limit" | "cta">("cta");
   const [upgradeResetDate, setUpgradeResetDate] = useState<string | undefined>();
+  const [upgradeAccountType, setUpgradeAccountType] = useState<"standalone" | "aim_member" | undefined>();
+  const [isLimitReached, setIsLimitReached] = useState(false);
 
   // Track what prompt was used when questions were generated, to know when to regenerate
   const lastQuestionsPromptRef = useRef<string>("");
@@ -108,7 +117,22 @@ export function PromptStudioShell({
   const abortControllerRef = useRef<AbortController | null>(null);
   const answersSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // All users authenticated via WP JWT are subscribers — isTrial is always false
+  // Check trial status on mount — if limit reached, show upgrade modal immediately
+  useEffect(() => {
+    fetch("/api/apps/prompt-studio/trial-status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setUpgradeAccountType(data.accountType);
+        if (data.effectiveRemaining <= 0) {
+          setIsLimitReached(true);
+          setUpgradeReason("limit");
+          setUpgradeResetDate(data.resetDate);
+          setShowUpgradeModal(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Persist answers to localStorage and DB so they survive page reloads
   useEffect(() => {
@@ -366,6 +390,8 @@ export function PromptStudioShell({
             const err = await response.json();
             setUpgradeReason("limit");
             setUpgradeResetDate(err.resetDate);
+            setUpgradeAccountType(err.accountType);
+            setIsLimitReached(true);
             setShowUpgradeModal(true);
           }
           return;
@@ -546,6 +572,8 @@ export function PromptStudioShell({
           const err = await response.json();
           setUpgradeReason("limit");
           setUpgradeResetDate(err.resetDate);
+          setUpgradeAccountType(err.accountType);
+          setIsLimitReached(true);
           setShowUpgradeModal(true);
           return;
         }
@@ -825,6 +853,8 @@ export function PromptStudioShell({
             activeVersionId={activeVersionId}
             onSelectVersion={handleSelectVersion}
             versionsExist={versions.length > 0}
+            limitReached={isLimitReached}
+            onShowUpgrade={() => setShowUpgradeModal(true)}
           />
         </div>
 
@@ -859,6 +889,18 @@ export function PromptStudioShell({
         onClose={() => setShowUpgradeModal(false)}
         reason={upgradeReason}
         resetDate={upgradeResetDate}
+        accountType={upgradeAccountType}
+        onBuyPack={() => {
+          setShowUpgradeModal(false);
+          setShowPurchaseModal(true);
+        }}
+      />
+      <PurchasePackModal
+        open={showPurchaseModal}
+        onClose={() => {
+          setShowPurchaseModal(false);
+          setShowUpgradeModal(true);
+        }}
       />
     </div>
   );

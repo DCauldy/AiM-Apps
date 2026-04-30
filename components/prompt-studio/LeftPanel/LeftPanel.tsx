@@ -24,6 +24,8 @@ interface LeftPanelProps {
   activeVersionId: string | null;
   onSelectVersion: (version: PromptVersion) => void;
   versionsExist?: boolean;
+  limitReached?: boolean;
+  onShowUpgrade?: () => void;
 }
 
 const TABS: { id: Tab; label: string }[] = [
@@ -48,6 +50,8 @@ export function LeftPanel({
   activeVersionId,
   onSelectVersion,
   versionsExist = false,
+  limitReached = false,
+  onShowUpgrade,
 }: LeftPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("inputs");
 
@@ -90,6 +94,8 @@ export function LeftPanel({
             isGeneratingQuestions={isGeneratingQuestions}
             isRefining={isRefining}
             versionsExist={versionsExist}
+            limitReached={limitReached}
+            onShowUpgrade={onShowUpgrade}
           />
         )}
         {activeTab === "context" && (

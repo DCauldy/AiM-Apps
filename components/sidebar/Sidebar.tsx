@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Plus, Sparkles, Bookmark, Library, ChevronUp, ChevronDown, LogOut, User, AlertTriangle, BarChart3 } from "lucide-react";
+import { Plus, Sparkles, Bookmark, Library, ChevronUp, ChevronDown, LogOut, User, AlertTriangle, BarChart3, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThreadList } from "./ThreadList";
 import { useThreads } from "@/hooks/useThreads";
@@ -12,6 +12,12 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogClose } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { UpgradeModal } from "@/components/trial/UpgradeModal";
+import { FEATURES } from "@/lib/feature-flags";
+import dynamic from "next/dynamic";
+
+const PurchasePackModal = FEATURES.PROMPT_PACKS
+  ? dynamic(() => import("@/components/trial/PurchasePackModal").then((m) => m.PurchasePackModal), { ssr: false })
+  : () => null;
 
 interface SidebarProps {
   activeThreadId: string | null;
@@ -25,6 +31,10 @@ type UsageStatus = {
   limit: number;
   remaining: number;
   resetDate: string;
+  bonusRemaining: number;
+  effectiveRemaining: number;
+  accountType: "standalone" | "aim_member";
+  nudge: boolean;
 };
 
 export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggle }: SidebarProps) {
@@ -40,6 +50,7 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
   const [isCheckingShared, setIsCheckingShared] = useState(false);
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
 
   // Get user initials for avatar
   const getUserInitials = () => {
@@ -153,6 +164,7 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
   const isLibraryActive    = pathname === "/apps/prompt-studio/library";
   const isSavedActive      = pathname === "/apps/prompt-studio/saved";
   const isAimLibraryActive = pathname === "/apps/prompt-studio/aim-library";
+  const isStandalone       = user?.app_metadata?.account_type === "standalone";
 
   return (
     <>
@@ -172,17 +184,29 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
             New Prompt
           </Button>
           <div className="flex flex-col gap-2">
-            <Button
-              variant={isLibraryActive ? "default" : "outline"}
-              className="w-full justify-start"
-              onClick={() => {
-                router.push("/apps/prompt-studio/library");
-                if (window.innerWidth < 1024) onToggle?.();
-              }}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              Community Prompts
-            </Button>
+            {isStandalone ? (
+              <Button
+                variant="outline"
+                className="w-full justify-start opacity-50 cursor-not-allowed"
+                disabled
+                title="Available to AiM members"
+              >
+                <Lock className="mr-2 h-4 w-4" />
+                Community Prompts
+              </Button>
+            ) : (
+              <Button
+                variant={isLibraryActive ? "default" : "outline"}
+                className="w-full justify-start"
+                onClick={() => {
+                  router.push("/apps/prompt-studio/library");
+                  if (window.innerWidth < 1024) onToggle?.();
+                }}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Community Prompts
+              </Button>
+            )}
             <Button
               variant={isAimLibraryActive ? "default" : "outline"}
               className="w-full justify-start"
@@ -218,8 +242,22 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
         {/* Usage indicator */}
         {usageStatus && (
           <div className="px-3 pb-2">
-            <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
-              {usageStatus.usage} / {usageStatus.limit} prompts used this month
+            <div className={cn(
+              "rounded-lg border px-3 py-2 text-xs text-muted-foreground",
+              usageStatus.nudge && "border-yellow-300 bg-yellow-50 dark:bg-yellow-950/30"
+            )}>
+              <div>{usageStatus.usage} / {usageStatus.limit} prompts used this month</div>
+              {usageStatus.bonusRemaining > 0 && (
+                <div className="mt-1 text-emerald-600 dark:text-emerald-400">
+                  +{usageStatus.bonusRemaining} bonus credit{usageStatus.bonusRemaining !== 1 ? "s" : ""}
+                </div>
+              )}
+              {usageStatus.nudge && (
+                <div className="mt-1 flex items-center gap-1 text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="h-3 w-3" />
+                  <span>Running low on prompts</span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -290,6 +328,17 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
         open={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         reason="limit"
+        resetDate={usageStatus?.resetDate}
+        accountType={usageStatus?.accountType}
+        onBuyPack={() => {
+          setShowUpgradeModal(false);
+          setShowPurchaseModal(true);
+        }}
+      />
+
+      <PurchasePackModal
+        open={showPurchaseModal}
+        onClose={() => setShowPurchaseModal(false)}
       />
 
       {/* Mobile overlay */}
