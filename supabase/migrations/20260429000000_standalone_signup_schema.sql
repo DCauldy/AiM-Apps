@@ -57,7 +57,7 @@ begin
     new.raw_user_meta_data->>'full_name',
     coalesce(new.raw_user_meta_data->>'account_type', 'standalone'),
     case
-      when new.raw_user_meta_data->>'account_type' = 'aim_member' then 10
+      when new.raw_user_meta_data->>'account_type' = 'aim_member' then 25
       else 5
     end
   );

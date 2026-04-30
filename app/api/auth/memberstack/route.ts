@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Derive monthly limit from plan connections (default 15 for AiM members)
-    const monthlyLimit = 15;
+    const monthlyLimit = 25;
 
     const supabaseAdmin = createServiceRoleClient();
 

@@ -59,7 +59,7 @@ export async function loginWithAimPayload(
   redirectResponse: NextResponse
 ): Promise<boolean> {
   const { email, name, memberstackId, apps } = payload;
-  const monthlyLimit = apps?.["prompt-studio"]?.monthlyLimit ?? 15;
+  const monthlyLimit = apps?.["prompt-studio"]?.monthlyLimit ?? 25;
 
   const supabaseAdmin = createServiceRoleClient();
 
