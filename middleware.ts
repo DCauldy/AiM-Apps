@@ -10,7 +10,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname === "/aim-auth/start" ||
     pathname === "/login" ||
-    pathname === "/free" ||
+    pathname.endsWith("/free") ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/webhooks/")
   ) {
