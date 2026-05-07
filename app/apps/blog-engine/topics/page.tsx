@@ -1,0 +1,226 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { TopicList } from "@/components/blog-engine/topics/TopicList";
+import type { BofuTopic } from "@/types/blog-engine";
+
+const POLL_INTERVAL_MS = 5000;
+const POLL_TIMEOUT_MS = 3 * 60 * 1000;
+
+export default function TopicsPage() {
+  const [topics, setTopics] = useState<BofuTopic[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isRunning, setIsRunning] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenGeneratingRef = useRef(false);
+
+  const fetchTopics = useCallback(async () => {
+    try {
+      const response = await fetch("/api/apps/blog-engine/topics");
+      if (response.ok) {
+        const data = await response.json();
+        setTopics(data.topics);
+      }
+    } catch {
+      console.error("Failed to fetch topics");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    seenGeneratingRef.current = false;
+  }, []);
+
+  const pollStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/apps/blog-engine/status");
+      if (!res.ok) return;
+      const data: { generating: boolean } = await res.json();
+
+      if (data.generating) {
+        seenGeneratingRef.current = true;
+      }
+
+      if (seenGeneratingRef.current && !data.generating) {
+        setGenerating(false);
+        stopPolling();
+        // Refresh topics to pick up the "written" status
+        await fetchTopics();
+        // Dispatch event so the header usage badge updates
+        window.dispatchEvent(new Event("blog-usage-updated"));
+      }
+    } catch {
+      // Silently ignore — will retry next tick
+    }
+  }, [stopPolling, fetchTopics]);
+
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    setGenerating(true);
+    seenGeneratingRef.current = false;
+    pollRef.current = setInterval(pollStatus, POLL_INTERVAL_MS);
+
+    timeoutRef.current = setTimeout(() => {
+      setGenerating(false);
+      stopPolling();
+      fetchTopics();
+    }, POLL_TIMEOUT_MS);
+  }, [pollStatus, stopPolling, fetchTopics]);
+
+  useEffect(() => {
+    fetchTopics();
+  }, [fetchTopics]);
+
+  // Auto-start polling if any topic is currently "writing".
+  // Also detect stale "writing" topics where the pipeline already finished/failed.
+  useEffect(() => {
+    if (!loading && topics.some((t) => t.status === "writing")) {
+      // Check immediately whether the pipeline is actually running
+      fetch("/api/apps/blog-engine/status")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data && !data.generating) {
+            // Pipeline isn't running — these topics are stale. Refresh to get
+            // the corrected status (the pipeline error handler resets them now).
+            fetchTopics();
+          } else {
+            // Pipeline is actively running — start polling for completion
+            seenGeneratingRef.current = true;
+            startPolling();
+          }
+        })
+        .catch(() => {
+          // Can't tell — assume it's running and poll
+          seenGeneratingRef.current = true;
+          startPolling();
+        });
+    }
+    return stopPolling;
+  }, [loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleWriteTopic = async (topicId: string) => {
+    setIsRunning(true);
+    try {
+      const response = await fetch("/api/apps/blog-engine/runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId }),
+      });
+
+      if (response.ok) {
+        await fetchTopics();
+        startPolling();
+      }
+    } catch {
+      console.error("Failed to trigger pipeline");
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleReorder = async (orderedIds: string[]) => {
+    // Optimistically reorder local state
+    setTopics((prev) => {
+      const idOrder = new Map(orderedIds.map((id, i) => [id, i]));
+      const reordered = [...prev].sort((a, b) => {
+        const aIdx = idOrder.get(a.id);
+        const bIdx = idOrder.get(b.id);
+        // Items in the ordered list come first, in their new order
+        if (aIdx !== undefined && bIdx !== undefined) return aIdx - bIdx;
+        if (aIdx !== undefined) return -1;
+        if (bIdx !== undefined) return 1;
+        return 0;
+      });
+      return reordered;
+    });
+
+    try {
+      await fetch("/api/apps/blog-engine/topics", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reorder", orderedIds }),
+      });
+    } catch {
+      console.error("Failed to save reorder");
+      // Refresh from server on failure
+      fetchTopics();
+    }
+  };
+
+  const handleSkipTopic = async (topicId: string) => {
+    try {
+      const response = await fetch("/api/apps/blog-engine/topics", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topicId, status: "skipped" }),
+      });
+
+      if (response.ok) {
+        setTopics((prev) =>
+          prev.map((t) =>
+            t.id === topicId ? { ...t, status: "skipped" as const } : t
+          )
+        );
+      }
+    } catch {
+      console.error("Failed to skip topic");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-sm text-muted-foreground">Loading topics...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-4xl mx-auto px-6 py-8">
+        <div className="mb-6">
+          <h1 className="font-sans text-xl font-bold text-foreground">Topic Bank</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Topics discovered and scored for your market. Click &quot;Write&quot; to
+            generate a blog from any available topic.
+          </p>
+        </div>
+
+        {/* Pipeline activity banner */}
+        {generating && (
+          <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 mb-6">
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-primary" />
+            </span>
+            <span className="text-sm font-medium text-foreground">
+              Writing your blog&hellip;
+            </span>
+            <span className="text-sm text-muted-foreground">
+              This usually takes about a minute.
+            </span>
+          </div>
+        )}
+
+        <TopicList
+          topics={topics}
+          onWriteTopic={handleWriteTopic}
+          onSkipTopic={handleSkipTopic}
+          onReorder={handleReorder}
+          isRunning={isRunning || generating}
+        />
+      </div>
+    </div>
+  );
+}

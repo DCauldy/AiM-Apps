@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Plus, Sparkles, Bookmark, Library, ChevronUp, ChevronDown, LogOut, User, AlertTriangle, BarChart3, Lock } from "lucide-react";
+import { Plus, Sparkles, Bookmark, Library, AlertTriangle, BarChart3, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThreadList } from "./ThreadList";
 import { useThreads } from "@/hooks/useThreads";
@@ -13,6 +13,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogClo
 import { cn } from "@/lib/utils";
 import { UpgradeModal } from "@/components/trial/UpgradeModal";
 import { FEATURES } from "@/lib/feature-flags";
+import { AppSwitcher } from "@/components/layout/AppSwitcher";
+import { ProfileSection } from "@/components/layout/ProfileSection";
 import dynamic from "next/dynamic";
 
 const PurchasePackModal = FEATURES.PROMPT_PACKS
@@ -42,8 +44,7 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
   const router = useRouter();
   const pathname = usePathname();
   const { addToast } = useToast();
-  const { user, signOut } = useAuth();
-  const [isProfileExpanded, setIsProfileExpanded] = useState(false);
+  const { user } = useAuth();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [threadToDelete, setThreadToDelete] = useState<string | null>(null);
   const [sharedPromptsCount, setSharedPromptsCount] = useState(0);
@@ -51,24 +52,6 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
-
-  // Get user initials for avatar
-  const getUserInitials = () => {
-    if (!user) return "U";
-    const fullName = user.user_metadata?.full_name;
-    if (fullName) {
-      const names = fullName.trim().split(" ");
-      if (names.length >= 2) {
-        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
-      }
-      return names[0][0].toUpperCase();
-    }
-    const email = user.email;
-    if (email) {
-      return email[0].toUpperCase();
-    }
-    return "U";
-  };
 
   // Debounce function to prevent rapid successive fetches
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -178,6 +161,11 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
+        {/* App Switcher */}
+        <div className="p-3 border-b">
+          <AppSwitcher />
+        </div>
+
         <div className="p-4 border-b space-y-2">
           <Button onClick={handleNewThread} className="w-full" variant="default">
             <Plus className="mr-2 h-4 w-4" />
@@ -263,65 +251,7 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
         )}
 
         {/* Profile section at bottom */}
-        {user && (
-          <div className="mt-auto border-t">
-            <div className="p-3">
-              <button
-                onClick={() => setIsProfileExpanded(!isProfileExpanded)}
-                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors"
-              >
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-[#1C4C8A] to-[#31DBA5] flex items-center justify-center text-white text-xs font-semibold">
-                  {getUserInitials()}
-                </div>
-                <div className="flex-1 min-w-0 text-left">
-                  <p className="text-sm font-medium truncate">
-                    {user.user_metadata?.full_name || user.email?.split("@")[0] || "User"}
-                  </p>
-                </div>
-                {isProfileExpanded ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                )}
-              </button>
-
-              {isProfileExpanded && (
-                <div className="mt-2 pt-2 border-t space-y-1">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-sm"
-                    onClick={() => {
-                      router.push("/apps/prompt-studio/settings");
-                      if (window.innerWidth < 1024) onToggle?.();
-                    }}
-                  >
-                    <User className="mr-2 h-4 w-4" />
-                    Profile Settings
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-sm"
-                    onClick={() => {
-                      router.push("/apps/prompt-studio/stats");
-                      if (window.innerWidth < 1024) onToggle?.();
-                    }}
-                  >
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    Stats
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-sm"
-                    onClick={signOut}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sign Out
-                  </Button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <ProfileSection appBasePath="/apps/prompt-studio" onMobileClose={onToggle} />
       </aside>
 
       <UpgradeModal

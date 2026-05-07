@@ -35,7 +35,13 @@ export function Header({
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const pathname = usePathname();
   
-  const isInApp = pathname?.startsWith("/apps/prompt-studio");
+  const isInPromptStudio = pathname?.startsWith("/apps/prompt-studio");
+  const isInBlogEngine = pathname?.startsWith("/apps/blog-engine");
+  const isInApp = isInPromptStudio || isInBlogEngine;
+
+  // Determine the app name for the header
+  const appName = isInBlogEngine ? "Blog Engine" : "Prompt Studio";
+  const appRoute = isInBlogEngine ? "/apps/blog-engine" : "/apps/prompt-studio";
 
   return (
     <>
@@ -53,13 +59,13 @@ export function Header({
                 <PanelLeft className="h-4 w-4 sm:h-5 w-5" />
               </Button>
             )}
-            <Link href="/apps/prompt-studio" className="flex items-center gap-2 sm:gap-3">
+            <Link href={appRoute} className="flex items-center gap-2 sm:gap-3">
               <Image
                 src="/logo.svg"
                 alt="AiM Academy"
                 width={120}
                 height={34}
-                className="h-7 w-auto sm:h-8 dark:hidden"
+                className="h-9 w-auto sm:h-10 dark:hidden"
                 priority
               />
               <Image
@@ -67,11 +73,11 @@ export function Header({
                 alt="AiM Academy"
                 width={120}
                 height={34}
-                className="h-7 w-auto sm:h-8 hidden dark:block"
+                className="h-9 w-auto sm:h-10 hidden dark:block"
                 priority
               />
               <span className="text-lg sm:text-xl font-bold text-foreground font-sans">
-                Prompt Studio
+                {appName}
               </span>
             </Link>
           </div>
@@ -96,7 +102,7 @@ export function Header({
           <div className="flex items-center gap-2 flex-shrink-0">
             <ThemeToggle />
             {/* Only show help button in prompt-studio app */}
-            {isInApp && (
+            {isInPromptStudio && (
               <Button
                 variant="ghost"
                 size="icon"

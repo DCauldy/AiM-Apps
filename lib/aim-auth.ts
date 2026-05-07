@@ -8,9 +8,11 @@ type AimJwtPayload = {
   name: string;
   memberstackId: string;
   planId: string;
+  tier?: "member" | "pro";
   apps: {
     "prompt-studio"?: { monthlyLimit: number };
-    [key: string]: { monthlyLimit: number } | undefined;
+    "blog-engine"?: { weeklyLimit: number };
+    [key: string]: { monthlyLimit?: number; weeklyLimit?: number } | undefined;
   };
 };
 
@@ -58,8 +60,9 @@ export async function loginWithAimPayload(
   request: NextRequest,
   redirectResponse: NextResponse
 ): Promise<boolean> {
-  const { email, name, memberstackId, apps } = payload;
+  const { email, name, memberstackId, apps, tier } = payload;
   const monthlyLimit = apps?.["prompt-studio"]?.monthlyLimit ?? 25;
+  const subscriptionTier = tier === "pro" ? "pro" : "member";
 
   const supabaseAdmin = createServiceRoleClient();
 
@@ -68,7 +71,7 @@ export async function loginWithAimPayload(
     email,
     email_confirm: true,
     user_metadata: { full_name: name, account_type: "aim_member" },
-    app_metadata: { account_type: "aim_member" },
+    app_metadata: { account_type: "aim_member", subscription_tier: subscriptionTier },
   });
   if (createResult.error && createResult.error.code !== "email_exists") {
     console.error("[aim-auth] createUser failed:", createResult.error);
@@ -127,6 +130,7 @@ export async function loginWithAimPayload(
         monthly_limit: monthlyLimit,
         memberstack_id: memberstackId,
         account_type: "aim_member",
+        subscription_tier: subscriptionTier,
         full_name: name,
         linked_at: new Date().toISOString(),
       })
@@ -134,7 +138,7 @@ export async function loginWithAimPayload(
 
     // Update auth user metadata so client-side reads reflect the upgrade
     await supabaseAdmin.auth.admin.updateUserById(profileData.id, {
-      app_metadata: { account_type: "aim_member" },
+      app_metadata: { account_type: "aim_member", subscription_tier: subscriptionTier },
     });
   }
 

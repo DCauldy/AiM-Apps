@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Header } from "@/components/layout/Header";
+import { ToastProvider } from "@/components/ui/toast";
 
 export default async function AppsLayout({
   children,
@@ -16,11 +16,9 @@ export default async function AppsLayout({
     redirect((process.env.NEXT_PUBLIC_AIM_BASE_URL ?? "https://aimarketingacademy.com") + "/apps");
   }
 
-  // Only show header for the /apps route itself, not nested routes
-  // Nested routes (like /apps/prompt-studio) will use their own layouts
   return (
-    <>
+    <ToastProvider>
       {children}
-    </>
+    </ToastProvider>
   );
 }

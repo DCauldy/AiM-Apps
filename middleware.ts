@@ -12,7 +12,9 @@ export async function middleware(request: NextRequest) {
     pathname === "/login" ||
     pathname.endsWith("/free") ||
     pathname.startsWith("/api/auth/") ||
-    pathname.startsWith("/api/webhooks/")
+    pathname.startsWith("/api/webhooks/") ||
+    pathname.startsWith("/api/inngest") ||
+    pathname.startsWith("/api/cron/")
   ) {
     return;
   }
@@ -20,13 +22,20 @@ export async function middleware(request: NextRequest) {
   const { response, user } = await updateSession(request);
 
   // Protect all app routes — unauthenticated users go to /login
-  if (!user && (pathname.startsWith("/apps") || pathname === "/")) {
+  if (!user && (pathname.startsWith("/apps") || pathname.startsWith("/admin") || pathname === "/")) {
     return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // Admin route protection — non-admins redirected to app
+  if (pathname.startsWith("/admin") && user) {
+    if (user.app_metadata?.is_admin !== true) {
+      return NextResponse.redirect(new URL("/apps", request.url));
+    }
   }
 
   // Root redirect for authenticated users
   if (pathname === "/" && user) {
-    return NextResponse.redirect(new URL("/apps/prompt-studio/chat", request.url));
+    return NextResponse.redirect(new URL("/apps", request.url));
   }
 
   return response;
