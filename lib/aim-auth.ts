@@ -1,6 +1,7 @@
 import { jwtVerify } from "jose";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { createServerClient } from "@supabase/ssr";
+import { getPromptStudioLimitForTier } from "@/lib/trial-config";
 import type { NextRequest, NextResponse } from "next/server";
 
 type AimJwtPayload = {
@@ -9,11 +10,6 @@ type AimJwtPayload = {
   memberstackId: string;
   planId: string;
   tier?: "member" | "pro";
-  apps: {
-    "prompt-studio"?: { monthlyLimit: number };
-    "blog-engine"?: { weeklyLimit: number };
-    [key: string]: { monthlyLimit?: number; weeklyLimit?: number } | undefined;
-  };
 };
 
 /**
@@ -60,9 +56,9 @@ export async function loginWithAimPayload(
   request: NextRequest,
   redirectResponse: NextResponse
 ): Promise<boolean> {
-  const { email, name, memberstackId, apps, tier } = payload;
-  const monthlyLimit = apps?.["prompt-studio"]?.monthlyLimit ?? 25;
+  const { email, name, memberstackId, tier } = payload;
   const subscriptionTier = tier === "pro" ? "pro" : "member";
+  const monthlyLimit = getPromptStudioLimitForTier(subscriptionTier);
 
   const supabaseAdmin = createServiceRoleClient();
 
