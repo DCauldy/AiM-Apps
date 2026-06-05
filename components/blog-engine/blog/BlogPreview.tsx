@@ -8,6 +8,7 @@ import type { BofuBlog } from "@/types/blog-engine";
 
 interface BlogPreviewProps {
   blog: BofuBlog;
+  authorName?: string;
   onOpenRefine?: () => void;
   onPublish?: () => void;
   publishing?: boolean;
@@ -23,7 +24,7 @@ function needsSync(blog: BofuBlog): boolean {
   return new Date(blog.updated_at) > new Date(lastSyncedAt);
 }
 
-export function BlogPreview({ blog, onOpenRefine, onPublish, publishing, onSync, syncing, onBlogUpdated }: BlogPreviewProps) {
+export function BlogPreview({ blog, authorName, onOpenRefine, onPublish, publishing, onSync, syncing, onBlogUpdated }: BlogPreviewProps) {
   const [copied, setCopied] = useState<string | null>(null);
 
   const handleCopy = async (content: string, type: string) => {
@@ -165,6 +166,12 @@ export function BlogPreview({ blog, onOpenRefine, onPublish, publishing, onSync,
 
           {/* Meta line */}
           <div className="flex items-center gap-3 text-xs text-muted-foreground mb-8 pb-6 border-b border-border/50">
+            {authorName && (
+              <>
+                <span>By {authorName}</span>
+                <span className="text-border">·</span>
+              </>
+            )}
             <span>
               {new Date(blog.created_at).toLocaleDateString("en-US", {
                 month: "long",

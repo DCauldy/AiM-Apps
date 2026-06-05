@@ -231,7 +231,7 @@ Every blog MUST reinforce Experience, Expertise, Authoritativeness, and Trustwor
 
 - **Experience:** Reference ${authorFirstName}'s real-world work throughout the body. Use first-person phrases: "I walk my clients through this," "Here's what I tell every seller who asks me this," "In my experience working with buyers in ${profile.neighborhoods[0] || profile.metro_area}." This is the #1 signal Google's quality raters look for.
 - **Expertise:** The AI snippet summary and structured content demonstrate deep topical knowledge. Local specifics (real dollar amounts, neighborhood names, county-specific processes) prove familiarity you can't fake.
-- **Authoritativeness:** Include author byline at top and full bio block at bottom. Internal links to other content on ${profile.website_url || "the author's website"}.
+- **Authoritativeness:** Full bio block at bottom. Internal links to other content on ${profile.website_url || "the author's website"}. External links to authoritative sources (NAR, CFPB, state regulatory bodies, local MLS) must be embedded as inline hyperlinks throughout the body — not just listed in metadata. (Do NOT include an author byline in the HTML — the CMS handles that.)
 - **Trustworthiness:** Honest qualifiers, no hype, specific claims over vague promises. Include disclaimers where appropriate.
 
 ## Blog Structure
@@ -250,39 +250,37 @@ Start with an H2 phrased as the semantic question the post answers, followed by 
 <p>[Complete, specific, standalone answer in 2-4 sentences. No "In this article" or "Read on to learn" — just the answer.]</p>
 \`\`\`
 
-### 3. Author Byline (after AI snippet, before body)
-\`\`\`
-<p class="byline">By ${profile.full_name} | [Today's date]</p>
-\`\`\`
+### 3. Body Content (1,200-1,800 words)
 
-### 4. Body Content (1,200-1,800 words)
+**Do NOT include an author byline or date in the HTML.** The CMS handles author attribution and publish dates automatically. Including them in the HTML creates duplicates.
 
 **Write like a real blogger, not like AI:**
 - Short paragraphs — 1-3 sentences each
 - Bullet points and numbered lists for actionable items, steps, cost breakdowns
-- **Do NOT overuse H2 tags.** Use only 2-4 H2 headings for major section shifts. AI-generated blogs are notorious for excessive headings — resist this.
-- H3s sparingly for sub-points within an H2 section
+- **STRICT: Use exactly 2-4 H2 headings in the body.** This is a hard limit, not a suggestion. AI-generated blogs are notorious for excessive headings — having 6+ H2s is an immediate tell. Group related content under fewer, broader H2s and use H3s for subsections within them. If you find yourself wanting a 5th H2, use an H3 instead.
+- H3s for sub-points within an H2 section — this is how you add structure without H2 bloat
 - Bold key phrases for scannability, but don't bold entire sentences
 - Lead with the insight or takeaway, not context-setting
 - Use specific examples — actual dollar amounts, real timelines, concrete scenarios relevant to ${profile.metro_area}
 - Include at least one HTML data table with relevant market data or comparisons
-- Include 5-7 real statistics with sources cited as links
-- Include 8-12 external links to authoritative sources (NAR, government sites, lender resources)
+- **CRITICAL — Inline external links:** Include 8-12 hyperlinks to authoritative external sources (NAR, government sites, lender resources, local MLS data) directly in the body HTML as anchor tags with href attributes and target="_blank". These must appear naturally within sentences — NOT as a footnote list at the end. Example: 'According to [linked NAR 2026 market report], median days on market...' where the link wraps the source name. Every claim that references a statistic, regulation, or market trend should link to its source inline.
+- **CRITICAL — Real statistics:** Include 5-7 specific, verifiable statistics with their source linked inline. Use real data points — NOT hypothetical examples or made-up numbers. Example: "The median home price in ${profile.metro_area} reached $X in [month] 2026, according to [linked source]." If you cannot verify a statistic, cite the source and frame it as approximate.
+- The external_citations array in the JSON output must match the actual links used in the HTML body. Do not list citations that aren't hyperlinked in the content.
 
 **BOFU conversion seeding** — throughout the body, create natural moments where the reader realizes they need personalized guidance. Don't hard-sell. Examples:
 - "Your specific number depends on your home's condition, location, and timing — that's where a local market analysis comes in."
 - "Every situation is different, and the only way to know for sure is to run the numbers with someone who knows this market."
 - "This is exactly the kind of question I walk my clients through before we even list."
 
-### 5. FAQ Section
+### 4. FAQ Section
 Include 3-5 Q&As reflecting "People Also Ask" queries. Each answer must be self-contained (makes sense without reading the full blog), 2-4 sentences, and include local specifics where relevant.
 
-### 6. Closing
+### 5. Closing
 Recap the core takeaway in 1-2 sentences. Connect it to the specific value ${authorFirstName} provides. Do NOT use "Call-to-Action" or "CTA" as a heading — integrate naturally.
 - Primary: ${profile.cta_primary || "Schedule a consultation"} → ${profile.cta_link || ""}
 ${profile.cta_secondary ? `- Secondary: ${profile.cta_secondary} → ${profile.cta_secondary_link || ""}` : ""}
 
-### 7. Author Bio Block (bottom)
+### 6. Author Bio Block (bottom)
 \`\`\`
 <div class="author-bio">
 <strong>About ${profile.full_name}</strong>
@@ -306,7 +304,7 @@ Return your response as valid JSON:
   "title": "Blog title (under 60 chars, location included)",
   "slug": "keyword-slug-4-to-7-words",
   "answer_capsule": "40-60 word direct answer to the core question",
-  "content_html": "<article>...full HTML blog content including AI snippet, byline, body, FAQ, closing, and author bio...</article>",
+  "content_html": "<article>...full HTML blog content including AI snippet, body, FAQ, closing, and author bio (NO byline/date)...</article>",
   "content_markdown": "Same content as clean Markdown",
   "excerpt": "2-3 sentence excerpt for previews",
   "meta_title": "SEO title (under 60 chars)",
@@ -396,15 +394,14 @@ Return valid JSON with the following schema markup objects:
 export function getImagePrompt(
   profile: BofuProfile,
   blogTitle: string,
-  style: "location" | "branded",
+  _style: "location" | "branded",
   excerpt?: string
 ): string {
   const topicContext = excerpt
     ? `\n\nBlog summary for visual reference: "${excerpt}"`
     : "";
 
-  if (style === "location") {
-    return `Create a cinematic, photorealistic editorial photograph for a real estate blog post.
+  return `Create a cinematic, photorealistic editorial photograph for a real estate blog post.
 
 Blog title: "${blogTitle}"${topicContext}
 
@@ -413,32 +410,20 @@ Your job is to create an image that visually represents the specific subject mat
 Location context: ${profile.metro_area}, ${profile.state}${profile.neighborhoods[0] ? ` — specifically the ${profile.neighborhoods[0]} area` : ""}. Incorporate recognizable regional characteristics: architectural styles, landscape, vegetation, sky quality, and terrain typical of this market.
 
 Examples of topic-specific imagery:
+- A blog about handling multiple offers → a polished kitchen island with several offer documents fanned out, a pen resting on one, warm interior lighting
 - A blog about flood zones → dramatic waterfront property at golden hour with visible flood plain, wetland features, or elevated foundation
 - A blog about luxury condos → sleek high-rise exterior with floor-to-ceiling glass reflecting sunset, shot from a low angle
-- A blog about school districts → tree-lined residential street with well-maintained homes near a school building, warm afternoon light
 - A blog about closing costs → elegant desk detail shot with property documents, keys on a marble surface, soft window light
 - A blog about first-time buyers → charming starter home with a welcoming porch, fresh landscaping, morning light
+- A blog about home inspections → inspector's clipboard and flashlight on a counter, out-of-focus home interior in the background
+- A blog about market conditions → aerial or elevated view of a residential neighborhood, golden hour, showing the scale of the local market
+- A blog about mortgage rates → modern home office with a laptop showing a rate chart, coffee cup beside it, natural window light
+
+The image must feel like it was shot specifically for THIS article. A reader should look at the image and immediately know what the blog is about before reading a word.
 
 Photography style: Editorial real estate photography as seen in Architectural Digest, Dwell, or Luxe Interiors + Design. Dramatic natural lighting (golden hour, blue hour, or moody overcast), professional composition with leading lines and depth of field, rich color grading.
 
-Absolutely NO text, watermarks, logos, or overlays of any kind. NO people. NO cartoon or clipart elements. Photorealistic rendering only.`;
-  }
-
-  // Branded header style
-  const primaryColor = profile.brand_colors?.primary || "#17A697";
-  const secondaryColor = profile.brand_colors?.secondary || "#1a1a2e";
-  return `Create a premium editorial blog header image for an article titled "${blogTitle}".${topicContext}
-
-Visual style: Cinematic, moody, high-end editorial photography with a sophisticated color grade. Think Architectural Digest or Dwell magazine covers — dramatic lighting, rich shadows, and depth.
-
-Color palette: Deep tones anchored by ${secondaryColor} with accent lighting and highlights in ${primaryColor}. Use a dark, luxurious atmosphere with selective pops of the accent color through light, reflections, or material surfaces.
-
-Subject: A stylized, atmospheric real estate scene — this could be a dramatic twilight exterior of upscale architecture, an elegant interior detail (marble countertop, statement fixture, floor-to-ceiling windows with a city view), or an abstract architectural composition of clean lines, glass, and concrete. Choose the subject that best relates to the blog topic.
-
-Composition: Wide landscape format with generous negative space in the upper-third for text overlay. Use depth of field, leading lines, or light streaks to draw the eye. The image should feel like a high-budget brand campaign, not a stock photo.
-
-Absolutely NO text, watermarks, logos, or overlays of any kind. NO people. NO cartoon or clipart elements. Photorealistic rendering only.`;
-
+CRITICAL RULE — ZERO TEXT IN THE IMAGE: Do not render any words, letters, numbers, signs, labels, captions, headlines, watermarks, logos, or typographic elements of any kind anywhere in the image. This includes text on documents, screens, signs, mailboxes, street signs, or any surface. If a scene would naturally contain readable text (e.g., documents on a desk, a laptop screen), depict those items at an angle, distance, or blur level where no characters are legible. Any visible text — even a single letter — makes the image unusable. NO people. NO cartoon or clipart elements. Photorealistic rendering only.`;
 }
 
 // ---------------------------------------------------------------------------

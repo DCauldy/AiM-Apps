@@ -25,6 +25,13 @@ export default async function BlogPage({ params }: BlogPageProps) {
 
   if (!blog) notFound();
 
+  // Load profile for author name
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("full_name")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   // Load chat history
   const { data: chats } = await supabase
     .from("bofu_blog_chats")
@@ -32,5 +39,5 @@ export default async function BlogPage({ params }: BlogPageProps) {
     .eq("blog_id", blogId)
     .order("created_at", { ascending: true });
 
-  return <BlogViewClient blog={blog} chats={chats || []} />;
+  return <BlogViewClient blog={blog} chats={chats || []} authorName={profile?.full_name} />;
 }

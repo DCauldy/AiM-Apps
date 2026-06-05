@@ -10,9 +10,10 @@ import type { BofuBlog, BofuBlogChat } from "@/types/blog-engine";
 interface BlogViewClientProps {
   blog: BofuBlog;
   chats: BofuBlogChat[];
+  authorName?: string;
 }
 
-export function BlogViewClient({ blog: initialBlog, chats }: BlogViewClientProps) {
+export function BlogViewClient({ blog: initialBlog, chats, authorName }: BlogViewClientProps) {
   const router = useRouter();
   const [blog, setBlog] = useState(initialBlog);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -102,6 +103,7 @@ export function BlogViewClient({ blog: initialBlog, chats }: BlogViewClientProps
       <div className="flex-1 overflow-hidden">
         <BlogPreview
           blog={blog}
+          authorName={authorName}
           onOpenRefine={() => setDrawerOpen(true)}
           onPublish={handlePublish}
           publishing={publishing}
