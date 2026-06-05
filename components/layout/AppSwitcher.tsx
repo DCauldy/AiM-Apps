@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, Sparkles, FileText, Radar, Lock, ExternalLink, LayoutGrid } from "lucide-react";
+import { ChevronDown, Sparkles, FileText, Radar, Mail, Lock, ExternalLink, LayoutGrid } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import {
@@ -25,7 +25,11 @@ interface AppDefinition {
   route: string;
   icon: React.ReactNode;
   requiresPro: boolean;
+  /** Optional override for the icon background. Defaults to the AiM brand teal→blue. */
+  iconClassName?: string;
 }
+
+const DEFAULT_ICON_BG = "bg-gradient-to-br from-[#17A697] to-[#1B7FB5]";
 
 const APPS: AppDefinition[] = [
   {
@@ -51,6 +55,15 @@ const APPS: AppDefinition[] = [
     route: "/apps/radar",
     icon: <Radar className="h-4 w-4" />,
     requiresPro: true,
+  },
+  {
+    id: "hyperlocal",
+    name: "Hyperlocal",
+    description: "Neighborhood market-report email campaigns",
+    route: "/apps/hyperlocal",
+    icon: <Mail className="h-4 w-4" />,
+    requiresPro: true,
+    iconClassName: "bg-gradient-to-br from-[#E11D48] to-[#7C3AED]",
   },
 ];
 
@@ -88,7 +101,12 @@ export function AppSwitcher() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
-          <span className="flex items-center justify-center w-7 h-7 rounded-md bg-gradient-to-br from-[#17A697] to-[#1B7FB5] text-white">
+          <span
+            className={cn(
+              "flex items-center justify-center w-7 h-7 rounded-md text-white",
+              currentApp.iconClassName ?? DEFAULT_ICON_BG
+            )}
+          >
             {currentApp.icon}
           </span>
           <div className="flex-1 min-w-0">
@@ -119,7 +137,7 @@ export function AppSwitcher() {
                     "flex items-center justify-center w-7 h-7 rounded-md text-white",
                     isDisabled
                       ? "bg-muted-foreground/30"
-                      : "bg-gradient-to-br from-[#17A697] to-[#1B7FB5]"
+                      : (app.iconClassName ?? DEFAULT_ICON_BG)
                   )}
                 >
                   {isDisabled ? <Lock className="h-3.5 w-3.5" /> : app.icon}

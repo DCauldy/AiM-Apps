@@ -19,6 +19,7 @@ export default async function AppsPage() {
     "prompt-studio": null,
     "blog-engine": null,
     "radar": null,
+    "hyperlocal": null,
   };
 
   if (user) {

@@ -400,6 +400,45 @@ pre code {
   --ring: 160 68% 53%;
 }
 
+/* ── Hyperlocal Dark Theme Scope ──
+   Same dark surfaces as Blog Engine, distinct rose accent so the app
+   reads as its own identity (not the AiM teal-blue brand gradient). */
+.hyperlocal-theme {
+  color-scheme: dark;
+  --background: 222 25% 8%;
+  --foreground: 213 33% 93%;
+  --card: 222 20% 12%;
+  --card-foreground: 213 33% 93%;
+  --popover: 222 20% 12%;
+  --popover-foreground: 213 33% 93%;
+  --primary: 348 83% 60%;            /* rose-500 #F43F5E */
+  --primary-foreground: 222 25% 8%;
+  --secondary: 222 22% 15%;
+  --secondary-foreground: 213 33% 93%;
+  --muted: 222 22% 15%;
+  --muted-foreground: 214 8% 57%;
+  --accent: 222 22% 15%;
+  --accent-foreground: 213 33% 93%;
+  --destructive: 0 62.8% 50%;
+  --destructive-foreground: 213 33% 93%;
+  --border: 224 20% 20%;
+  --input: 224 20% 20%;
+  --ring: 348 83% 60%;
+}
+
+.hyperlocal-theme .hl-glow {
+  box-shadow: 0 0 8px rgba(244, 63, 94, 0.25);
+}
+
+@keyframes hl-pulse {
+  0%, 100% { border-color: rgba(244, 63, 94, 0.4); }
+  50%      { border-color: rgba(244, 63, 94, 0.85); }
+}
+
+.hyperlocal-theme .hl-active-step {
+  animation: hl-pulse 2s ease-in-out infinite;
+}
+
 .blog-engine-theme .be-glow {
   box-shadow: 0 0 8px rgba(49, 219, 165, 0.25);
 }

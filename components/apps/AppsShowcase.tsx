@@ -6,6 +6,8 @@ import {
   Sparkles,
   FileText,
   Radar,
+  Mail,
+  MapPin,
   Lock,
   GraduationCap,
   ExternalLink,
@@ -35,6 +37,7 @@ export interface UsageStats {
   "prompt-studio": { used: number; limit: number; period: string } | null;
   "blog-engine": { used: number; limit: number; period: string } | null;
   "radar": { used: number; limit: number; period: string } | null;
+  "hyperlocal": { used: number; limit: number; period: string } | null;
 }
 
 interface AppMeta {
@@ -119,6 +122,27 @@ const APPS: AppMeta[] = [
       { icon: <TrendingUp className="h-4 w-4" />, text: "Track visibility trends over time" },
       { icon: <Target className="h-4 w-4" />, text: "Competitor benchmarking and gap analysis" },
       { icon: <BarChart3 className="h-4 w-4" />, text: "Actionable insights to improve AI rankings" },
+    ],
+  },
+  {
+    id: "hyperlocal",
+    name: "Hyperlocal",
+    description: "Neighborhood market-report email campaigns",
+    tagline: "Hyperlocal market reports, sent from your own inbox.",
+    route: "/apps/hyperlocal",
+    icon: <Mail className="h-5 w-5" />,
+    previewIcon: <MapPin className="h-10 w-10" />,
+    flagKey: "HYPERLOCAL",
+    requiresPro: true,
+    hasUpgrade: true,
+    gradient: ["#E11D48", "#7C3AED"],
+    accentColor: "#F43F5E",
+    category: "Outreach",
+    features: [
+      { icon: <Users className="h-4 w-4" />, text: "Pulls live contacts from your CRM (FUB, Lofty, CSV)" },
+      { icon: <MapPin className="h-4 w-4" />, text: "Segments by ZIP, city, or neighborhood automatically" },
+      { icon: <PenTool className="h-4 w-4" />, text: "Claude-written market reports using your MLS data" },
+      { icon: <Mail className="h-4 w-4" />, text: "Sends from your Gmail, Outlook, or verified domain" },
     ],
   },
   {
