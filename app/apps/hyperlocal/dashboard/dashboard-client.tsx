@@ -2,6 +2,13 @@
 
 import Link from "next/link";
 import { Mail, Database, Inbox, Ban, Plus, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  DashboardCard,
+  EmptyState,
+  MetricCard,
+  PageFrame,
+  PageHeader,
+} from "@/components/app-shell/PagePrimitives";
 import { Button } from "@/components/ui/button";
 import { CRM_PLATFORM_LABELS, EMAIL_PROVIDER_LABELS, RUN_PHASE_LABELS } from "@/types/hyperlocal";
 import type { CrmPlatform, EmailProvider, RunPhase } from "@/types/hyperlocal";
@@ -59,43 +66,41 @@ export function HyperlocalDashboardClient({
   campaigns: Campaign[];
 }) {
   return (
-    <div className="container max-w-6xl mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Hyperlocal</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Neighborhood market-report email campaigns from your CRM + MLS data.
-          </p>
-        </div>
-        <Link href="/apps/hyperlocal/campaigns">
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Campaign
-          </Button>
-        </Link>
-      </div>
+    <PageFrame>
+      <PageHeader
+        title="Hyperlocal"
+        description="Neighborhood market-report email campaigns from your CRM + MLS data."
+        actions={
+          <Link href="/apps/hyperlocal/campaigns">
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Campaign
+            </Button>
+          </Link>
+        }
+      />
 
       {/* Status cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatusCard
+        <MetricCard
           icon={<Database className="h-4 w-4" />}
           label="CRM connections"
           value={crmConnections.filter((c) => c.is_active).length}
           href="/apps/hyperlocal/settings?tab=crm"
         />
-        <StatusCard
+        <MetricCard
           icon={<Mail className="h-4 w-4" />}
           label="Email connections"
           value={emailConnections.filter((c) => c.is_active).length}
           href="/apps/hyperlocal/settings?tab=email"
         />
-        <StatusCard
+        <MetricCard
           icon={<Inbox className="h-4 w-4" />}
           label="Campaigns"
           value={campaigns.length}
           href="/apps/hyperlocal/campaigns"
         />
-        <StatusCard
+        <MetricCard
           icon={<Ban className="h-4 w-4" />}
           label="Suppressed"
           value={suppressionCount}
@@ -105,16 +110,17 @@ export function HyperlocalDashboardClient({
 
       {/* Connections detail */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="rounded-lg border border-border bg-card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">CRM connections</h2>
+        <DashboardCard
+          title="CRM connections"
+          action={
             <Link
               href="/apps/hyperlocal/settings?tab=crm"
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               Manage
             </Link>
-          </div>
+          }
+        >
           {crmConnections.length === 0 ? (
             <EmptyState
               text="No CRMs connected yet."
@@ -145,18 +151,19 @@ export function HyperlocalDashboardClient({
               ))}
             </ul>
           )}
-        </div>
+        </DashboardCard>
 
-        <div className="rounded-lg border border-border bg-card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold">Email connections</h2>
+        <DashboardCard
+          title="Email connections"
+          action={
             <Link
               href="/apps/hyperlocal/settings?tab=email"
               className="text-xs text-muted-foreground hover:text-foreground"
             >
               Manage
             </Link>
-          </div>
+          }
+        >
           {emailConnections.length === 0 ? (
             <EmptyState
               text="No sending account connected yet."
@@ -187,12 +194,11 @@ export function HyperlocalDashboardClient({
               ))}
             </ul>
           )}
-        </div>
+        </DashboardCard>
       </div>
 
       {/* Recent runs */}
-      <div className="rounded-lg border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold mb-3">Recent runs</h2>
+      <DashboardCard title="Recent runs">
         {recentRuns.length === 0 ? (
           <EmptyState
             text="You haven't run any campaigns yet."
@@ -223,54 +229,8 @@ export function HyperlocalDashboardClient({
             ))}
           </ul>
         )}
-      </div>
-    </div>
+      </DashboardCard>
+    </PageFrame>
   );
 }
 
-function StatusCard({
-  icon,
-  label,
-  value,
-  href,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  href: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="rounded-lg border border-border bg-card p-4 hover:bg-muted/40 transition-colors"
-    >
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <p className="text-2xl font-semibold">{value}</p>
-    </Link>
-  );
-}
-
-function EmptyState({
-  text,
-  actionText,
-  actionHref,
-}: {
-  text: string;
-  actionText: string;
-  actionHref: string;
-}) {
-  return (
-    <div className="text-center py-6">
-      <p className="text-sm text-muted-foreground mb-3">{text}</p>
-      <Link
-        href={actionHref}
-        className="text-xs font-medium text-foreground underline underline-offset-2 hover:no-underline"
-      >
-        {actionText}
-      </Link>
-    </div>
-  );
-}

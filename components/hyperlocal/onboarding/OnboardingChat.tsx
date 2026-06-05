@@ -4,15 +4,21 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Sparkles,
-  Send,
   Loader2,
   CheckCircle2,
   Mail,
   Database,
   ArrowRight,
 } from "lucide-react";
+import {
+  ChatBubble,
+  ChatComposer,
+  ChatMessageList,
+  OnboardingChatFrame,
+  OnboardingChatHeader,
+  TypingIndicator,
+} from "@/components/app-shell/OnboardingChatPrimitives";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
 
 interface ChatMessage {
@@ -184,34 +190,20 @@ export function OnboardingChat({
 
   // === Step 1: Chat ===
   return (
-    <div className="container max-w-2xl mx-auto px-4 py-8">
-      <div className="rounded-lg border border-border bg-card overflow-hidden flex flex-col h-[600px]">
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-[#F43F5E]" />
-          <div className="flex-1">
-            <p className="text-sm font-semibold">Hyperlocal setup</p>
-            <p className="text-xs text-muted-foreground">
-              Step 1 of 2 · Build your sender identity
-            </p>
-          </div>
-        </div>
+    <OnboardingChatFrame>
+      <OnboardingChatHeader
+        icon={<Sparkles className="h-4 w-4 text-[#F43F5E]" />}
+        title="Hyperlocal setup"
+        description="Step 1 of 2 · Build your sender identity"
+      />
 
-        {/* Messages */}
-        <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
-        >
-          {messages.map((m, i) => (
-            <Bubble key={i} message={m} />
-          ))}
-          {busy && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground px-2">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Thinking…
-            </div>
-          )}
-        </div>
+      {/* Messages */}
+      <ChatMessageList scrollRef={scrollRef}>
+        {messages.map((m, i) => (
+          <Bubble key={i} message={m} />
+        ))}
+        {busy && <TypingIndicator variant="spinner" />}
+      </ChatMessageList>
 
         {/* Draft summary card (only shows once we have something) */}
         {(draft.full_name || draft.physical_address) && (
@@ -262,54 +254,28 @@ export function OnboardingChat({
             </div>
           ) : (
             <>
-              <Textarea
+              <ChatComposer
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
-                placeholder="Type your reply…"
-                rows={2}
+                onChange={setInput}
+                onSend={() => void send()}
                 disabled={busy}
-                className="text-sm resize-none"
+                buttonClassName="bg-[#E11D48] hover:bg-[#BE123C]"
               />
-              <div className="flex justify-end">
-                <Button
-                  size="sm"
-                  onClick={() => void send()}
-                  disabled={busy || !input.trim()}
-                  className="bg-[#E11D48] hover:bg-[#BE123C]"
-                >
-                  <Send className="h-3.5 w-3.5 mr-1.5" /> Send
-                </Button>
-              </div>
             </>
           )}
         </div>
-      </div>
-    </div>
+    </OnboardingChatFrame>
   );
 }
 
 function Bubble({ message }: { message: ChatMessage }) {
-  if (message.role === "user") {
-    return (
-      <div className="flex justify-end">
-        <div className="rounded-2xl rounded-tr-sm bg-[#E11D48] text-white px-3 py-2 max-w-[80%]">
-          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-        </div>
-      </div>
-    );
-  }
   return (
-    <div className="flex justify-start">
-      <div className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2 max-w-[85%]">
-        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-      </div>
-    </div>
+    <ChatBubble
+      role={message.role}
+      userClassName="bg-[#E11D48] text-white"
+    >
+      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+    </ChatBubble>
   );
 }
 
