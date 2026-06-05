@@ -27,6 +27,7 @@ export async function getFeatureFlag(key: string): Promise<boolean> {
   if (key === "BLOG_ENGINE") return FEATURES.BLOG_ENGINE;
   if (key === "PROMPT_STUDIO") return FEATURES.PROMPT_STUDIO;
   if (key === "RADAR") return FEATURES.RADAR;
+  if (key === "HYPERLOCAL") return FEATURES.HYPERLOCAL;
   return false;
 }
 
@@ -52,6 +53,7 @@ export async function getFeatureFlags(): Promise<Record<string, boolean>> {
     BLOG_ENGINE: FEATURES.BLOG_ENGINE,
     PROMPT_STUDIO: FEATURES.PROMPT_STUDIO,
     RADAR: FEATURES.RADAR,
+    HYPERLOCAL: FEATURES.HYPERLOCAL,
   };
 }
 

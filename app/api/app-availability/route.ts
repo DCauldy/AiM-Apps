@@ -23,6 +23,7 @@ export async function GET() {
       "prompt-studio": flags["PROMPT_STUDIO"] !== false,
       "blog-engine": flags["BLOG_ENGINE"] === true,
       "radar": flags["RADAR"] === true,
+      "hyperlocal": flags["HYPERLOCAL"] === true,
     },
   });
 }
