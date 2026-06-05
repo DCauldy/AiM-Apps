@@ -4,8 +4,21 @@ import { blogPipeline } from "@/lib/inngest/functions/blog-pipeline";
 import { radarCheck } from "@/lib/inngest/functions/radar-check";
 import { radarAudit } from "@/lib/inngest/functions/radar-audit";
 import { radarCleanup } from "@/lib/inngest/functions/radar-cleanup";
+import { hlDiscover } from "@/lib/inngest/functions/hl-discover";
+import { hlGenerate } from "@/lib/inngest/functions/hl-generate";
+import { hlSend } from "@/lib/inngest/functions/hl-send";
+import { hlSendOne } from "@/lib/inngest/functions/hl-send-one";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [blogPipeline, radarCheck, radarAudit, radarCleanup],
+  functions: [
+    blogPipeline,
+    radarCheck,
+    radarAudit,
+    radarCleanup,
+    hlDiscover,
+    hlGenerate,
+    hlSend,
+    hlSendOne,
+  ],
 });
