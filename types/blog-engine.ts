@@ -158,6 +158,7 @@ export interface BofuTopic {
   };
   rank?: number;
   user_priority?: number;
+  embedding?: number[];
   status: TopicStatus;
   written_at?: string;
   expires_at?: string;

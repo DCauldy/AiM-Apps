@@ -15,6 +15,7 @@ import {
   getImagePrompt,
 } from "@/lib/blog-engine/prompts";
 import { incrementBofuUsage } from "@/lib/blog-engine/usage";
+import { checkTopicDuplicate } from "@/lib/blog-engine/dedup";
 import { generateAndUploadImage } from "@/lib/blog-engine/image-generation";
 import { generateText } from "ai";
 import type { BofuProfile, BofuTopic, ImageStyle } from "@/types/blog-engine";
@@ -163,14 +164,15 @@ export async function runBlogPipeline({ userId, triggeredBy, topicId: requestedT
     const topicsToSave: BofuTopic[] = [];
 
     for (const topic of scoredTopics) {
-      const { data: similar } = await supabase
-        .from("bofu_topics")
-        .select("id, title")
-        .eq("user_id", userId)
-        .ilike("title", `%${topic.title.split(" ").slice(0, 3).join("%")}%`)
-        .limit(1);
+      const dedupResult = await checkTopicDuplicate(userId, topic.title);
 
-      if (similar && similar.length > 0) continue;
+      if (dedupResult.isDuplicate) {
+        const best = dedupResult.matches[0];
+        console.log(
+          `[Pipeline] Skipping duplicate: "${topic.title}" ≈ "${best.title}" (${best.matchType}, ${best.similarity.toFixed(3)})`
+        );
+        continue;
+      }
 
       const { data: savedTopic } = await supabase
         .from("bofu_topics")
@@ -185,6 +187,9 @@ export async function runBlogPipeline({ userId, triggeredBy, topicId: requestedT
           scoring_breakdown: topic.scoring_breakdown,
           rank: topic.rank,
           status: "unused",
+          ...(dedupResult.embedding
+            ? { embedding: `[${dedupResult.embedding.join(",")}]` }
+            : {}),
         })
         .select()
         .single();

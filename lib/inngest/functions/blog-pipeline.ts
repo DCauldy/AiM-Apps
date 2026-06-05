@@ -13,6 +13,7 @@ import {
   getImagePrompt,
 } from "@/lib/blog-engine/prompts";
 import { incrementBofuUsage } from "@/lib/blog-engine/usage";
+import { checkTopicDuplicate } from "@/lib/blog-engine/dedup";
 import { generateAndUploadImage } from "@/lib/blog-engine/image-generation";
 import { publishToWordPress } from "@/lib/blog-engine/cms/wordpress";
 import { publishToWebhook } from "@/lib/blog-engine/cms/webhook";
@@ -195,26 +196,21 @@ export const blogPipeline = inngest.createFunction(
           console.error("Failed to parse scoring results");
         }
 
-        // Generate embeddings and check for duplicates
+        // Deduplicate and save topics
         const topicsToSave: BofuTopic[] = [];
 
         for (const topic of scoredTopics) {
-          // TODO: Generate embedding for deduplication via AI SDK embed()
-          // when pgvector is configured in production
+          const dedupResult = await checkTopicDuplicate(userId, topic.title);
 
-          // Check similarity against existing topics
-          const { data: similar } = await supabase
-            .from("bofu_topics")
-            .select("id, title")
-            .eq("user_id", userId)
-            .ilike("title", `%${topic.title.split(" ").slice(0, 3).join("%")}%`)
-            .limit(1);
-
-          if (similar && similar.length > 0) {
-            continue; // Skip duplicate
+          if (dedupResult.isDuplicate) {
+            const best = dedupResult.matches[0];
+            console.log(
+              `[Blog Engine] Skipping duplicate: "${topic.title}" ≈ "${best.title}" (${best.matchType}, ${best.similarity.toFixed(3)})`
+            );
+            continue;
           }
 
-          // Save topic
+          // Save topic with embedding for future dedup
           const { data: savedTopic } = await supabase
             .from("bofu_topics")
             .insert({
@@ -228,6 +224,9 @@ export const blogPipeline = inngest.createFunction(
               scoring_breakdown: topic.scoring_breakdown,
               rank: topic.rank,
               status: "unused",
+              ...(dedupResult.embedding
+                ? { embedding: `[${dedupResult.embedding.join(",")}]` }
+                : {}),
             })
             .select()
             .single();
@@ -380,8 +379,7 @@ export const blogPipeline = inngest.createFunction(
     // Step 8: Generate featured image
     // -----------------------------------------------------------------------
     const imageResult = await step.run("generate-image", async () => {
-      const imageStyle: ImageStyle =
-        selectedTopic.inquiry_type === "property" ? "location" : "branded";
+      const imageStyle: ImageStyle = "location";
 
       const prompt = getImagePrompt(profile, blogContent.title, imageStyle, blogContent.excerpt);
 
