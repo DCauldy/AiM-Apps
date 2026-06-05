@@ -14,7 +14,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/webhooks/") ||
     pathname.startsWith("/api/inngest") ||
-    pathname.startsWith("/api/cron/")
+    pathname.startsWith("/api/cron/") ||
+    pathname.startsWith("/api/hyperlocal/unsubscribe") ||
+    pathname.startsWith("/hyperlocal/unsubscribe")
   ) {
     return;
   }

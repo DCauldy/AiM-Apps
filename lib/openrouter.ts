@@ -119,6 +119,34 @@ export function getRefinementModel() {
 }
 
 // ---------------------------------------------------------------------------
+// Hyperlocal — email composition
+// ---------------------------------------------------------------------------
+
+let hyperlocalProvider: ReturnType<typeof createOpenAI> | null = null;
+function getHyperlocalProvider() {
+  if (!hyperlocalProvider) hyperlocalProvider = createAppProvider("Hyperlocal");
+  return hyperlocalProvider;
+}
+
+/** Claude Sonnet for hyperlocal market-report email body writing */
+export function getHyperlocalEmailWriterModel() {
+  if (!useOpenRouter) return getDirectAnthropic()("claude-sonnet-4-20250514");
+  return getHyperlocalProvider()("anthropic/claude-sonnet-4");
+}
+
+/** GPT-4o for crisp subject lines + preheaders */
+export function getHyperlocalSubjectModel() {
+  if (!useOpenRouter) return getDirectOpenAI().chat("gpt-4o");
+  return getHyperlocalProvider().chat("openai/gpt-4o");
+}
+
+/** Claude Sonnet for conversational onboarding intake */
+export function getHyperlocalOnboardingModel() {
+  if (!useOpenRouter) return getDirectAnthropic()("claude-sonnet-4-20250514");
+  return getHyperlocalProvider().chat("anthropic/claude-sonnet-4");
+}
+
+// ---------------------------------------------------------------------------
 // Prompt Studio model (backward-compatible migration from direct OpenAI)
 // ---------------------------------------------------------------------------
 
