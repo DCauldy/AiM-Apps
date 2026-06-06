@@ -73,10 +73,19 @@ export async function getTourProjectWorkspaceViewModel(
   projectId: string
 ): Promise<TourProjectWorkspaceViewModel | null> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return null;
+  }
+
   const { data: project } = await supabase
     .from("tours_projects")
     .select("id, name, property_address, listing_url, status, listing_media_acknowledged_at, created_at, updated_at")
     .eq("id", projectId)
+    .eq("user_id", user.id)
     .eq("status", "open")
     .maybeSingle<TourProjectRow>();
 

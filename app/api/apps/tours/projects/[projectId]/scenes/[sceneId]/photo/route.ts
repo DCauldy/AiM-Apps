@@ -1,5 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getFeatureFlag } from "@/lib/admin-config.server";
+import { getListingMediaAcknowledgementForProject } from "@/lib/tours/listing-media-authorization";
 import {
   LISTING_MEDIA_BUCKET,
   getListingMediaStoragePath,
@@ -50,6 +51,109 @@ async function requireOpenTourProjectAccess(projectId: string) {
   return { supabase, user, error: null, status: 200 } as const;
 }
 
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ projectId: string; sceneId: string }> }
+) {
+  const { projectId, sceneId } = await params;
+  const access = await requireOpenTourProjectAccess(projectId);
+  if (access.error) {
+    return Response.json({ error: access.error }, { status: access.status });
+  }
+
+  const acknowledgement = await getListingMediaAcknowledgementForProject(projectId);
+  if (!acknowledgement) {
+    return Response.json(
+      { error: "Acknowledge listing-media authorization before submitting images for this Tour Project." },
+      { status: 403 }
+    );
+  }
+
+  const formData = await request.formData().catch(() => null);
+  if (!formData) {
+    return Response.json({ error: "Submit a listing photo." }, { status: 400 });
+  }
+
+  const fileValidation = validateListingMediaFile(formData.get("photo"));
+  if (!fileValidation.ok) {
+    return Response.json({ error: fileValidation.error }, { status: fileValidation.status });
+  }
+
+  const { data: scene, error: sceneError } = await access.supabase
+    .from("tour_scenes")
+    .select(SCENE_SELECT)
+    .eq("project_id", projectId)
+    .eq("id", sceneId)
+    .maybeSingle();
+
+  if (sceneError) {
+    return Response.json({ error: "Could not load the TourScene." }, { status: 500 });
+  }
+
+  if (!scene) {
+    return Response.json({ error: "TourScene was not found." }, { status: 404 });
+  }
+
+  const { data: lastPhoto, error: lastPhotoError } = await access.supabase
+    .from("tour_scene_source_photos")
+    .select("priority")
+    .eq("project_id", projectId)
+    .eq("scene_id", sceneId)
+    .order("priority", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ priority: number }>();
+
+  if (lastPhotoError) {
+    return Response.json({ error: "Could not load listing photos for this TourScene." }, { status: 500 });
+  }
+
+  const file = fileValidation.file;
+  const storagePath = getListingMediaStoragePath({
+    userId: access.user.id,
+    projectId,
+    fileName: file.name,
+  });
+  const { error: uploadError } = await access.supabase.storage
+    .from(LISTING_MEDIA_BUCKET)
+    .upload(storagePath, file, {
+      contentType: file.type,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    return Response.json({ error: "Could not upload the listing photo." }, { status: 500 });
+  }
+
+  const { data: createdPhoto, error: createPhotoError } = await access.supabase
+    .from("tour_scene_source_photos")
+    .insert({
+      project_id: projectId,
+      scene_id: sceneId,
+      storage_path: storagePath,
+      file_name: file.name,
+      content_type: file.type,
+      byte_size: file.size,
+      width: null,
+      height: null,
+      priority: (lastPhoto?.priority ?? -1) + 1,
+    })
+    .select(SOURCE_PHOTO_SELECT)
+    .single();
+
+  if (createPhotoError || !createdPhoto) {
+    await access.supabase.storage.from(LISTING_MEDIA_BUCKET).remove([storagePath]);
+    return Response.json({ error: "Could not add the listing photo." }, { status: 500 });
+  }
+
+  await access.supabase
+    .from("tour_scenes")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("project_id", projectId)
+    .eq("id", sceneId);
+
+  return Response.json({ scene, sourcePhoto: createdPhoto }, { status: 201 });
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ projectId: string; sceneId: string }> }
@@ -58,6 +162,14 @@ export async function PATCH(
   const access = await requireOpenTourProjectAccess(projectId);
   if (access.error) {
     return Response.json({ error: access.error }, { status: access.status });
+  }
+
+  const acknowledgement = await getListingMediaAcknowledgementForProject(projectId);
+  if (!acknowledgement) {
+    return Response.json(
+      { error: "Acknowledge listing-media authorization before submitting images for this Tour Project." },
+      { status: 403 }
+    );
   }
 
   const formData = await request.formData().catch(() => null);
@@ -147,4 +259,82 @@ export async function PATCH(
   await access.supabase.storage.from(LISTING_MEDIA_BUCKET).remove([currentPhoto.storage_path]);
 
   return Response.json({ scene, authoritativePhoto: updatedPhoto });
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ projectId: string; sceneId: string }> }
+) {
+  const { projectId, sceneId } = await params;
+  const access = await requireOpenTourProjectAccess(projectId);
+  if (access.error) {
+    return Response.json({ error: access.error }, { status: access.status });
+  }
+
+  const acknowledgement = await getListingMediaAcknowledgementForProject(projectId);
+  if (!acknowledgement) {
+    return Response.json(
+      { error: "Acknowledge listing-media authorization before removing images from this Tour Project." },
+      { status: 403 }
+    );
+  }
+
+  const { data: sourcePhotos, error: sourcePhotosError } = await access.supabase
+    .from("tour_scene_source_photos")
+    .select(SOURCE_PHOTO_SELECT)
+    .eq("project_id", projectId)
+    .eq("scene_id", sceneId)
+    .order("priority", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (sourcePhotosError) {
+    return Response.json({ error: "Could not load listing photos for this TourScene." }, { status: 500 });
+  }
+
+  if (!sourcePhotos || sourcePhotos.length === 0) {
+    return Response.json({ error: "TourScene listing photo was not found." }, { status: 404 });
+  }
+
+  if (sourcePhotos.length === 1) {
+    return Response.json({ error: "TourScene needs at least one listing photo." }, { status: 409 });
+  }
+
+  const [photoToRemove, ...remainingPhotos] = sourcePhotos;
+  const serviceSupabase = createServiceRoleClient();
+  const { error: deletePhotoError } = await serviceSupabase
+    .from("tour_scene_source_photos")
+    .delete()
+    .eq("id", photoToRemove.id)
+    .eq("project_id", projectId)
+    .eq("scene_id", sceneId);
+
+  if (deletePhotoError) {
+    return Response.json({ error: "Could not remove the listing photo." }, { status: 500 });
+  }
+
+  for (const [priority, photo] of remainingPhotos.entries()) {
+    if (photo.priority === priority) {
+      continue;
+    }
+
+    const { error: priorityError } = await serviceSupabase
+      .from("tour_scene_source_photos")
+      .update({ priority })
+      .eq("id", photo.id)
+      .eq("project_id", projectId)
+      .eq("scene_id", sceneId);
+
+    if (priorityError) {
+      return Response.json({ error: "Could not update the remaining listing photo order." }, { status: 500 });
+    }
+  }
+
+  await access.supabase
+    .from("tour_scenes")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("project_id", projectId)
+    .eq("id", sceneId);
+  await access.supabase.storage.from(LISTING_MEDIA_BUCKET).remove([photoToRemove.storage_path]);
+
+  return Response.json({ removedPhotoId: photoToRemove.id });
 }

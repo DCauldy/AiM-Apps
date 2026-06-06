@@ -17,34 +17,55 @@ interface DialogContentProps {
   className?: string;
 }
 
-export function Dialog({ open, onOpenChange, children }: DialogProps) {
-  React.useEffect(() => {
-    const themeRoot = document.querySelector(".product-app-theme");
-    const themeClasses = themeRoot
-      ? Array.from(themeRoot.classList).filter((className) =>
-          className === "product-app-theme" ||
-          className === "font-body" ||
-          className.endsWith("-theme")
-        )
-      : [];
+let openDialogCount = 0;
+let previousBodyOverflow: string | null = null;
 
-    if (open) {
-      document.body.style.overflow = "hidden";
-      document.body.classList.add(...themeClasses);
-    } else {
-      document.body.style.overflow = "";
-      document.body.classList.remove(...themeClasses);
+function lockBodyScroll() {
+  if (openDialogCount === 0) {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+  }
+  openDialogCount += 1;
+}
+
+function unlockBodyScroll() {
+  if (openDialogCount === 0) {
+    return;
+  }
+
+  openDialogCount -= 1;
+  if (openDialogCount === 0) {
+    document.body.style.overflow = previousBodyOverflow ?? "";
+    previousBodyOverflow = null;
+  }
+}
+
+export function Dialog({ open, onOpenChange, children }: DialogProps) {
+  const hasScrollLock = React.useRef(false);
+
+  React.useEffect(() => {
+    if (open && !hasScrollLock.current) {
+      lockBodyScroll();
+      hasScrollLock.current = true;
     }
+
+    if (!open && hasScrollLock.current) {
+      unlockBodyScroll();
+      hasScrollLock.current = false;
+    }
+
     return () => {
-      document.body.style.overflow = "";
-      document.body.classList.remove(...themeClasses);
+      if (hasScrollLock.current) {
+        unlockBodyScroll();
+        hasScrollLock.current = false;
+      }
     };
   }, [open]);
 
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center sm:p-0">
+    <div className="product-app-theme font-body fixed inset-0 z-50 flex items-end justify-center overflow-y-auto p-4 text-foreground sm:items-center sm:p-0">
       <div
         className="fixed inset-0 bg-black/75 backdrop-blur-md"
         onClick={() => onOpenChange(false)}

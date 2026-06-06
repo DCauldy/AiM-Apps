@@ -7,7 +7,6 @@
     "dev:inngest": "npx inngest-cli@latest dev -u http://localhost:6060/api/inngest",
     "build": "next build",
     "start": "next start",
-    "prototype:tours": "node throwaway-prototypes/tours/tour-video-prototype.mjs",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest"

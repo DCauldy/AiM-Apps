@@ -23,9 +23,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  CheckCircle2,
   EllipsisVertical,
   ImagePlus,
+  Loader2,
   Pencil,
   Plus,
   ShieldCheck,
@@ -63,43 +63,25 @@ type SceneStripDragAxis = "horizontal" | "free";
 
 const SCENE_STRIP_DND_CONFIG: {
   dragAxis: SceneStripDragAxis;
-  clampToScrollContainer: boolean;
 } = {
   dragAxis: "horizontal",
-  clampToScrollContainer: false,
 };
+
+const LISTING_MEDIA_IMAGE_ACCEPT = {
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/webp": [".webp"],
+} as const;
 
 const restrictSceneDragToHorizontalAxis: Modifier = ({ transform }) => ({
   ...transform,
   y: 0,
 });
 
-const restrictSceneDragToScrollContainer: Modifier = ({
-  activeNodeRect,
-  scrollableAncestorRects,
-  transform,
-}) => {
-  const [scrollContainerRect] = scrollableAncestorRects;
-  if (!activeNodeRect || !scrollContainerRect) {
-    return transform;
-  }
-
-  return {
-    ...transform,
-    x: Math.min(
-      Math.max(transform.x, scrollContainerRect.left - activeNodeRect.left),
-      scrollContainerRect.right - activeNodeRect.right
-    ),
-  };
-};
-
 function getSceneStripDragModifiers(config: typeof SCENE_STRIP_DND_CONFIG) {
   const modifiers: Modifier[] = [];
   if (config.dragAxis === "horizontal") {
     modifiers.push(restrictSceneDragToHorizontalAxis);
-  }
-  if (config.clampToScrollContainer) {
-    modifiers.push(restrictSceneDragToScrollContainer);
   }
   return modifiers;
 }
@@ -175,6 +157,29 @@ async function replaceSceneListingPhoto(projectId: string, sceneId: string, form
   return payload;
 }
 
+async function addSceneListingPhoto(projectId: string, sceneId: string, formData: FormData) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`, {
+    method: "POST",
+    body: formData,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not add the listing photo.");
+  }
+  return payload;
+}
+
+async function removeSceneListingPhoto(projectId: string, sceneId: string) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`, {
+    method: "DELETE",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not remove the listing photo.");
+  }
+  return payload;
+}
+
 async function reorderTourScenes(projectId: string, orderedSceneIds: string[]) {
   const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/reorder`, {
     method: "PATCH",
@@ -227,11 +232,7 @@ function FileDropzone({
   onChange: (file: File | null) => void;
 }) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: {
-      "image/jpeg": [".jpg", ".jpeg"],
-      "image/png": [".png"],
-      "image/webp": [".webp"],
-    },
+    accept: LISTING_MEDIA_IMAGE_ACCEPT,
     multiple: false,
     onDrop: (acceptedFiles) => onChange(acceptedFiles[0] ?? null),
   });
@@ -274,11 +275,7 @@ function PhotoStageDropzone({
   children?: ReactNode;
 }) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: {
-      "image/jpeg": [".jpg", ".jpeg"],
-      "image/png": [".png"],
-      "image/webp": [".webp"],
-    },
+    accept: LISTING_MEDIA_IMAGE_ACCEPT,
     multiple: false,
     noClick: Boolean(scene),
     noKeyboard: Boolean(scene),
@@ -383,7 +380,31 @@ function SceneTabButton({
   );
 }
 
-function SceneImageRail({ scene }: { scene: TourScene | null }) {
+function SceneImageRail({
+  scene,
+  isAddingPhoto,
+  pendingPhotoPreviewUrl,
+  pendingPhotoName,
+  onAddPhoto,
+}: {
+  scene: TourScene | null;
+  isAddingPhoto: boolean;
+  pendingPhotoPreviewUrl: string | null;
+  pendingPhotoName: string | null;
+  onAddPhoto: (file: File) => void;
+}) {
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: LISTING_MEDIA_IMAGE_ACCEPT,
+    multiple: false,
+    disabled: !scene || isAddingPhoto,
+    onDrop: (acceptedFiles) => {
+      const [file] = acceptedFiles;
+      if (file) {
+        onAddPhoto(file);
+      }
+    },
+  });
+
   if (!scene) {
     return (
       <div className="flex max-h-[260px] flex-col gap-2 overflow-y-auto lg:max-h-[calc(100vh-18rem)]">
@@ -418,6 +439,30 @@ function SceneImageRail({ scene }: { scene: TourScene | null }) {
           )}
         </button>
       ))}
+      {isAddingPhoto && pendingPhotoPreviewUrl ? (
+        <div className="relative h-[68px] w-[68px] overflow-hidden rounded-md border border-primary/60 bg-muted lg:h-[88px] lg:w-[88px]">
+          <img
+            src={pendingPhotoPreviewUrl}
+            alt={pendingPhotoName ? `Uploading ${pendingPhotoName}` : "Uploading listing photo"}
+            className="h-full w-full object-cover opacity-70"
+          />
+          <div className="absolute inset-0 flex items-center justify-center bg-background/45 backdrop-blur-[1px]">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        </div>
+      ) : null}
+      <button
+        {...getRootProps({
+          type: "button",
+          className: `flex h-[68px] w-[68px] items-center justify-center rounded-md border border-dashed text-muted-foreground transition-colors lg:h-[88px] lg:w-[88px] ${
+            isDragActive ? "border-primary bg-primary/10 text-foreground" : "border-border bg-muted/20 hover:bg-muted/40 hover:text-foreground"
+          } ${isAddingPhoto ? "cursor-wait opacity-60" : ""}`,
+          "aria-label": `Add photo to ${scene.title}`,
+        })}
+      >
+        <input {...getInputProps()} />
+        <Plus className="h-5 w-5" />
+      </button>
     </div>
   );
 }
@@ -455,38 +500,50 @@ function ProjectActionsMenu({
 function SceneActionsMenu({
   scene,
   onReplacePhoto,
+  onRemovePhoto,
   onDeleteScene,
-  onToggleInclusion,
+  isRemovingPhoto,
 }: {
   scene: TourScene;
   onReplacePhoto: () => void;
+  onRemovePhoto: () => void;
   onDeleteScene: () => void;
-  onToggleInclusion: () => void;
+  isRemovingPhoto: boolean;
 }) {
+  const canRemovePhoto = scene.sourcePhotos.length > 1;
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className="absolute left-3 top-3 flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:bg-background hover:text-foreground"
-        aria-label={`Open actions for ${scene.title}`}
-      >
-        <EllipsisVertical className="h-4 w-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
-        <DropdownMenuItem onClick={onReplacePhoto}>
-          <ImagePlus className="mr-2 h-4 w-4" />
-          Replace photo
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onToggleInclusion}>
-          <CheckCircle2 className="mr-2 h-4 w-4" />
-          {scene.included ? "Skip scene" : "Re-include scene"}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive hover:text-destructive" onClick={onDeleteScene}>
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete scene
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <div className="absolute right-3 top-3 z-30">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className="flex h-9 w-9 items-center justify-center rounded-md bg-background/80 text-muted-foreground backdrop-blur transition-colors hover:bg-background hover:text-foreground"
+          aria-label={`Open photo actions for ${scene.title}`}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <EllipsisVertical className="h-4 w-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem onClick={onReplacePhoto}>
+            <ImagePlus className="mr-2 h-4 w-4" />
+            Replace photo
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive hover:text-destructive"
+            disabled={!canRemovePhoto || isRemovingPhoto}
+            title={canRemovePhoto ? undefined : "A scene needs at least one photo."}
+            onClick={onRemovePhoto}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {isRemovingPhoto ? "Removing..." : "Remove photo"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-destructive hover:text-destructive" onClick={onDeleteScene}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete scene
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -752,6 +809,8 @@ export function TourProjectWorkspace({
   const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<string | null>(null);
   const [replacementPhoto, setReplacementPhoto] = useState<File | null>(null);
   const [replacementPhotoPreviewUrl, setReplacementPhotoPreviewUrl] = useState<string | null>(null);
+  const [pendingScenePhoto, setPendingScenePhoto] = useState<{ sceneId: string; file: File } | null>(null);
+  const [pendingScenePhotoPreviewUrl, setPendingScenePhotoPreviewUrl] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
@@ -808,6 +867,16 @@ export function TourProjectWorkspace({
       invalidateWorkspace();
     },
   });
+  const addPhotoMutation = useMutation({
+    mutationFn: ({ sceneId, formData }: { sceneId: string; formData: FormData }) =>
+      addSceneListingPhoto(viewModel.project.id, sceneId, formData),
+    onSuccess: invalidateWorkspace,
+    onSettled: () => setPendingScenePhoto(null),
+  });
+  const removePhotoMutation = useMutation({
+    mutationFn: (sceneId: string) => removeSceneListingPhoto(viewModel.project.id, sceneId),
+    onSuccess: invalidateWorkspace,
+  });
   const reorderScenesMutation = useMutation({
     mutationFn: (orderedSceneIds: string[]) => reorderTourScenes(viewModel.project.id, orderedSceneIds),
     onSuccess: invalidateWorkspace,
@@ -821,7 +890,7 @@ export function TourProjectWorkspace({
     getId: useCallback((scene: TourScene) => scene.id, []),
     getSyncKey: useCallback(
       (scene: TourScene) =>
-        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}`,
+        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}\u001e${scene.sourcePhotos.map((photo) => `${photo.id}:${photo.previewUrl ?? ""}`).join("\u001d")}`,
       []
     ),
     isLocked: reorderScenesMutation.isPending,
@@ -887,6 +956,18 @@ export function TourProjectWorkspace({
     return () => URL.revokeObjectURL(previewUrl);
   }, [replacementPhoto]);
 
+  useEffect(() => {
+    if (!pendingScenePhoto) {
+      setPendingScenePhotoPreviewUrl(null);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(pendingScenePhoto.file);
+    setPendingScenePhotoPreviewUrl(previewUrl);
+
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [pendingScenePhoto]);
+
   function handleProjectDetailsSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     updateProjectMutation.mutate(projectDetails);
@@ -913,6 +994,13 @@ export function TourProjectWorkspace({
       formData.set("photo", replacementPhoto);
     }
     replacePhotoMutation.mutate({ sceneId: sceneToReplacePhoto.id, formData });
+  }
+
+  function handleAddScenePhoto(sceneId: string, file: File) {
+    const formData = new FormData();
+    formData.set("photo", file);
+    setPendingScenePhoto({ sceneId, file });
+    addPhotoMutation.mutate({ sceneId, formData });
   }
 
   function handleSceneDragEnd(event: DragEndEvent) {
@@ -1027,7 +1115,24 @@ export function TourProjectWorkspace({
             </div>
 
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-              <div className="grid grid-cols-[minmax(0,1fr)_68px] gap-3 lg:grid-cols-[minmax(0,1fr)_88px]">
+              <div className="grid grid-cols-[68px_minmax(0,1fr)] gap-3 lg:grid-cols-[88px_minmax(0,1fr)]">
+                <SceneImageRail
+                  scene={activeScene}
+                  isAddingPhoto={addPhotoMutation.isPending}
+                  pendingPhotoPreviewUrl={
+                    pendingScenePhoto?.sceneId === activeScene?.id ? pendingScenePhotoPreviewUrl : null
+                  }
+                  pendingPhotoName={
+                    pendingScenePhoto?.sceneId === activeScene?.id ? pendingScenePhoto?.file.name ?? null : null
+                  }
+                  onAddPhoto={(file) => {
+                    if (!activeScene) {
+                      return;
+                    }
+                    handleAddScenePhoto(activeScene.id, file);
+                  }}
+                />
+
                 <PhotoStageDropzone
                   scene={activeScene}
                   onAddPhoto={(file) => {
@@ -1049,8 +1154,9 @@ export function TourProjectWorkspace({
                         setReplacementPhoto(null);
                         setSceneToReplacePhoto(activeScene);
                       }}
+                      onRemovePhoto={() => removePhotoMutation.mutate(activeScene.id)}
                       onDeleteScene={() => setSceneToDelete(activeScene)}
-                      onToggleInclusion={() => handleToggleSceneInclusion(activeScene.id, !activeScene.included)}
+                      isRemovingPhoto={removePhotoMutation.isPending}
                     />
                   )}
                   {activeScene && !activeScene.included && (
@@ -1059,8 +1165,6 @@ export function TourProjectWorkspace({
                     </span>
                   )}
                 </PhotoStageDropzone>
-
-                <SceneImageRail scene={activeScene} />
               </div>
 
               <section className="min-h-48 rounded-md border border-border bg-background p-4 lg:min-h-[420px]">
@@ -1098,10 +1202,18 @@ export function TourProjectWorkspace({
               </section>
             </div>
 
-            {(tourScenes.error ?? reorderScenesMutation.error ?? toggleSceneInclusionMutation.error) && (
+            {(tourScenes.error ??
+              reorderScenesMutation.error ??
+              toggleSceneInclusionMutation.error ??
+              addPhotoMutation.error ??
+              removePhotoMutation.error) && (
               <div className="mt-4">
                 <ErrorMessage>
-                  {(tourScenes.error ?? reorderScenesMutation.error ?? toggleSceneInclusionMutation.error)?.message ??
+                  {(tourScenes.error ??
+                    reorderScenesMutation.error ??
+                    toggleSceneInclusionMutation.error ??
+                    addPhotoMutation.error ??
+                    removePhotoMutation.error)?.message ??
                     "Could not update TourScenes."}
                 </ErrorMessage>
               </div>
