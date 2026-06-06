@@ -192,12 +192,12 @@ export function AppSwitcher() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* AiM Pro Upgrade Modal */}
+      {/* AiM Automations Upgrade Modal */}
       <Dialog open={proModalOpen} onOpenChange={setProModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="flex items-center justify-between w-full">
-              <DialogTitle>Upgrade to AiM Pro</DialogTitle>
+              <DialogTitle>Upgrade to AiM Automations</DialogTitle>
               <DialogClose onClose={() => setProModalOpen(false)} />
             </div>
           </DialogHeader>
@@ -242,7 +242,7 @@ export function AppSwitcher() {
               className="bg-[#17A697] hover:bg-[#0F7A6F]"
               onClick={() => window.open(AIM_PRO_URL, "_blank")}
             >
-              Learn About AiM Pro
+              Learn About AiM Automations
             </Button>
           </div>
         </DialogContent>

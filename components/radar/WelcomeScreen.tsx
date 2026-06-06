@@ -71,7 +71,7 @@ const STATS = [
 export function WelcomeScreen() {
   return (
     <ProductWelcome
-      badgeText="AiM Pro"
+      badgeText="AiM Automations"
       title="Own your AI visibility."
       description="Radar monitors how you appear across AI search engines, discovers what queries buyers and sellers ask AI, and audits your website for AI-readiness. Built for real estate professionals who want to be the answer."
       stats={STATS}

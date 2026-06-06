@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { getFeatureFlags } from "@/lib/admin-config.server";
 import { AppsShowcase } from "@/components/apps/AppsShowcase";
@@ -65,7 +66,27 @@ export default async function AppsPage() {
     <div className="min-h-screen bg-background flex items-start justify-center p-4 md:p-8 md:pt-16">
       <div className="w-full max-w-5xl space-y-8">
         <div className="text-center space-y-3">
-          <h1 className="text-3xl font-bold gradient-text-flow">AiM Pro</h1>
+          <h1 className="flex items-center justify-center gap-3">
+            <Image
+              src="/logo.svg"
+              alt="AiM"
+              width={180}
+              height={51}
+              className="h-10 w-auto dark:hidden"
+              priority
+            />
+            <Image
+              src="/logo-dark.svg"
+              alt="AiM"
+              width={180}
+              height={51}
+              className="h-10 w-auto hidden dark:block"
+              priority
+            />
+            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold tracking-wide bg-gradient-to-r from-[#1C4C8A]/10 to-[#31DBA5]/10 text-[#1C4C8A] dark:text-[#31DBA5] border border-[#31DBA5]/25">
+              Automations
+            </span>
+          </h1>
           <p className="text-muted-foreground text-sm max-w-lg mx-auto">
             AI-powered tools built for real estate professionals. Generate content, optimize prompts, and monitor your AI search visibility — all in one place.
           </p>

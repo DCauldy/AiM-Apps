@@ -75,7 +75,7 @@ const STATS = [
 export function WelcomeScreen() {
   return (
     <ProductWelcome
-      badgeText="AiM Pro"
+      badgeText="AiM Automations"
       title="Your blog, on autopilot."
       description="Blog Engine researches your market, writes SEO-optimized content, generates featured images, and publishes it — automatically. Built for real estate professionals who want to dominate AI search results."
       stats={STATS}
