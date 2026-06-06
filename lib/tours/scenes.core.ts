@@ -26,6 +26,7 @@ export type TourSceneModel = {
   createdAt: string;
   updatedAt: string;
   authoritativePhoto: TourSceneSourcePhoto;
+  sourcePhotos: TourSceneSourcePhoto[];
 };
 
 export type TourSceneRow = {
@@ -159,7 +160,13 @@ export function mapTourScene(
   scene: TourSceneRow,
   sourcePhotos: TourSceneSourcePhotoRow[]
 ): TourSceneModel | null {
-  const authoritativePhoto = getAuthoritativeSourcePhoto(sourcePhotos);
+  const sortedSourcePhotos = [...sourcePhotos].sort((a, b) => {
+    if (a.priority !== b.priority) {
+      return a.priority - b.priority;
+    }
+    return a.created_at.localeCompare(b.created_at);
+  });
+  const authoritativePhoto = getAuthoritativeSourcePhoto(sortedSourcePhotos);
   if (scene.included && !authoritativePhoto) {
     return null;
   }
@@ -178,6 +185,7 @@ export function mapTourScene(
     createdAt: scene.created_at,
     updatedAt: scene.updated_at,
     authoritativePhoto,
+    sourcePhotos: sortedSourcePhotos.map(mapSourcePhoto),
   };
 }
 

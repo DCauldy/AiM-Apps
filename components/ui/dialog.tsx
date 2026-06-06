@@ -19,13 +19,25 @@ interface DialogContentProps {
 
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
   React.useEffect(() => {
+    const themeRoot = document.querySelector(".product-app-theme");
+    const themeClasses = themeRoot
+      ? Array.from(themeRoot.classList).filter((className) =>
+          className === "product-app-theme" ||
+          className === "font-body" ||
+          className.endsWith("-theme")
+        )
+      : [];
+
     if (open) {
       document.body.style.overflow = "hidden";
+      document.body.classList.add(...themeClasses);
     } else {
       document.body.style.overflow = "";
+      document.body.classList.remove(...themeClasses);
     }
     return () => {
       document.body.style.overflow = "";
+      document.body.classList.remove(...themeClasses);
     };
   }, [open]);
 

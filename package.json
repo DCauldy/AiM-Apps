@@ -51,6 +51,7 @@
     "papaparse": "^5.5.3",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "react-dropzone": "^15.0.0",
     "react-map-gl": "^8.1.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",

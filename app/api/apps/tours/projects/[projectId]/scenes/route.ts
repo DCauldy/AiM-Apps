@@ -1,18 +1,14 @@
-import { nanoid } from "nanoid";
 import { createClient } from "@/lib/supabase/server";
 import { getFeatureFlag } from "@/lib/admin-config.server";
 import { getListingMediaAcknowledgementForProject } from "@/lib/tours/listing-media-authorization";
 import { createTourSceneFromAuthoritativePhoto } from "@/lib/tours/scenes";
+import {
+  LISTING_MEDIA_BUCKET,
+  getListingMediaStoragePath,
+  validateListingMediaFile,
+} from "@/lib/tours/listing-media-upload";
 
 export const dynamic = "force-dynamic";
-
-const LISTING_MEDIA_BUCKET = "tours-listing-media";
-const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-
-function safeFileName(fileName: string) {
-  return fileName.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "listing-photo";
-}
 
 async function requireToursAccess(projectId: string) {
   const supabase = await createClient();
@@ -76,25 +72,22 @@ export async function POST(
   }
 
   const title = String(formData.get("title") ?? "").trim();
-  const file = formData.get("photo");
+  const fileValidation = validateListingMediaFile(formData.get("photo"));
 
   if (!title) {
     return Response.json({ error: "Enter a TourScene title." }, { status: 400 });
   }
 
-  if (!(file instanceof File) || file.size === 0) {
-    return Response.json({ error: "Choose a listing photo to use as the authoritative source." }, { status: 400 });
+  if (!fileValidation.ok) {
+    return Response.json({ error: fileValidation.error }, { status: fileValidation.status });
   }
 
-  if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-    return Response.json({ error: "Upload a supported listing photo: JPEG, PNG, or WebP." }, { status: 415 });
-  }
-
-  if (file.size > MAX_IMAGE_BYTES) {
-    return Response.json({ error: "Listing photo must be 10 MB or smaller." }, { status: 413 });
-  }
-
-  const storagePath = `${access.user.id}/${projectId}/${Date.now()}-${nanoid(8)}-${safeFileName(file.name)}`;
+  const file = fileValidation.file;
+  const storagePath = getListingMediaStoragePath({
+    userId: access.user.id,
+    projectId,
+    fileName: file.name,
+  });
   const { error: uploadError } = await access.supabase.storage
     .from(LISTING_MEDIA_BUCKET)
     .upload(storagePath, file, {

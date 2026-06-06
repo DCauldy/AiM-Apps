@@ -18,6 +18,13 @@ export type TourScene = {
     contentType: string;
     previewUrl: string | null;
   };
+  sourcePhotos: Array<{
+    id: string;
+    fileName: string;
+    storagePath: string;
+    contentType: string;
+    previewUrl: string | null;
+  }>;
   status: "ready" | "skipped";
 };
 
@@ -80,9 +87,28 @@ export async function getTourProjectWorkspaceViewModel(
   const tourScenes = await getTourScenesForProject(project.id);
 
   const workspaceScenes = await Promise.all(tourScenes.map(async (scene) => {
-    const { data: signedPhoto } = await supabase.storage
-      .from("tours-listing-media")
-      .createSignedUrl(scene.authoritativePhoto.storagePath, 60 * 60);
+    const signedSourcePhotos = await Promise.all(scene.sourcePhotos.map(async (photo) => {
+      const { data: signedPhoto } = await supabase.storage
+        .from("tours-listing-media")
+        .createSignedUrl(photo.storagePath, 60 * 60);
+
+      return {
+        id: photo.id,
+        fileName: photo.fileName,
+        storagePath: photo.storagePath,
+        contentType: photo.contentType,
+        previewUrl: signedPhoto?.signedUrl ?? null,
+      };
+    }));
+    const authoritativePhoto =
+      signedSourcePhotos.find((photo) => photo.id === scene.authoritativePhoto.id) ??
+      signedSourcePhotos[0] ?? {
+        id: scene.authoritativePhoto.id,
+        fileName: scene.authoritativePhoto.fileName,
+        storagePath: scene.authoritativePhoto.storagePath,
+        contentType: scene.authoritativePhoto.contentType,
+        previewUrl: null,
+      };
 
     return {
       id: scene.id,
@@ -90,13 +116,8 @@ export async function getTourProjectWorkspaceViewModel(
       sortOrder: scene.sortOrder,
       included: scene.included,
       cameraMotion: scene.cameraMotion,
-      authoritativePhoto: {
-        id: scene.authoritativePhoto.id,
-        fileName: scene.authoritativePhoto.fileName,
-        storagePath: scene.authoritativePhoto.storagePath,
-        contentType: scene.authoritativePhoto.contentType,
-        previewUrl: signedPhoto?.signedUrl ?? null,
-      },
+      authoritativePhoto,
+      sourcePhotos: signedSourcePhotos,
       status: scene.included ? "ready" as const : "skipped" as const,
     };
   }));
