@@ -70,6 +70,10 @@ See [SETUP.md](./SETUP.md) for complete step-by-step instructions.
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 
+## App UI Patterns
+
+Before adding or refactoring app UI surfaces, read [App Surface Patterns](./docs/app-surface-patterns.md). Use the shared `components/app-shell` primitives for app shells, product headers, welcome screens, dashboard/page structure, upgrade dialogs, and onboarding chat presentation.
+
 ## License
 
 ISC
