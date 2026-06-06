@@ -83,7 +83,7 @@ export default async function AppsPage() {
               className="h-10 w-auto hidden dark:block"
               priority
             />
-            <span className="text-3xl font-light text-muted-foreground tracking-tight">
+            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold tracking-wide bg-gradient-to-r from-[#1C4C8A]/10 to-[#31DBA5]/10 text-[#1C4C8A] dark:text-[#31DBA5] border border-[#31DBA5]/25">
               Automations
             </span>
           </h1>
