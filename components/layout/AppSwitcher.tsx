@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown, Sparkles, FileText, Radar, Mail, Lock, ExternalLink, LayoutGrid } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -99,8 +100,30 @@ export function AppSwitcher() {
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2 px-3">
+          <Image
+            src="/logo.svg"
+            alt="AiM"
+            width={180}
+            height={51}
+            className="h-5 w-auto dark:hidden"
+            priority
+          />
+          <Image
+            src="/logo-dark.svg"
+            alt="AiM"
+            width={180}
+            height={51}
+            className="h-5 w-auto hidden dark:block"
+            priority
+          />
+          <span className="text-xs font-light text-muted-foreground tracking-tight">
+            Automations
+          </span>
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
           <span
             className={cn(
               "flex items-center justify-center w-7 h-7 rounded-md text-white",
@@ -190,14 +213,15 @@ export function AppSwitcher() {
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>
-      </DropdownMenu>
+        </DropdownMenu>
+      </div>
 
-      {/* AiM Pro Upgrade Modal */}
+      {/* AiM Automations Upgrade Modal */}
       <Dialog open={proModalOpen} onOpenChange={setProModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="flex items-center justify-between w-full">
-              <DialogTitle>Upgrade to AiM Pro</DialogTitle>
+              <DialogTitle>Upgrade to AiM Automations</DialogTitle>
               <DialogClose onClose={() => setProModalOpen(false)} />
             </div>
           </DialogHeader>
@@ -242,7 +266,7 @@ export function AppSwitcher() {
               className="bg-[#17A697] hover:bg-[#0F7A6F]"
               onClick={() => window.open(AIM_PRO_URL, "_blank")}
             >
-              Learn About AiM Pro
+              Learn About AiM Automations
             </Button>
           </div>
         </DialogContent>
