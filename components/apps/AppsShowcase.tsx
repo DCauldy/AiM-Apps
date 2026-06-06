@@ -283,7 +283,6 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
               <button
                 key={app.id}
                 onClick={() => selectApp(app.id)}
-                onMouseEnter={() => selectApp(app.id)}
                 className={cn(
                   "group relative flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-left transition-all duration-200 border border-transparent",
                   isSelected
