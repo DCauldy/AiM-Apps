@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown, Sparkles, FileText, Radar, Mail, Lock, ExternalLink, LayoutGrid } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -100,30 +99,8 @@ export function AppSwitcher() {
 
   return (
     <>
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2 px-3">
-          <Image
-            src="/logo.svg"
-            alt="AiM"
-            width={180}
-            height={51}
-            className="h-5 w-auto dark:hidden"
-            priority
-          />
-          <Image
-            src="/logo-dark.svg"
-            alt="AiM"
-            width={180}
-            height={51}
-            className="h-5 w-auto hidden dark:block"
-            priority
-          />
-          <span className="text-xs font-light text-muted-foreground tracking-tight">
-            Automations
-          </span>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
+      <DropdownMenu>
+        <DropdownMenuTrigger className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
           <span
             className={cn(
               "flex items-center justify-center w-7 h-7 rounded-md text-white",
@@ -213,8 +190,7 @@ export function AppSwitcher() {
             </div>
           </DropdownMenuItem>
         </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      </DropdownMenu>
 
       {/* AiM Automations Upgrade Modal */}
       <Dialog open={proModalOpen} onOpenChange={setProModalOpen}>
