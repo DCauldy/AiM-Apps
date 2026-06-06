@@ -1,6 +1,0 @@
-file '/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/01-dining-entry.mp4'
-file '/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/02-formal-dining-or-office.mp4'
-file '/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/03-kitchen-island.mp4'
-file '/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/04-kitchen-wide.mp4'
-file '/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/05-living-room-transition.mp4'
-file '/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/06-living-room-fireplace.mp4'

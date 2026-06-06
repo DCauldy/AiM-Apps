@@ -38,3 +38,6 @@ next-env.d.ts
 
 
 dogfood-output
+
+throwaway-prototypes
+tmp
