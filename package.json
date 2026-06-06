@@ -7,7 +7,10 @@
     "dev:inngest": "npx inngest-cli@latest dev -u http://localhost:6060/api/inngest",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "prototype:tours": "node throwaway-prototypes/tours/tour-video-prototype.mjs",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.73",
@@ -27,6 +30,7 @@
     "@supabase/ssr": "^0.5.0",
     "@supabase/supabase-js": "^2.45.0",
     "@tailwindcss/typography": "^0.5.19",
+    "@tanstack/react-query": "^5.101.0",
     "@turf/bbox": "^7.3.5",
     "@turf/center": "^7.3.5",
     "@turf/simplify": "^7.3.5",
@@ -61,11 +65,17 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^29.1.1",
     "postcss": "^8.4.49",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.8"
   }
 }

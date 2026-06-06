@@ -58,7 +58,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
 
 export function DialogHeader({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex items-center justify-between p-6 border-b", className)}>
+    <div className={cn("flex items-center justify-between border-b border-border p-6", className)}>
       {children}
     </div>
   );
@@ -95,7 +95,7 @@ export function DialogBody({ children, className }: { children: React.ReactNode;
 
 export function DialogFooter({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex justify-end gap-3 p-6 border-t", className)}>
+    <div className={cn("flex justify-end gap-3 border-t border-border p-6", className)}>
       {children}
     </div>
   );

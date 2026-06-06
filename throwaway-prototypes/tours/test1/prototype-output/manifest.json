@@ -1,0 +1,225 @@
+{
+  "state": {
+    "status": "rendered",
+    "inputDir": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1",
+    "outputDir": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output",
+    "project": {
+      "title": "Test 1 Listing Tour",
+      "propertyAddress": "Test listing",
+      "facts": [
+        "Use only visible scene details and approved notes",
+        "Keep the tour concise and property-focused"
+      ],
+      "tone": "warm, concise, confident, and factual"
+    },
+    "clipProvider": "local-ffmpeg",
+    "scenes": [
+      {
+        "id": "dining-entry",
+        "label": "Dining Entry",
+        "image": "scenes/001-dining-entry.jpg",
+        "imageUrl": "https://tmpfiles.org/dl/wewVK1Zgp200/001-dining-entry.jpg",
+        "motion": "slow_push_in",
+        "durationSeconds": 5
+      },
+      {
+        "id": "formal-dining-or-office",
+        "label": "Formal Dining Or Office",
+        "image": "scenes/002-formal-dining-or-office.jpg",
+        "imageUrl": "https://tmpfiles.org/dl/wgwGKqZopgvm/002-formal-dining-or-office.jpg",
+        "motion": "subtle_glide",
+        "durationSeconds": 5
+      },
+      {
+        "id": "kitchen-island",
+        "label": "Kitchen Island",
+        "image": "scenes/003-kitchen-island.jpg",
+        "imageUrl": "https://tmpfiles.org/dl/wpweKtZSp093/003-kitchen-island.jpg",
+        "motion": "gentle_pan",
+        "durationSeconds": 5
+      },
+      {
+        "id": "kitchen-wide",
+        "label": "Kitchen Wide",
+        "image": "scenes/004-kitchen-wide.jpg",
+        "imageUrl": "https://tmpfiles.org/dl/wswmKNZbpOzS/004-kitchen-wide.jpg",
+        "motion": "slow_push_in",
+        "durationSeconds": 5
+      },
+      {
+        "id": "living-room-transition",
+        "label": "Living Room Transition",
+        "image": "scenes/005-living-room-transition.jpg",
+        "imageUrl": "https://tmpfiles.org/dl/wLwdKsZIp5Os/005-living-room-transition.jpg",
+        "motion": "subtle_glide",
+        "durationSeconds": 5
+      },
+      {
+        "id": "living-room-fireplace",
+        "label": "Living Room Fireplace",
+        "image": "scenes/006-living-room-fireplace.jpg",
+        "imageUrl": "https://tmpfiles.org/dl/wwwHK8Ztp9BL/006-living-room-fireplace.jpg",
+        "motion": "static_slight_motion",
+        "durationSeconds": 5
+      }
+    ],
+    "approvals": {
+      "listingMediaAuthorization": true,
+      "sceneAccuracy": {
+        "dining-entry": true,
+        "formal-dining-or-office": true,
+        "kitchen-island": true,
+        "kitchen-wide": true,
+        "living-room-transition": true,
+        "living-room-fireplace": true
+      },
+      "scriptFacts": true,
+      "voiceover": true,
+      "avatar": true
+    },
+    "timeline": [
+      {
+        "sceneId": "dining-entry",
+        "label": "Dining Entry",
+        "order": 1,
+        "startSeconds": 0,
+        "endSeconds": 5,
+        "durationSeconds": 5
+      },
+      {
+        "sceneId": "formal-dining-or-office",
+        "label": "Formal Dining Or Office",
+        "order": 2,
+        "startSeconds": 5,
+        "endSeconds": 10,
+        "durationSeconds": 5
+      },
+      {
+        "sceneId": "kitchen-island",
+        "label": "Kitchen Island",
+        "order": 3,
+        "startSeconds": 10,
+        "endSeconds": 15,
+        "durationSeconds": 5
+      },
+      {
+        "sceneId": "kitchen-wide",
+        "label": "Kitchen Wide",
+        "order": 4,
+        "startSeconds": 15,
+        "endSeconds": 20,
+        "durationSeconds": 5
+      },
+      {
+        "sceneId": "living-room-transition",
+        "label": "Living Room Transition",
+        "order": 5,
+        "startSeconds": 20,
+        "endSeconds": 25,
+        "durationSeconds": 5
+      },
+      {
+        "sceneId": "living-room-fireplace",
+        "label": "Living Room Fireplace",
+        "order": 6,
+        "startSeconds": 25,
+        "endSeconds": 30,
+        "durationSeconds": 5
+      }
+    ],
+    "artifacts": {
+      "sceneClips": [
+        "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/01-dining-entry.mp4",
+        "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/02-formal-dining-or-office.mp4",
+        "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/03-kitchen-island.mp4",
+        "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/04-kitchen-wide.mp4",
+        "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/05-living-room-transition.mp4",
+        "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/06-living-room-fireplace.mp4"
+      ],
+      "assembledWalkthrough": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/walkthrough-muted.mp4",
+      "voiceoverAudio": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/voiceover-timed.m4a",
+      "avatarVideo": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/avatar/public-avatar-greenscreen.mp4",
+      "finalExport": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/final-tour.mp4",
+      "manifest": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/manifest.json"
+    },
+    "lastEvents": [
+      {
+        "at": "2026-06-06T13:29:25.159Z",
+        "message": "Approved all prototype gates"
+      },
+      {
+        "at": "2026-06-06T13:29:25.160Z",
+        "message": "Rendered prototype pipeline"
+      },
+      {
+        "at": "2026-06-06T13:31:55.207Z",
+        "message": "Rendered prototype pipeline"
+      }
+    ]
+  },
+  "renderPlan": {
+    "preset": "instagram_reels_vertical_v1",
+    "width": 1080,
+    "height": 1920,
+    "fps": 60,
+    "videoCodec": "h264",
+    "audioCodec": "aac",
+    "totalDurationSeconds": 30,
+    "sceneClips": [
+      {
+        "sceneId": "dining-entry",
+        "order": 1,
+        "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/01-dining-entry.mp4",
+        "durationSeconds": 5,
+        "selected": true,
+        "approved": true
+      },
+      {
+        "sceneId": "formal-dining-or-office",
+        "order": 2,
+        "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/02-formal-dining-or-office.mp4",
+        "durationSeconds": 5,
+        "selected": true,
+        "approved": true
+      },
+      {
+        "sceneId": "kitchen-island",
+        "order": 3,
+        "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/03-kitchen-island.mp4",
+        "durationSeconds": 5,
+        "selected": true,
+        "approved": true
+      },
+      {
+        "sceneId": "kitchen-wide",
+        "order": 4,
+        "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/04-kitchen-wide.mp4",
+        "durationSeconds": 5,
+        "selected": true,
+        "approved": true
+      },
+      {
+        "sceneId": "living-room-transition",
+        "order": 5,
+        "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/05-living-room-transition.mp4",
+        "durationSeconds": 5,
+        "selected": true,
+        "approved": true
+      },
+      {
+        "sceneId": "living-room-fireplace",
+        "order": 6,
+        "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/06-living-room-fireplace.mp4",
+        "durationSeconds": 5,
+        "selected": true,
+        "approved": true
+      }
+    ],
+    "voiceoverRequired": true,
+    "avatarOverlay": {
+      "enabled": true,
+      "position": "lower-right",
+      "widthPixels": 324
+    }
+  }
+}

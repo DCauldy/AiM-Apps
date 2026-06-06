@@ -1,0 +1,65 @@
+{
+  "preset": "instagram_reels_vertical_v1",
+  "width": 1080,
+  "height": 1920,
+  "fps": 60,
+  "videoCodec": "h264",
+  "audioCodec": "aac",
+  "totalDurationSeconds": 30,
+  "sceneClips": [
+    {
+      "sceneId": "dining-entry",
+      "order": 1,
+      "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/01-dining-entry.mp4",
+      "durationSeconds": 5,
+      "selected": true,
+      "approved": true
+    },
+    {
+      "sceneId": "formal-dining-or-office",
+      "order": 2,
+      "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/02-formal-dining-or-office.mp4",
+      "durationSeconds": 5,
+      "selected": true,
+      "approved": true
+    },
+    {
+      "sceneId": "kitchen-island",
+      "order": 3,
+      "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/03-kitchen-island.mp4",
+      "durationSeconds": 5,
+      "selected": true,
+      "approved": true
+    },
+    {
+      "sceneId": "kitchen-wide",
+      "order": 4,
+      "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/04-kitchen-wide.mp4",
+      "durationSeconds": 5,
+      "selected": true,
+      "approved": true
+    },
+    {
+      "sceneId": "living-room-transition",
+      "order": 5,
+      "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/05-living-room-transition.mp4",
+      "durationSeconds": 5,
+      "selected": true,
+      "approved": true
+    },
+    {
+      "sceneId": "living-room-fireplace",
+      "order": 6,
+      "clipPath": "/Users/joshkennedy/work/AiM-Apps/throwaway-prototypes/tours/test1/prototype-output/clips/06-living-room-fireplace.mp4",
+      "durationSeconds": 5,
+      "selected": true,
+      "approved": true
+    }
+  ],
+  "voiceoverRequired": true,
+  "avatarOverlay": {
+    "enabled": true,
+    "position": "lower-right",
+    "widthPixels": 324
+  }
+}

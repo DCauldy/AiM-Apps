@@ -5,4 +5,5 @@ export const FEATURES = {
   PROMPT_STUDIO: process.env.NEXT_PUBLIC_ENABLE_PROMPT_STUDIO !== "false",
   RADAR: process.env.NEXT_PUBLIC_ENABLE_RADAR === "true",
   HYPERLOCAL: process.env.NEXT_PUBLIC_ENABLE_HYPERLOCAL === "true",
+  TOURS: process.env.NEXT_PUBLIC_ENABLE_TOURS !== "false",
 } as const;

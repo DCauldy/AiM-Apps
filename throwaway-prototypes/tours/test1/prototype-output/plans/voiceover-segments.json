@@ -1,0 +1,44 @@
+[
+  {
+    "sceneId": "dining-entry",
+    "label": "Dining Entry",
+    "startSeconds": 0,
+    "endSeconds": 5,
+    "text": "From the entry, the home opens into a bright dining area with clean sight lines."
+  },
+  {
+    "sceneId": "formal-dining-or-office",
+    "label": "Formal Dining Or Office",
+    "startSeconds": 5,
+    "endSeconds": 10,
+    "text": "This flexible front room can serve as formal dining, an office, or a quiet sitting space."
+  },
+  {
+    "sceneId": "kitchen-island",
+    "label": "Kitchen Island",
+    "startSeconds": 10,
+    "endSeconds": 15,
+    "text": "The kitchen centers on the island, with open counter space and an easy working layout."
+  },
+  {
+    "sceneId": "kitchen-wide",
+    "label": "Kitchen Wide",
+    "startSeconds": 15,
+    "endSeconds": 20,
+    "text": "A wider angle shows the cabinetry, appliances, and the main cooking zone in context."
+  },
+  {
+    "sceneId": "living-room-transition",
+    "label": "Living Room Transition",
+    "startSeconds": 20,
+    "endSeconds": 25,
+    "text": "The living area connects directly from the kitchen, keeping the main spaces open and easy to follow."
+  },
+  {
+    "sceneId": "living-room-fireplace",
+    "label": "Living Room Fireplace",
+    "startSeconds": 25,
+    "endSeconds": 30,
+    "text": "The fireplace anchors the seating area, giving this room a clear and comfortable focal point."
+  }
+]

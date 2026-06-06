@@ -13,6 +13,9 @@ interface Setting {
 const APP_FLAGS: Record<string, string> = {
   PROMPT_STUDIO: "Prompt Studio",
   BLOG_ENGINE: "Blog Engine",
+  RADAR: "Radar",
+  HYPERLOCAL: "Hyperlocal",
+  TOURS: "Tours",
 };
 
 export function AppAvailabilityTab() {

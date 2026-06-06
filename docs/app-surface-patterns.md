@@ -6,11 +6,14 @@ Use these patterns when adding or refactoring app UI surfaces.
 
 Use `components/app-shell/AppShell.tsx` for app layout clients that need the standard AiM app chrome:
 
-- product theme class
+- shared dark product theme
+- optional product accent class
 - `ToastProvider`
 - full-height flex shell
 - product header slot
 - main content overflow behavior
+
+`AppShell` applies `product-app-theme` automatically. Product theme classes should normally only override accent tokens or product-specific effects. Do not duplicate the full dark surface token set in every app theme.
 
 Keep app-specific layout clients thin. Example shape:
 
@@ -23,7 +26,7 @@ import { ProductSpecificHeader } from "@/components/product/ProductSpecificHeade
 export function ProductLayoutClient({ children }: { children: React.ReactNode }) {
   return (
     <AppShell
-      themeClassName="product-theme"
+      themeClassName="product-theme" // accent overrides only
       header={<ProductSpecificHeader />}
       mainClassName="overflow-hidden"
     >
@@ -34,6 +37,19 @@ export function ProductLayoutClient({ children }: { children: React.ReactNode })
 ```
 
 Use `mainClassName="overflow-auto"` only when the existing product layout requires the main region to own scrolling.
+
+## Product theming
+
+All first-class app surfaces should feel like one product family:
+
+- dark shell and page surfaces come from `product-app-theme`
+- app-specific theme classes should set accent tokens such as `--primary`, `--primary-foreground`, and `--ring`
+- app-specific theme classes may add small named effects such as `radar-glow` or `be-generating`
+- app pages should rely on semantic Tailwind tokens like `bg-background`, `bg-card`, `text-foreground`, `text-muted-foreground`, `border-border`, and `text-primary`
+- avoid hardcoded light surfaces inside product apps
+- avoid app pages knowing the full dark palette
+
+When adding a new app, first wrap it in `AppShell`; only add a product theme class if the app needs a distinct accent.
 
 ## Product headers
 
@@ -89,6 +105,22 @@ Use `components/app-shell/PagePrimitives.tsx` for dashboard/settings/page struct
 - `SettingsTabs`
 
 These primitives must not encode product-specific routes, colors, copy, or business logic.
+
+Use cards intentionally. The default page shape should be:
+
+- one `PageFrame`
+- one unframed `PageHeader`
+- a small number of work surfaces using `DashboardCard`, `MetricCard`, `InlineStatusBanner`, or existing domain-specific primitives
+
+Avoid:
+
+- putting page headers inside cards
+- stacking cards inside cards
+- using cards as decorative section wrappers
+- giving every short placeholder, status, or row its own card
+- using oversized rounded panels when the shared product apps use `rounded-lg`
+
+Prefer rows, lists, inline banners, simple dividers, and unframed sections for secondary information.
 
 ## Upgrade dialogs
 

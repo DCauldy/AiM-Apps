@@ -6,6 +6,15 @@ import { PROMPT_PACKS, type PromptPack } from "@/lib/prompt-packs";
 import { BLOG_PACKS, type BlogPack } from "@/lib/blog-packs";
 import { RADAR_PACKS, type RadarPack } from "@/lib/radar-packs";
 
+export const FEATURE_FLAG_DEFAULTS: Record<string, boolean> = {
+  PROMPT_PACKS: FEATURES.PROMPT_PACKS,
+  BLOG_ENGINE: FEATURES.BLOG_ENGINE,
+  PROMPT_STUDIO: FEATURES.PROMPT_STUDIO,
+  RADAR: FEATURES.RADAR,
+  HYPERLOCAL: FEATURES.HYPERLOCAL,
+  TOURS: FEATURES.TOURS,
+};
+
 /** Read a single feature flag from admin_settings, falling back to env var */
 export async function getFeatureFlag(key: string): Promise<boolean> {
   try {
@@ -23,12 +32,7 @@ export async function getFeatureFlag(key: string): Promise<boolean> {
     // DB unavailable — fall through to env var
   }
 
-  if (key === "PROMPT_PACKS") return FEATURES.PROMPT_PACKS;
-  if (key === "BLOG_ENGINE") return FEATURES.BLOG_ENGINE;
-  if (key === "PROMPT_STUDIO") return FEATURES.PROMPT_STUDIO;
-  if (key === "RADAR") return FEATURES.RADAR;
-  if (key === "HYPERLOCAL") return FEATURES.HYPERLOCAL;
-  return false;
+  return FEATURE_FLAG_DEFAULTS[key] ?? false;
 }
 
 /** Bulk read all feature flags from admin_settings */
@@ -38,7 +42,7 @@ export async function getFeatureFlags(): Promise<Record<string, boolean>> {
     const { data } = await supabase.from("admin_settings").select("*");
 
     if (data && data.length > 0) {
-      const flags: Record<string, boolean> = {};
+      const flags: Record<string, boolean> = { ...FEATURE_FLAG_DEFAULTS };
       for (const row of data) {
         flags[row.key] = row.value === "true";
       }
@@ -48,13 +52,7 @@ export async function getFeatureFlags(): Promise<Record<string, boolean>> {
     // DB unavailable — fall through to env vars
   }
 
-  return {
-    PROMPT_PACKS: FEATURES.PROMPT_PACKS,
-    BLOG_ENGINE: FEATURES.BLOG_ENGINE,
-    PROMPT_STUDIO: FEATURES.PROMPT_STUDIO,
-    RADAR: FEATURES.RADAR,
-    HYPERLOCAL: FEATURES.HYPERLOCAL,
-  };
+  return { ...FEATURE_FLAG_DEFAULTS };
 }
 
 /** Read prompt packs from DB, falling back to hardcoded array */
