@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { OnboardingChat } from "@/components/radar/onboarding/OnboardingChat";
 import { RadarSetupForm } from "@/components/radar/onboarding/RadarSetupForm";
+import { ProfileMigrationBanner } from "@/components/profile/ProfileMigrationBanner";
+import { requireActiveProfileOrRedirect } from "@/lib/profiles/require-active";
+import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
 
 export default async function RadarOnboardingPage() {
   const supabase = await createClient();
@@ -11,7 +13,8 @@ export default async function RadarOnboardingPage() {
 
   if (!user) redirect("/login");
 
-  // Check if already onboarded
+  await requireActiveProfileOrRedirect(user.id, "/apps/radar/onboarding");
+
   const { data: config } = await supabase
     .from("radar_config")
     .select("onboarding_completed")
@@ -22,22 +25,20 @@ export default async function RadarOnboardingPage() {
     redirect("/apps/radar/dashboard");
   }
 
-  // Check for existing profile (Path A vs Path B)
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (profile) {
-    // Path A: profile exists — show setup form
-    return <RadarSetupForm profile={profile} />;
+  // Identity comes from the active profile (or legacy user_profiles via the
+  // adapter during the transition). The chat-only Path B is retired since the
+  // guard above ensures an active profile is always present by this point.
+  const profile = await getProfileForBlogEngine(user.id);
+  if (!profile) {
+    redirect("/apps/profile/new?return_to=/apps/radar/onboarding");
   }
 
-  // Path B: no profile — show chat onboarding
   return (
-    <div className="flex-1 overflow-hidden">
-      <OnboardingChat />
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-3xl mx-auto px-6 pt-6">
+        <ProfileMigrationBanner what="Agent name, brokerage, market, and specializations" />
+      </div>
+      <RadarSetupForm profile={profile as unknown as { full_name?: string; business_name?: string; [key: string]: unknown }} />
     </div>
   );
 }

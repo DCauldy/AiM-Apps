@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,6 +11,12 @@ import type { PlatformProfile, PlatformProfileUpdate } from "@/types/platform-pr
 interface Props {
   /** When provided, editor patches this profile; otherwise it POSTs to /api/profiles. */
   initialProfile?: PlatformProfile;
+}
+
+/** Internal /apps/ paths are the only safe return targets. */
+function safeReturn(path: string | null): string {
+  if (!path || !path.startsWith("/apps/")) return "/apps/profile";
+  return path;
 }
 
 type FormState = Partial<PlatformProfile>;
@@ -38,6 +44,8 @@ function joinArray(arr: string[] | undefined | null): string {
 
 export function ProfileEditor({ initialProfile }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = safeReturn(searchParams.get("return_to"));
   const { addToast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const isEdit = Boolean(initialProfile);
@@ -100,7 +108,7 @@ export function ProfileEditor({ initialProfile }: Props) {
       }
 
       addToast({ title: isEdit ? "Profile updated" : "Profile created" });
-      router.push("/apps/profile");
+      router.push(isEdit ? "/apps/profile" : returnTo);
       router.refresh();
     } catch (err) {
       addToast({
