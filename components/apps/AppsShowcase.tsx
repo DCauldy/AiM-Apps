@@ -407,14 +407,11 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
               {selectedApp.tagline}
             </p>
 
-            {/* Category pill */}
+            {/* Category pill — white-tint rather than per-app accent so it
+                stays legible regardless of which app gradient is behind it. */}
             <div
-              className="animate-fade-up inline-flex items-center gap-1.5 mt-3 text-xs font-medium px-2.5 py-1 rounded-full"
-              style={{
-                color: selectedApp.accentColor,
-                backgroundColor: `${selectedApp.accentColor}15`,
-                animationDelay: "150ms",
-              }}
+              className="animate-fade-up inline-flex items-center gap-1.5 mt-3 text-xs font-semibold px-2.5 py-1 rounded-full text-white bg-white/15 border border-white/20"
+              style={{ animationDelay: "150ms" }}
             >
               {selectedApp.category}
             </div>
@@ -427,18 +424,14 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
               className="animate-fade-up space-y-3"
               style={{ animationDelay: "200ms" }}
             >
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              <h3 className="text-xs font-semibold text-white/70 uppercase tracking-wider">
                 Features
               </h3>
               <div className="grid gap-2.5">
                 {selectedApp.features.map((f, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <span
-                      className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg shrink-0"
-                      style={{
-                        color: selectedApp.accentColor,
-                        backgroundColor: `${selectedApp.accentColor}12`,
-                      }}
+                      className="mt-0.5 flex items-center justify-center w-7 h-7 rounded-lg shrink-0 text-white bg-white/15 border border-white/15"
                     >
                       {f.icon}
                     </span>
@@ -642,11 +635,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
                     {app.features.map((f, i) => (
                       <div key={i} className="flex items-start gap-2.5">
                         <span
-                          className="mt-0.5 flex items-center justify-center w-6 h-6 rounded-md shrink-0"
-                          style={{
-                            color: app.accentColor,
-                            backgroundColor: `${app.accentColor}12`,
-                          }}
+                          className="mt-0.5 flex items-center justify-center w-6 h-6 rounded-md shrink-0 text-white bg-white/15 border border-white/15"
                         >
                           {f.icon}
                         </span>
