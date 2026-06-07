@@ -1,9 +1,9 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getRefinementModel } from "@/lib/openrouter";
 import { getRefinementPrompt } from "@/lib/blog-engine/prompts";
+import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
 import { streamText } from "ai";
 import { NextRequest } from "next/server";
-import type { BofuProfile } from "@/types/blog-engine";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -55,19 +55,14 @@ export async function POST(
       return Response.json({ error: "No messages provided" }, { status: 400 });
     }
 
-    // Load profile for context
+    // Load effective profile for context (platform_profiles if active, else legacy)
     const serviceClient = createServiceRoleClient();
-    const { data: profile } = await serviceClient
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
+    const profile = await getProfileForBlogEngine(user.id);
     if (!profile) {
       return Response.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    const typedProfile = profile as BofuProfile;
+    const typedProfile = profile;
 
     // Extract text content from a message (supports both `content` string and `parts` array formats)
     function extractText(m: { content?: string; parts?: Array<{ type: string; text?: string }> }): string {

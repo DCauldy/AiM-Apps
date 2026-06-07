@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { publishToWordPress } from "@/lib/blog-engine/cms/wordpress";
 import { publishToWebhook } from "@/lib/blog-engine/cms/webhook";
+import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
 import type { BofuCmsConnection } from "@/types/blog-engine";
 import {
   getResearchModel,
@@ -18,7 +19,7 @@ import { incrementBofuUsage } from "@/lib/blog-engine/usage";
 import { checkTopicDuplicate } from "@/lib/blog-engine/dedup";
 import { generateAndUploadImage } from "@/lib/blog-engine/image-generation";
 import { generateText } from "ai";
-import type { BofuProfile, BofuTopic, ImageStyle } from "@/types/blog-engine";
+import type { BofuTopic, ImageStyle } from "@/types/blog-engine";
 
 interface PipelineInput {
   userId: string;
@@ -35,18 +36,12 @@ interface PipelineInput {
 export async function runBlogPipeline({ userId, triggeredBy, topicId: requestedTopicId, runId }: PipelineInput) {
   const supabase = createServiceRoleClient();
 
-  // Step 1: Load user profile
+  // Step 1: Load effective profile (platform_profiles if active, else legacy user_profiles)
   console.log("[Pipeline] Step 1: Loading profile…");
-  const { data: profileData, error: profileError } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("user_id", userId)
-    .single();
-
-  if (profileError || !profileData) {
+  const profile = await getProfileForBlogEngine(userId);
+  if (!profile) {
     throw new Error(`Profile not found for user ${userId}`);
   }
-  const profile = profileData as BofuProfile;
 
   // Step 2: Check topic bank for unused topics
   console.log("[Pipeline] Step 2: Checking topic bank…");
