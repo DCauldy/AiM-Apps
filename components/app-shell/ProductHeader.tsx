@@ -9,6 +9,7 @@ import { Menu, X } from "lucide-react";
 
 import { AppSwitcher } from "@/components/layout/AppSwitcher";
 import { UserMenu } from "@/components/layout/UserMenu";
+import { ActiveProfileBadge } from "@/components/profile/ActiveProfileBadge";
 import { cn } from "@/lib/utils";
 
 export type ProductNavItem = {
@@ -66,6 +67,7 @@ export function ProductHeader({
           <div className="hidden sm:block">
             <AppSwitcher />
           </div>
+          <ActiveProfileBadge />
         </div>
 
         <nav className="hidden md:flex items-center gap-1 mx-auto">

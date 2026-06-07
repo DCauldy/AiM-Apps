@@ -14,7 +14,6 @@ import { cn } from "@/lib/utils";
 import { UpgradeModal } from "@/components/trial/UpgradeModal";
 import { FEATURES } from "@/lib/feature-flags";
 import { AppSwitcher } from "@/components/layout/AppSwitcher";
-import { ProfileSection } from "@/components/layout/ProfileSection";
 import dynamic from "next/dynamic";
 
 const PurchasePackModal = FEATURES.PROMPT_PACKS
@@ -250,8 +249,6 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
           </div>
         )}
 
-        {/* Profile section at bottom */}
-        <ProfileSection appBasePath="/apps/prompt-studio" onMobileClose={onToggle} />
       </aside>
 
       <UpgradeModal
