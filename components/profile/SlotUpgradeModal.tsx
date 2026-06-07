@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { Building2, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -78,7 +79,9 @@ export function SlotUpgradeModal({
     }
   }
 
-  return (
+  if (typeof window === "undefined") return null;
+
+  return createPortal(
     <>
       <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
@@ -168,6 +171,7 @@ export function SlotUpgradeModal({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
