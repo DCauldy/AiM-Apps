@@ -247,12 +247,6 @@ function ProfileCard({
       } ${archived ? "opacity-60" : ""}`}
     >
       <div className="flex items-start gap-4">
-        <div
-          className="w-12 h-12 rounded-lg border shrink-0"
-          style={{
-            background: `linear-gradient(135deg, ${profile.primary_color}, ${profile.accent_color})`,
-          }}
-        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-semibold truncate">{profile.display_name}</h3>
