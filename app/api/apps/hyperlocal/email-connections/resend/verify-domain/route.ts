@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       display_name: displayName,
       resend_api_key_encrypted: encrypt(apiKey),
       resend_domain: domain,
-      resend_domain_id: resendInfo.id,
+      resend_domain_id: resendInfo.resend_domain_id,
       resend_dkim_status:
         resendInfo.status === "verified" ? "verified" : "pending",
       is_active: resendInfo.status === "verified",
