@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { X, Zap } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -94,7 +95,9 @@ export function PlanUpgradeDialog<TPlan extends PlanUpgradeDialogPlan>({
     onClose();
   };
 
-  return (
+  if (typeof window === "undefined") return null;
+
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md"
@@ -159,7 +162,8 @@ export function PlanUpgradeDialog<TPlan extends PlanUpgradeDialogPlan>({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
