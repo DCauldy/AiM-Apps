@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
-import { getFeatureFlag } from "@/lib/admin-config.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 
 export const dynamic = "force-dynamic";
 
@@ -16,32 +15,14 @@ const UpdateTourProjectSchema = z.object({
     .pipe(z.string().url("Listing URL must be a valid URL").nullable()),
 });
 
-async function requireToursAccess() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { supabase, user: null, error: "Sign in to update tour projects.", status: 401 } as const;
-  }
-
-  const isEnabled = await getFeatureFlag("TOURS");
-  const subscriptionTier = user.app_metadata?.subscription_tier;
-  if (!isEnabled || subscriptionTier !== "pro") {
-    return { supabase, user, error: "Tours is not available for this account.", status: 403 } as const;
-  }
-
-  return { supabase, user, error: null, status: 200 } as const;
-}
-
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
-  const access = await requireToursAccess();
-  if (access.error) {
-    return Response.json({ error: access.error }, { status: access.status });
+  const { projectId } = await params;
+  const access = await requireToursAccess({ projectId, requireOpenProject: true });
+  if (!access.ok) {
+    return toursAccessErrorResponse(access);
   }
 
   const body = await request.json().catch(() => null);
@@ -53,7 +34,6 @@ export async function PATCH(
     );
   }
 
-  const { projectId } = await params;
   const { data, error } = await access.supabase
     .from("tours_projects")
     .update({

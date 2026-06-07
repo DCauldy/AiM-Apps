@@ -1,11 +1,14 @@
-import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { getFeatureFlag } from "@/lib/admin-config.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 import { getListingMediaAcknowledgementForProject } from "@/lib/tours/listing-media-authorization";
 import {
   LISTING_MEDIA_BUCKET,
   getListingMediaStoragePath,
   validateListingMediaFile,
 } from "@/lib/tours/listing-media-upload";
+import {
+  getDeleteAuthoritativeSourcePhotoRpcArgs,
+  mapDeleteAuthoritativeSourcePhotoError,
+} from "@/lib/tours/source-photo-contract.core";
 
 export const dynamic = "force-dynamic";
 
@@ -13,52 +16,19 @@ const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion
 const SOURCE_PHOTO_SELECT =
   "id, project_id, scene_id, storage_path, file_name, content_type, byte_size, width, height, priority, created_at";
 
-async function requireOpenTourProjectAccess(projectId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { supabase, user: null, error: "Sign in to update TourScenes.", status: 401 } as const;
-  }
-
-  const isEnabled = await getFeatureFlag("TOURS");
-  const subscriptionTier = user.app_metadata?.subscription_tier;
-  if (!isEnabled || subscriptionTier !== "pro") {
-    return { supabase, user, error: "Tours is not available for this account.", status: 403 } as const;
-  }
-
-  const { data: project, error: projectError } = await supabase
-    .from("tours_projects")
-    .select("id, status")
-    .eq("id", projectId)
-    .eq("user_id", user.id)
-    .maybeSingle<{ id: string; status: "open" | "archived" }>();
-
-  if (projectError) {
-    return { supabase, user, error: "Could not verify Tour Project access.", status: 500 } as const;
-  }
-
-  if (!project) {
-    return { supabase, user, error: "Tour Project was not found.", status: 404 } as const;
-  }
-
-  if (project.status !== "open") {
-    return { supabase, user, error: "Archived Tour Projects cannot update TourScenes.", status: 409 } as const;
-  }
-
-  return { supabase, user, error: null, status: 200 } as const;
-}
+type DeleteTourSceneSourcePhotoRpcRow = {
+  removed_photo_id: string;
+  removed_storage_path: string;
+};
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ projectId: string; sceneId: string }> }
 ) {
   const { projectId, sceneId } = await params;
-  const access = await requireOpenTourProjectAccess(projectId);
-  if (access.error) {
-    return Response.json({ error: access.error }, { status: access.status });
+  const access = await requireToursAccess({ projectId, requireOpenProject: true });
+  if (!access.ok) {
+    return toursAccessErrorResponse(access);
   }
 
   const acknowledgement = await getListingMediaAcknowledgementForProject(projectId);
@@ -159,9 +129,9 @@ export async function PATCH(
   { params }: { params: Promise<{ projectId: string; sceneId: string }> }
 ) {
   const { projectId, sceneId } = await params;
-  const access = await requireOpenTourProjectAccess(projectId);
-  if (access.error) {
-    return Response.json({ error: access.error }, { status: access.status });
+  const access = await requireToursAccess({ projectId, requireOpenProject: true });
+  if (!access.ok) {
+    return toursAccessErrorResponse(access);
   }
 
   const acknowledgement = await getListingMediaAcknowledgementForProject(projectId);
@@ -266,9 +236,9 @@ export async function DELETE(
   { params }: { params: Promise<{ projectId: string; sceneId: string }> }
 ) {
   const { projectId, sceneId } = await params;
-  const access = await requireOpenTourProjectAccess(projectId);
-  if (access.error) {
-    return Response.json({ error: access.error }, { status: access.status });
+  const access = await requireToursAccess({ projectId, requireOpenProject: true });
+  if (!access.ok) {
+    return toursAccessErrorResponse(access);
   }
 
   const acknowledgement = await getListingMediaAcknowledgementForProject(projectId);
@@ -279,62 +249,16 @@ export async function DELETE(
     );
   }
 
-  const { data: sourcePhotos, error: sourcePhotosError } = await access.supabase
-    .from("tour_scene_source_photos")
-    .select(SOURCE_PHOTO_SELECT)
-    .eq("project_id", projectId)
-    .eq("scene_id", sceneId)
-    .order("priority", { ascending: true })
-    .order("created_at", { ascending: true });
+  const { data: deletedPhoto, error: deletePhotoError } = await access.supabase
+    .rpc("delete_tour_scene_source_photo", getDeleteAuthoritativeSourcePhotoRpcArgs({ projectId, sceneId }))
+    .single<DeleteTourSceneSourcePhotoRpcRow>();
 
-  if (sourcePhotosError) {
-    return Response.json({ error: "Could not load listing photos for this TourScene." }, { status: 500 });
+  if (deletePhotoError || !deletedPhoto) {
+    const mappedError = mapDeleteAuthoritativeSourcePhotoError(deletePhotoError?.message ?? "");
+    return Response.json({ error: mappedError.error }, { status: mappedError.status });
   }
 
-  if (!sourcePhotos || sourcePhotos.length === 0) {
-    return Response.json({ error: "TourScene listing photo was not found." }, { status: 404 });
-  }
+  await access.supabase.storage.from(LISTING_MEDIA_BUCKET).remove([deletedPhoto.removed_storage_path]);
 
-  if (sourcePhotos.length === 1) {
-    return Response.json({ error: "TourScene needs at least one listing photo." }, { status: 409 });
-  }
-
-  const [photoToRemove, ...remainingPhotos] = sourcePhotos;
-  const serviceSupabase = createServiceRoleClient();
-  const { error: deletePhotoError } = await serviceSupabase
-    .from("tour_scene_source_photos")
-    .delete()
-    .eq("id", photoToRemove.id)
-    .eq("project_id", projectId)
-    .eq("scene_id", sceneId);
-
-  if (deletePhotoError) {
-    return Response.json({ error: "Could not remove the listing photo." }, { status: 500 });
-  }
-
-  for (const [priority, photo] of remainingPhotos.entries()) {
-    if (photo.priority === priority) {
-      continue;
-    }
-
-    const { error: priorityError } = await serviceSupabase
-      .from("tour_scene_source_photos")
-      .update({ priority })
-      .eq("id", photo.id)
-      .eq("project_id", projectId)
-      .eq("scene_id", sceneId);
-
-    if (priorityError) {
-      return Response.json({ error: "Could not update the remaining listing photo order." }, { status: 500 });
-    }
-  }
-
-  await access.supabase
-    .from("tour_scenes")
-    .update({ updated_at: new Date().toISOString() })
-    .eq("project_id", projectId)
-    .eq("id", sceneId);
-  await access.supabase.storage.from(LISTING_MEDIA_BUCKET).remove([photoToRemove.storage_path]);
-
-  return Response.json({ removedPhotoId: photoToRemove.id });
+  return Response.json({ removedPhotoId: deletedPhoto.removed_photo_id });
 }

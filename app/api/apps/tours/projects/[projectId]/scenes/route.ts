@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
-import { getFeatureFlag } from "@/lib/admin-config.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 import { getListingMediaAcknowledgementForProject } from "@/lib/tours/listing-media-authorization";
 import { createTourSceneFromAuthoritativePhoto } from "@/lib/tours/scenes";
 import {
@@ -10,52 +9,14 @@ import {
 
 export const dynamic = "force-dynamic";
 
-async function requireToursAccess(projectId: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { supabase, user: null, project: null, error: "Sign in to create TourScenes.", status: 401 } as const;
-  }
-
-  const isEnabled = await getFeatureFlag("TOURS");
-  const subscriptionTier = user.app_metadata?.subscription_tier;
-  if (!isEnabled || subscriptionTier !== "pro") {
-    return { supabase, user, project: null, error: "Tours is not available for this account.", status: 403 } as const;
-  }
-
-  const { data: project, error: projectError } = await supabase
-    .from("tours_projects")
-    .select("id, status")
-    .eq("id", projectId)
-    .eq("user_id", user.id)
-    .maybeSingle<{ id: string; status: "open" | "archived" }>();
-
-  if (projectError) {
-    return { supabase, user, project: null, error: "Could not verify Tour Project access.", status: 500 } as const;
-  }
-
-  if (!project) {
-    return { supabase, user, project: null, error: "Tour Project was not found.", status: 404 } as const;
-  }
-
-  if (project.status !== "open") {
-    return { supabase, user, project, error: "Archived Tour Projects cannot create new TourScenes.", status: 409 } as const;
-  }
-
-  return { supabase, user, project, error: null, status: 200 } as const;
-}
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   const { projectId } = await params;
-  const access = await requireToursAccess(projectId);
-  if (access.error) {
-    return Response.json({ error: access.error }, { status: access.status });
+  const access = await requireToursAccess({ projectId, requireOpenProject: true });
+  if (!access.ok) {
+    return toursAccessErrorResponse(access);
   }
 
   const acknowledgement = await getListingMediaAcknowledgementForProject(projectId);
