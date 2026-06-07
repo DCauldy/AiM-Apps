@@ -116,13 +116,7 @@ export function ActiveProfileChip() {
       <DropdownMenuTrigger className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-border bg-card hover:bg-accent transition-colors text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="text-muted-foreground">Operating as</span>
         {active ? (
-          <>
-            <span
-              className="w-4 h-4 rounded-sm shrink-0"
-              style={{ background: `linear-gradient(135deg, ${active.primary_color}, ${active.accent_color})` }}
-            />
-            <span className="font-semibold">{active.display_name}</span>
-          </>
+          <span className="font-semibold">{active.display_name}</span>
         ) : (
           <span className="font-semibold text-muted-foreground">No profile selected</span>
         )}

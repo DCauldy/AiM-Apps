@@ -79,19 +79,44 @@ export const hlSendOne = inngest.createFunction(
       // Check if user cancelled the run mid-flight
       const { data: run } = await supabase
         .from("hl_runs")
-        .select("phase, sender_profile_id")
+        .select("phase, profile_id, sender_profile_id")
         .eq("id", runId)
         .single();
       if (!run || run.phase === "cancelled" || run.phase === "failed") {
         return { skip: true, reason: "run_cancelled" as const };
       }
 
-      // Load sender profile (required)
-      const { data: sender } = await supabase
-        .from("platform_sender_profiles")
-        .select("*")
-        .eq("id", run.sender_profile_id)
-        .maybeSingle();
+      // Sender resolution — prefer run.profile_id (new path → platform_profiles),
+      // fall back to legacy run.sender_profile_id snapshot.
+      let sender: Record<string, unknown> | null = null;
+      if (run.profile_id) {
+        const { data: pp } = await supabase
+          .from("platform_profiles")
+          .select("id, full_name, display_name, title, brokerage, phone, reply_to_email, license_number, physical_address, sign_off")
+          .eq("id", run.profile_id)
+          .maybeSingle();
+        if (pp && pp.physical_address) {
+          sender = {
+            id: pp.id,
+            full_name: pp.full_name ?? pp.display_name,
+            title: pp.title,
+            brokerage: pp.brokerage,
+            phone: pp.phone,
+            reply_to_email: pp.reply_to_email,
+            license_number: pp.license_number,
+            physical_address: pp.physical_address,
+            sign_off: pp.sign_off,
+          };
+        }
+      }
+      if (!sender && run.sender_profile_id) {
+        const { data: legacy } = await supabase
+          .from("platform_sender_profiles")
+          .select("*")
+          .eq("id", run.sender_profile_id)
+          .maybeSingle();
+        sender = legacy;
+      }
       if (!sender) throw new Error("Sender profile missing");
 
       return {
@@ -99,7 +124,7 @@ export const hlSendOne = inngest.createFunction(
         recipient,
         connection: connection as HlEmailConnection,
         email,
-        sender: sender as PlatformSenderProfile,
+        sender: sender as unknown as PlatformSenderProfile,
       };
     });
 
