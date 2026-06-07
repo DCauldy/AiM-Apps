@@ -244,8 +244,10 @@ export function AppSwitcher() {
                 <DropdownMenuItem
                   key={p.id}
                   onClick={() => switchProfile(p.id)}
-                  disabled={profileSwitchBusy}
-                  className="flex items-center gap-2 py-1.5 cursor-pointer"
+                  className={cn(
+                    "flex items-center gap-2 py-1.5 cursor-pointer",
+                    profileSwitchBusy && "opacity-50 pointer-events-none"
+                  )}
                 >
                   <span
                     className="w-6 h-6 rounded-md shrink-0"

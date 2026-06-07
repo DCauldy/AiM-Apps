@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import type { PlatformProfile } from "@/types/platform-profile";
 
 interface ProfileSummary {
@@ -137,8 +138,10 @@ export function ActiveProfileChip() {
               <DropdownMenuItem
                 key={p.id}
                 onClick={() => switchProfile(p.id)}
-                disabled={busy}
-                className="flex items-center gap-2.5 py-2 cursor-pointer"
+                className={cn(
+                  "flex items-center gap-2.5 py-2 cursor-pointer",
+                  busy && "opacity-50 pointer-events-none"
+                )}
               >
                 <span
                   className="w-5 h-5 rounded shrink-0"
