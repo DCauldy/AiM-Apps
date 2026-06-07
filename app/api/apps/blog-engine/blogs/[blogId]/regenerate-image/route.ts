@@ -2,7 +2,8 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getImagePrompt } from "@/lib/blog-engine/prompts";
 import { generateAndUploadImage } from "@/lib/blog-engine/image-generation";
 import { NextRequest } from "next/server";
-import type { BofuProfile, ImageStyle } from "@/types/blog-engine";
+import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
+import type { ImageStyle } from "@/types/blog-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -50,19 +51,12 @@ export async function POST(
     const requestedStyle: ImageStyle =
       body.style || blog.featured_image_style || "location";
 
-    // Load profile for image prompt
+    // Load effective profile for image prompt (platform_profiles if active, else legacy)
     const serviceClient = createServiceRoleClient();
-    const { data: profile } = await serviceClient
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .single();
-
-    if (!profile) {
+    const typedProfile = await getProfileForBlogEngine(user.id);
+    if (!typedProfile) {
       return Response.json({ error: "Profile not found" }, { status: 404 });
     }
-
-    const typedProfile = profile as BofuProfile;
     const imagePromptText = getImagePrompt(
       typedProfile,
       blog.title,
