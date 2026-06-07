@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { LISTING_MEDIA_ACKNOWLEDGEMENT_COPY } from "@/lib/tours/listing-media-authorization";
 import { listTourSceneFactsForProject } from "@/lib/tours/facts";
+import type { TourProjectType } from "@/lib/tours/project-types";
 import { getTourScenesForProject } from "@/lib/tours/scenes";
 import { getTourSceneReadinessStatus } from "@/lib/tours/scenes.core";
 
@@ -46,6 +47,7 @@ export type TourProjectWorkspaceViewModel = {
     id: string;
     name: string;
     lifecycleStatus: "open";
+    tourType: TourProjectType;
     createdAt: string;
     updatedAt: string;
   };
@@ -76,6 +78,7 @@ type TourProjectRow = {
   name: string;
   property_address: string;
   listing_url: string | null;
+  tour_type: TourProjectType;
   status: "open" | "archived";
   listing_media_acknowledged_at: string | null;
   created_at: string;
@@ -96,7 +99,7 @@ export async function getTourProjectWorkspaceViewModel(
 
   const { data: project } = await supabase
     .from("tours_projects")
-    .select("id, name, property_address, listing_url, status, listing_media_acknowledged_at, created_at, updated_at")
+    .select("id, name, property_address, listing_url, tour_type, status, listing_media_acknowledged_at, created_at, updated_at")
     .eq("id", projectId)
     .eq("user_id", user.id)
     .eq("status", "open")
@@ -169,6 +172,7 @@ export async function getTourProjectWorkspaceViewModel(
       id: project.id,
       name: project.name,
       lifecycleStatus: "open",
+      tourType: project.tour_type,
       createdAt: project.created_at,
       updatedAt: project.updated_at,
     },

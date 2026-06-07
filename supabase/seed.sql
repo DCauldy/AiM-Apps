@@ -362,6 +362,7 @@ insert into public.tours_projects (
   name,
   property_address,
   listing_url,
+  tour_type,
   status,
   listing_media_acknowledged_at
 )
@@ -371,6 +372,7 @@ values (
   'Local Seed Tour',
   '123 Local Seed Lane, Austin, TX 78701',
   'https://example.com/local-seed-listing',
+  'tour_video',
   'open',
   now()
 )
@@ -380,6 +382,7 @@ set
   name = excluded.name,
   property_address = excluded.property_address,
   listing_url = excluded.listing_url,
+  tour_type = excluded.tour_type,
   status = excluded.status,
   listing_media_acknowledged_at = excluded.listing_media_acknowledged_at,
   archived_at = null,

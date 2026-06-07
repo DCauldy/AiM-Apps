@@ -224,8 +224,8 @@ function SceneFactList({
           <TooltipProvider>
             <ul className="divide-y divide-border">
               {facts.map((fact) => (
-                <li key={fact.id} className="relative px-3 py-2 pr-10 text-sm text-foreground">
-                  <div className="flex items-start gap-2">
+                <li key={fact.id} className="grid grid-cols-[minmax(0,1fr)_1.75rem] items-start gap-2 px-3 py-2 text-sm text-foreground">
+                  <div className="flex min-w-0 items-start gap-2">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="mt-0.5 inline-flex shrink-0 text-muted-foreground" aria-label="Approved fact">
@@ -236,11 +236,11 @@ function SceneFactList({
                         <p>Approved fact</p>
                       </TooltipContent>
                     </Tooltip>
-                    <p>{fact.text}</p>
+                    <p className="min-w-0 break-words">{fact.text}</p>
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                       aria-label={`Open actions for ${fact.text}`}
                     >
                       <EllipsisVertical className="h-4 w-4" />

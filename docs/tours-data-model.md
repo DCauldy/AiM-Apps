@@ -13,6 +13,7 @@ Tour Project shell for a listing workflow.
 | `name` | Human-readable project name. |
 | `property_address` | Listing address. |
 | `listing_url` | Optional listing URL. |
+| `tour_type` | Selected output type: `tour_video`, `tour_video_voice_over`, or `tour_video_avatar`. |
 | `status` | Project lifecycle status: `open` or `archived`. |
 | `listing_media_acknowledged_at` | Timestamp showing the user acknowledged they can use listing media for this project. |
 | `created_at` | When the policy row was created. |

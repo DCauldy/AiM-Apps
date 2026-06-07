@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import {
+  DEFAULT_TOUR_PROJECT_TYPE,
+  TOUR_PROJECT_TYPES,
+  type TourProjectType,
+} from "@/lib/tours/project-types";
+import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +19,31 @@ const CreateTourProjectSchema = z.object({
     .optional()
     .transform((value) => (value ? value : null))
     .pipe(z.string().url("Listing URL must be a valid URL").nullable()),
+  tourType: z.enum(TOUR_PROJECT_TYPES).default(DEFAULT_TOUR_PROJECT_TYPE),
 });
+
+async function getTourTypeAvailabilityError(
+  userId: string,
+  tourType: TourProjectType
+): Promise<string | null> {
+  if (tourType === "tour_video") return null;
+
+  const apiKeyStatus = await getUserApiKeyStatusMap(userId, ["elevenlabs", "heygen"]);
+
+  if (
+    tourType === "tour_video_voice_over" &&
+    apiKeyStatus.elevenlabs !== true &&
+    apiKeyStatus.heygen !== true
+  ) {
+    return "Add a HeyGen or ElevenLabs API key before creating a voice over tour.";
+  }
+
+  if (tourType === "tour_video_avatar" && apiKeyStatus.heygen !== true) {
+    return "Add a HeyGen API key before creating a video avatar tour.";
+  }
+
+  return null;
+}
 
 export async function GET() {
   const access = await requireToursAccess();
@@ -23,7 +53,7 @@ export async function GET() {
 
   const { data: projects, error } = await access.supabase
     .from("tours_projects")
-    .select("id, name, property_address, listing_url, status, created_at, updated_at")
+    .select("id, name, property_address, listing_url, tour_type, status, created_at, updated_at")
     .eq("user_id", access.user.id)
     .eq("status", "open")
     .order("created_at", { ascending: false });
@@ -107,6 +137,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const tourTypeAvailabilityError = await getTourTypeAvailabilityError(
+    access.user.id,
+    parsed.data.tourType
+  );
+  if (tourTypeAvailabilityError) {
+    return Response.json({ error: tourTypeAvailabilityError }, { status: 422 });
+  }
+
   const { data, error } = await access.supabase
     .from("tours_projects")
     .insert({
@@ -114,6 +152,7 @@ export async function POST(request: Request) {
       name: parsed.data.name,
       property_address: parsed.data.propertyAddress,
       listing_url: parsed.data.listingUrl,
+      tour_type: parsed.data.tourType,
     })
     .select("id")
     .single();

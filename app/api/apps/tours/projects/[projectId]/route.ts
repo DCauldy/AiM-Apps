@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import { TOUR_PROJECT_TYPES, type TourProjectType } from "@/lib/tours/project-types";
+import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +15,31 @@ const UpdateTourProjectSchema = z.object({
     .optional()
     .transform((value) => (value ? value : null))
     .pipe(z.string().url("Listing URL must be a valid URL").nullable()),
+  tourType: z.enum(TOUR_PROJECT_TYPES).optional(),
 });
+
+async function getTourTypeAvailabilityError(
+  userId: string,
+  tourType: TourProjectType
+): Promise<string | null> {
+  if (tourType === "tour_video") return null;
+
+  const apiKeyStatus = await getUserApiKeyStatusMap(userId, ["elevenlabs", "heygen"]);
+
+  if (
+    tourType === "tour_video_voice_over" &&
+    apiKeyStatus.elevenlabs !== true &&
+    apiKeyStatus.heygen !== true
+  ) {
+    return "Add a HeyGen or ElevenLabs API key before choosing a voice over tour.";
+  }
+
+  if (tourType === "tour_video_avatar" && apiKeyStatus.heygen !== true) {
+    return "Add a HeyGen API key before choosing a video avatar tour.";
+  }
+
+  return null;
+}
 
 export async function PATCH(
   request: Request,
@@ -34,18 +60,29 @@ export async function PATCH(
     );
   }
 
+  if (parsed.data.tourType) {
+    const tourTypeAvailabilityError = await getTourTypeAvailabilityError(
+      access.user.id,
+      parsed.data.tourType
+    );
+    if (tourTypeAvailabilityError) {
+      return Response.json({ error: tourTypeAvailabilityError }, { status: 422 });
+    }
+  }
+
   const { data, error } = await access.supabase
     .from("tours_projects")
     .update({
       name: parsed.data.name,
       property_address: parsed.data.propertyAddress,
       listing_url: parsed.data.listingUrl,
+      ...(parsed.data.tourType ? { tour_type: parsed.data.tourType } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", projectId)
     .eq("user_id", access.user.id)
     .eq("status", "open")
-    .select("id, name, property_address, listing_url, status, updated_at")
+    .select("id, name, property_address, listing_url, tour_type, status, updated_at")
     .maybeSingle();
 
   if (error) {

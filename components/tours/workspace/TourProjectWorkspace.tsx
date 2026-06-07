@@ -4,9 +4,12 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { ShieldCheck } from "lucide-react";
+import { Mic2, ShieldCheck, UserRound, Video } from "lucide-react";
+import { TOUR_PROJECT_TYPE_LABELS } from "@/lib/tours/project-types";
+import type { TourProjectType } from "@/lib/tours/project-types";
 import type { TourProjectWorkspaceViewModel, TourScene } from "@/lib/tours/workspace";
 import { PageFrame } from "@/components/app-shell/PagePrimitives";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ConfirmDialog,
@@ -24,6 +27,12 @@ import {
 import { SceneDetailsPanel } from "./SceneDetailsPanel";
 import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
 import { useTourSceneMutations } from "./useTourSceneMutations";
+
+const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
+  tour_video: Video,
+  tour_video_voice_over: Mic2,
+  tour_video_avatar: UserRound,
+};
 
 async function acknowledgeListingMediaAuthorization(projectId: string) {
   const response = await fetch(
@@ -129,6 +138,7 @@ export function TourProjectWorkspace({
 
   const authorization = viewModel.listingMediaAuthorization;
   const canUseSceneMediaTools = authorization.hasAcknowledged;
+  const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
 
   const invalidateWorkspace = useCallback(() => {
     queryClient.invalidateQueries({
@@ -349,9 +359,18 @@ export function TourProjectWorkspace({
       <section className="mx-auto w-full max-w-7xl lg:min-h-[calc(100vh-8rem)]">
         <header className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
-              {viewModel.project.name}
-            </h1>
+            <div className="flex min-w-0 items-center gap-3">
+              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                {viewModel.project.name}
+              </h1>
+              <Badge
+                variant="outline"
+                className="shrink-0 gap-1.5 border-primary/50 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+              >
+                <TourTypeIcon className="h-3 w-3" />
+                {TOUR_PROJECT_TYPE_LABELS[viewModel.project.tourType]}
+              </Badge>
+            </div>
             <p className="mt-1 truncate text-sm text-muted-foreground">{viewModel.listing.address}</p>
           </div>
           <ProjectActionsMenu

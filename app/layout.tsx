@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Space_Grotesk, Archivo } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { GlobalNavigationLoader } from "@/components/navigation/GlobalNavigationLoader";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -47,10 +49,12 @@ export default function RootLayout({
               </linearGradient>
             </defs>
           </svg>
+          <Suspense fallback={null}>
+            <GlobalNavigationLoader />
+          </Suspense>
           {children}
         </ThemeProvider>
       </body>
     </html>
   );
 }
-

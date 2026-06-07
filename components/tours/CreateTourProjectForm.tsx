@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Mic2, Plus, UserRound, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,11 +15,69 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  DEFAULT_TOUR_PROJECT_TYPE,
+  TOUR_PROJECT_TYPE_LABELS,
+  type TourProjectType,
+} from "@/lib/tours/project-types";
+import { cn } from "@/lib/utils";
 
 type CreateTourProjectInput = {
   name: string;
   propertyAddress: string;
   listingUrl: string;
+  tourType: TourProjectType;
+};
+
+const tourTypeOptions: Array<{
+  value: TourProjectType;
+  title: string;
+  description: string;
+  icon: typeof Video;
+  isEnabled: (availability: TourTypeAvailability) => boolean;
+  disabledReason: string;
+  disabledDetails: string;
+}> = [
+  {
+    value: "tour_video",
+    title: TOUR_PROJECT_TYPE_LABELS.tour_video,
+    description: "A visual property tour without avatar narration or voice over.",
+    icon: Video,
+    isEnabled: () => true,
+    disabledReason: "",
+    disabledDetails: "",
+  },
+  {
+    value: "tour_video_voice_over",
+    title: TOUR_PROJECT_TYPE_LABELS.tour_video_voice_over,
+    description: "Add generated narration to the property tour video.",
+    icon: Mic2,
+    isEnabled: ({ canUseElevenLabs, canUseHeyGen }) => canUseElevenLabs || canUseHeyGen,
+    disabledReason: "Requires a HeyGen or ElevenLabs API key.",
+    disabledDetails:
+      "Voice over tours will unlock when an active profile has a HeyGen or ElevenLabs API key.",
+  },
+  {
+    value: "tour_video_avatar",
+    title: TOUR_PROJECT_TYPE_LABELS.tour_video_avatar,
+    description: "Present the tour with a generated on-screen video avatar.",
+    icon: UserRound,
+    isEnabled: ({ canUseHeyGen }) => canUseHeyGen,
+    disabledReason: "Requires a HeyGen API key.",
+    disabledDetails:
+      "Video avatar tours will unlock when an active profile has a HeyGen API key.",
+  },
+];
+
+type TourTypeAvailability = {
+  canUseElevenLabs: boolean;
+  canUseHeyGen: boolean;
 };
 
 async function createTourProject(input: CreateTourProjectInput) {
@@ -34,13 +93,17 @@ async function createTourProject(input: CreateTourProjectInput) {
   return payload as { projectId: string };
 }
 
-export function CreateTourProjectForm() {
+export function CreateTourProjectForm({
+  canUseElevenLabs,
+  canUseHeyGen,
+}: TourTypeAvailability) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
   const [listingUrl, setListingUrl] = useState("");
+  const [tourType, setTourType] = useState<TourProjectType>(DEFAULT_TOUR_PROJECT_TYPE);
 
   const mutation = useMutation({
     mutationFn: createTourProject,
@@ -57,7 +120,7 @@ export function CreateTourProjectForm() {
         Start property
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Start a property</DialogTitle>
             <DialogClose onClose={() => setOpen(false)} />
@@ -67,7 +130,7 @@ export function CreateTourProjectForm() {
               id="create-tour-project-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                mutation.mutate({ name, propertyAddress, listingUrl });
+                mutation.mutate({ name, propertyAddress, listingUrl, tourType });
               }}
             >
               <p className="text-sm text-muted-foreground">
@@ -108,6 +171,89 @@ export function CreateTourProjectForm() {
                   />
                 </label>
               </div>
+
+              <fieldset className="mt-5">
+                <legend className="text-sm font-medium">Tour type</legend>
+                <TooltipProvider delayDuration={150}>
+                  <div className="mt-2 grid gap-3 md:grid-cols-3">
+                    {tourTypeOptions.map((option) => {
+                      const Icon = option.icon;
+                      const enabled = option.isEnabled({ canUseElevenLabs, canUseHeyGen });
+                      const selected = tourType === option.value;
+                      const cardClassName = cn(
+                        "min-h-[148px] rounded-md border bg-card p-4 text-left transition",
+                        selected
+                          ? "border-primary ring-2 ring-primary/35"
+                          : "border-border",
+                        enabled
+                          ? "cursor-pointer hover:border-primary/70"
+                          : "cursor-not-allowed opacity-70"
+                      );
+
+                      const cardContent = (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Icon className="h-4 w-4 text-primary" />
+                            <span className="text-sm font-semibold text-foreground">
+                              {option.title}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                            {option.description}
+                          </p>
+                          {!enabled && (
+                            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                              {option.disabledReason}{" "}
+                              <Link
+                                href="/apps/profile/api-keys"
+                                className="font-medium text-primary underline-offset-4 hover:underline"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                Add API keys
+                              </Link>
+                            </p>
+                          )}
+                        </>
+                      );
+
+                      if (!enabled) {
+                        return (
+                          <Tooltip key={option.value}>
+                            <TooltipTrigger asChild>
+                              <div
+                                aria-disabled="true"
+                                aria-checked="false"
+                                role="radio"
+                                tabIndex={0}
+                                className={cardClassName}
+                              >
+                                {cardContent}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              {option.disabledDetails}
+                            </TooltipContent>
+                          </Tooltip>
+                        );
+                      }
+
+                      return (
+                        <label key={option.value} className={cardClassName}>
+                          <input
+                            type="radio"
+                            name="tourType"
+                            value={option.value}
+                            checked={selected}
+                            onChange={() => setTourType(option.value)}
+                            className="sr-only"
+                          />
+                          {cardContent}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </TooltipProvider>
+              </fieldset>
 
               {mutation.error && (
                 <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

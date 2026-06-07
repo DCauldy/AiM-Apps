@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown, Sparkles, FileText, Radar, Mail, Video, Lock, ExternalLink, LayoutGrid, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { startNavigationProgress } from "@/lib/navigation-progress";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -157,6 +158,7 @@ export function AppSwitcher() {
       setProModalOpen(true);
       return;
     }
+    startNavigationProgress();
     router.push(app.route);
   };
 

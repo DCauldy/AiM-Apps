@@ -8,12 +8,14 @@ import {
   EmptyState,
 } from "@/components/app-shell/PagePrimitives";
 import { Button } from "@/components/ui/button";
+import type { TourProjectType } from "@/lib/tours/project-types";
 
 type TourProject = {
   id: string;
   name: string;
   property_address: string;
   listing_url: string | null;
+  tour_type: TourProjectType;
   status: "open" | "archived";
   created_at: string;
   updated_at: string;

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
 import { BlogUpgradeModal } from "@/components/blog-engine/BlogUpgradeModal";
 import { RadarUpgradeModal } from "@/components/radar/RadarUpgradeModal";
+import { startNavigationProgress } from "@/lib/navigation-progress";
 
 /* ── Types ── */
 
@@ -290,6 +291,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
     }
     const { isAccessible } = getAccessState(app);
     if (isAccessible) {
+      startNavigationProgress();
       router.push(app.route);
     }
   };
