@@ -4,6 +4,7 @@ import { getFeatureFlags } from "@/lib/admin-config.server";
 import { AppsShowcase } from "@/components/apps/AppsShowcase";
 import { getTrialStatus } from "@/lib/trial";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
+import { getSlotState, countActiveProfiles } from "@/lib/profiles/server";
 import type { UsageStats } from "@/components/apps/AppsShowcase";
 
 export default async function AppsPage() {
@@ -21,6 +22,7 @@ export default async function AppsPage() {
     "blog-engine": null,
     "radar": null,
     "hyperlocal": null,
+    "profile": null,
   };
 
   if (user) {
@@ -29,6 +31,17 @@ export default async function AppsPage() {
       used: trialStatus.usage,
       limit: trialStatus.limit,
       period: "this month",
+    };
+
+    // Profile slot usage — always show, no tier gating
+    const [slot, profileCount] = await Promise.all([
+      getSlotState(user.id),
+      countActiveProfiles(user.id),
+    ]);
+    usageStats["profile"] = {
+      used: profileCount,
+      limit: slot.profile_slot_count,
+      period: "profile slots used",
     };
 
     if (subscriptionTier === "pro") {

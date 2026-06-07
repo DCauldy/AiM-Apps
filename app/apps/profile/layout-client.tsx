@@ -5,7 +5,7 @@ import { ProfileAppHeader } from "@/components/profile/ProfileAppHeader";
 
 export function ProfileLayoutClient({ children }: { children: React.ReactNode }) {
   return (
-    <AppShell themeClassName="" header={<ProfileAppHeader />}>
+    <AppShell themeClassName="profile-theme" header={<ProfileAppHeader />}>
       {children}
     </AppShell>
   );
