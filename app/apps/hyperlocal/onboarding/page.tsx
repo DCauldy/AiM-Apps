@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { OnboardingChat } from "@/components/hyperlocal/onboarding/OnboardingChat";
-import { ProfileMigrationBanner } from "@/components/profile/ProfileMigrationBanner";
+import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
 import { requireActiveProfileOrRedirect } from "@/lib/profiles/require-active";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export default async function HyperlocalOnboardingPage() {
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 pt-6">
-        <ProfileMigrationBanner what="Sender identity, brokerage, and brand visuals" />
+        <ProfileFieldsBanner what="Sender identity, brokerage, and brand visuals" />
       </div>
       <div className="flex-1 min-h-0">
         <OnboardingChat hasSender={true} hasEmail={hasEmail} />

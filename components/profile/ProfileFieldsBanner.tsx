@@ -3,18 +3,19 @@
 import Link from "next/link";
 import { Building2, ArrowRight } from "lucide-react";
 
-interface ProfileMigrationBannerProps {
-  /** Human-readable list of what moved, e.g. "Sender identity and brand visuals". */
+interface ProfileFieldsBannerProps {
+  /** Human-readable list of fields owned by Profile, e.g. "Sender identity and brand visuals". */
   what: string;
 }
 
 /**
- * Banner shown on per-app settings pages where some configuration
- * has moved to the unified Profile system. Used at the top of
- * Hyperlocal settings, Blog Engine settings, etc., to direct users
- * to /apps/profile for fields that previously lived in those pages.
+ * Banner used wherever an app page references fields that the unified
+ * Profile owns. It is a permanent navigation cue, not a migration
+ * notice — every AiM Automations app reads identity from the active
+ * profile, and this banner is how the user gets to /apps/profile to
+ * edit those fields.
  */
-export function ProfileMigrationBanner({ what }: ProfileMigrationBannerProps) {
+export function ProfileFieldsBanner({ what }: ProfileFieldsBannerProps) {
   return (
     <Link
       href="/apps/profile"
@@ -25,7 +26,7 @@ export function ProfileMigrationBanner({ what }: ProfileMigrationBannerProps) {
       </span>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold">
-          {what} now live on your Profile
+          {what} live on your Profile
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
           One identity per company, shared across every AiM Automations app.

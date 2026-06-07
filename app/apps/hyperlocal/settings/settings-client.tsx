@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { CrmTab } from "@/components/hyperlocal/settings/CrmTab";
 import { EmailTab } from "@/components/hyperlocal/settings/EmailTab";
 import { SuppressionTab } from "@/components/hyperlocal/settings/SuppressionTab";
-import { ProfileMigrationBanner } from "@/components/profile/ProfileMigrationBanner";
+import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
 import type {
   PlatformSenderProfile,
   PlatformBrandingProfile,
@@ -50,7 +50,7 @@ export function SettingsClient({
         </p>
       </div>
 
-      <ProfileMigrationBanner what="Sender identity, brokerage, and brand visuals" />
+      <ProfileFieldsBanner what="Sender identity, brokerage, and brand visuals" />
 
       {/* Tab nav */}
       <div className="border-b border-border mb-6 -mx-4 sm:mx-0 overflow-x-auto">

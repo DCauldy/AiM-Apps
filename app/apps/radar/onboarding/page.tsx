@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { RadarSetupForm } from "@/components/radar/onboarding/RadarSetupForm";
-import { ProfileMigrationBanner } from "@/components/profile/ProfileMigrationBanner";
+import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
 import { requireActiveProfileOrRedirect } from "@/lib/profiles/require-active";
 import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
 
@@ -36,7 +36,7 @@ export default async function RadarOnboardingPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 pt-6">
-        <ProfileMigrationBanner what="Agent name, brokerage, market, and specializations" />
+        <ProfileFieldsBanner what="Agent name, brokerage, market, and specializations" />
       </div>
       <RadarSetupForm profile={profile as unknown as { full_name?: string; business_name?: string; [key: string]: unknown }} />
     </div>
