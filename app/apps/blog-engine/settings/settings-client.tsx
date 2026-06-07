@@ -20,6 +20,7 @@ import {
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { BlogUpgradeModal } from "@/components/blog-engine/BlogUpgradeModal";
+import { ProfileMigrationBanner } from "@/components/profile/ProfileMigrationBanner";
 import { useToast } from "@/components/ui/toast";
 import { BLOG_PACKS } from "@/lib/blog-packs";
 import { getUserTierLabel } from "@/lib/blog-packs";
@@ -298,11 +299,12 @@ export function SettingsClient({
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-8">
+        <ProfileMigrationBanner what="Identity, brokerage, market, target clients, brand colors, and CTAs" />
         <div className="flex items-center justify-between">
           <div>
             <h1 className="font-sans text-xl font-bold text-foreground">Settings</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Manage your Blog Engine profile and preferences
+              Blog schedule, CMS connections, and blog tone preferences
             </p>
           </div>
           <button

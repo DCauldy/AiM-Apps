@@ -12,22 +12,10 @@ export default async function HyperlocalSettingsPage() {
   if (!user) redirect("/login");
 
   const [
-    { data: senderProfiles },
-    { data: brandingProfiles },
     { data: crmConnections },
     { data: emailConnections },
     { data: suppressions },
   ] = await Promise.all([
-    supabase
-      .from("platform_sender_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("is_default", { ascending: false }),
-    supabase
-      .from("platform_branding_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("is_default", { ascending: false }),
     supabase
       .from("hl_crm_connections")
       .select("*")
@@ -48,8 +36,6 @@ export default async function HyperlocalSettingsPage() {
 
   return (
     <SettingsClient
-      senderProfiles={senderProfiles ?? []}
-      brandingProfiles={brandingProfiles ?? []}
       crmConnections={crmConnections ?? []}
       emailConnections={emailConnections ?? []}
       suppressions={suppressions ?? []}
