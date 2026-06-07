@@ -1,6 +1,7 @@
 import { inngest } from "@/lib/inngest/client";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getConnector } from "@/lib/hyperlocal/crm";
+import { filterDeliverable } from "@/lib/hyperlocal/email/validation";
 import { identifyGeographies } from "@/lib/hyperlocal/geographies";
 import {
   computeRequiredMlsExports,
@@ -99,7 +100,7 @@ export const hlDiscover = inngest.createFunction(
       "fetch-and-segment",
       async () => {
         const connector = getConnector(ctx.crmConnection.platform);
-        const contacts = await connector.fetchContacts(ctx.crmConnection, {
+        const fetched = await connector.fetchContacts(ctx.crmConnection, {
           limit: 25_000,
         });
 
@@ -111,6 +112,18 @@ export const hlDiscover = inngest.createFunction(
             last_error: null,
           })
           .eq("id", ctx.crmConnection.id);
+
+        // Free in-house list hygiene — syntax + typo + MX. Drops dead
+        // emails before they enter segmentation so the customer's Resend
+        // bounce rate stays clean. See lib/hyperlocal/email/validation.ts
+        // for the strategy notes.
+        const { deliverable: contacts, removed } = await filterDeliverable(fetched);
+        if (removed.length > 0) {
+          console.log(
+            `[hl-discover] hygiene removed ${removed.length}/${fetched.length} contacts ` +
+              `for run ${runId}`
+          );
+        }
 
         const hasServiceArea =
           Array.isArray(ctx.campaign.service_area_zips) &&
