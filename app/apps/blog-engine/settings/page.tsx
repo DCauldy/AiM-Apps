@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
 import { SettingsClient } from "./settings-client";
 
 export default async function SettingsPage() {
@@ -10,13 +11,10 @@ export default async function SettingsPage() {
 
   if (!user) redirect("/login");
 
-  // Load profile, schedule, and CMS connections
-  const [profileResult, scheduleResult, cmsResult] = await Promise.all([
-    supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle(),
+  // Load schedule (includes the Blog Engine app-specific fields:
+  // CTAs, blog_tone, include_disclaimers, onboarding_completed),
+  // CMS connections, and a unified profile object for legacy UI rendering.
+  const [scheduleResult, cmsResult, effectiveProfile] = await Promise.all([
     supabase
       .from("bofu_schedules")
       .select("*")
@@ -26,17 +24,22 @@ export default async function SettingsPage() {
       .from("bofu_cms_connections")
       .select("*")
       .eq("user_id", user.id),
+    getProfileForBlogEngine(user.id),
   ]);
 
-  if (!profileResult.data?.onboarding_completed) {
+  if (!scheduleResult.data?.onboarding_completed) {
     redirect("/apps/blog-engine/onboarding");
+  }
+
+  if (!effectiveProfile) {
+    redirect("/apps/profile/new?return_to=/apps/blog-engine/settings");
   }
 
   const schedule = scheduleResult.data;
 
   return (
     <SettingsClient
-      profile={profileResult.data}
+      profile={effectiveProfile}
       schedule={schedule}
       cmsConnections={cmsResult.data || []}
       frequencyTier={schedule?.frequency_tier || "free"}
