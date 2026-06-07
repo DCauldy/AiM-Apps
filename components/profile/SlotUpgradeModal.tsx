@@ -80,7 +80,7 @@ export function SlotUpgradeModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md" onClick={onClose} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <div className="relative w-full max-w-md rounded-2xl glass-modal text-white overflow-hidden pointer-events-auto">
           <button

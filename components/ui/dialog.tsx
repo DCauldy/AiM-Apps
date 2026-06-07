@@ -34,7 +34,7 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center sm:p-0">
       <div
-        className="fixed inset-0 bg-black/50"
+        className="fixed inset-0 bg-black/75 backdrop-blur-md"
         onClick={() => onOpenChange(false)}
       />
       {children}
