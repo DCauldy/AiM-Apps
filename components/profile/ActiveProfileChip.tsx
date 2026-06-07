@@ -91,8 +91,8 @@ export function ActiveProfileChip() {
 
   if (!loaded) {
     return (
-      <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full border border-border bg-card/50 text-sm text-muted-foreground">
-        <span className="w-4 h-4 rounded-sm bg-muted animate-pulse" />
+      <div className="glass-card inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm text-white/70">
+        <span className="w-4 h-4 rounded-sm bg-white/20 animate-pulse" />
         <span>Loading profile…</span>
       </div>
     );
@@ -103,7 +103,7 @@ export function ActiveProfileChip() {
     return (
       <Link
         href="/apps/profile/new"
-        className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-dashed border-foreground/30 hover:border-foreground/60 hover:bg-accent transition-colors text-sm font-medium"
+        className="glass-card inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium text-white"
       >
         <Plus className="h-4 w-4" />
         Set up your first profile
@@ -113,7 +113,7 @@ export function ActiveProfileChip() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full border border-border bg-card hover:bg-accent transition-colors text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <DropdownMenuTrigger className="glass-card inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="text-muted-foreground">Operating as</span>
         {active ? (
           <span className="font-semibold">{active.display_name}</span>

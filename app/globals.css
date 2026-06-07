@@ -784,26 +784,27 @@ pre code {
 
 .apps-theme {
   color-scheme: dark;
-  /* Slight darker tint than blog-engine so the AVIF gradient still
-     shows through where cards do not cover. */
-  --background: 200 35% 12%;
+  /* The AVIF gradient under apps-theme is bright teal-blue, so the
+     bg-card / bg-background tokens need to be near-black to crisp
+     against it. Otherwise surfaces blend into the gradient. */
+  --background: 215 30% 6%;
   --foreground: 0 0% 100%;
-  --card: 200 35% 10%;
+  --card: 215 30% 6%;
   --card-foreground: 0 0% 100%;
-  --popover: 200 35% 10%;
+  --popover: 215 30% 6%;
   --popover-foreground: 0 0% 100%;
   --primary: 160 68% 53%;
-  --primary-foreground: 200 35% 10%;
-  --secondary: 200 25% 18%;
+  --primary-foreground: 215 30% 6%;
+  --secondary: 215 25% 14%;
   --secondary-foreground: 0 0% 100%;
-  --muted: 200 25% 18%;
-  --muted-foreground: 0 0% 80%;
-  --accent: 200 25% 18%;
+  --muted: 215 25% 14%;
+  --muted-foreground: 0 0% 82%;
+  --accent: 215 25% 18%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 62.8% 50%;
   --destructive-foreground: 0 0% 100%;
-  --border: 200 25% 28%;
-  --input: 200 25% 28%;
+  --border: 215 25% 24%;
+  --input: 215 25% 24%;
   --ring: 160 68% 53%;
 }
 
@@ -858,6 +859,30 @@ pre code {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 24px 60px rgba(0, 0, 0, 0.5);
+  /* Force a dark-themed token palette so descendants using
+     text-foreground / bg-background / outline buttons / etc. read
+     correctly against the glass — the modal is portaled to body so it
+     otherwise inherits the root :root light-theme tokens. */
+  color-scheme: dark;
+  --background: 200 35% 12%;
+  --foreground: 0 0% 100%;
+  --card: 200 35% 10%;
+  --card-foreground: 0 0% 100%;
+  --popover: 200 35% 10%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 160 68% 53%;
+  --primary-foreground: 200 35% 10%;
+  --secondary: 200 25% 18%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 200 25% 18%;
+  --muted-foreground: 0 0% 78%;
+  --accent: 200 25% 22%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 200 25% 28%;
+  --input: 200 25% 28%;
+  --ring: 160 68% 53%;
 }
 
 /* Smaller floating panels (AppSwitcher dropdown, popovers). Slightly
@@ -868,6 +893,29 @@ pre code {
   backdrop-filter: blur(32px) saturate(1.5);
   -webkit-backdrop-filter: blur(32px) saturate(1.5);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  /* Same dark-token override as .glass-modal so menu items, buttons,
+     borders, hovered accent surfaces all read against the dark glass
+     regardless of which page theme rendered the trigger. */
+  color-scheme: dark;
+  --background: 200 35% 12%;
+  --foreground: 0 0% 100%;
+  --card: 200 35% 10%;
+  --card-foreground: 0 0% 100%;
+  --popover: 200 35% 10%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 160 68% 53%;
+  --primary-foreground: 200 35% 10%;
+  --secondary: 200 25% 18%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 200 25% 18%;
+  --muted-foreground: 0 0% 78%;
+  --accent: 200 25% 22%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 200 25% 28%;
+  --input: 200 25% 28%;
+  --ring: 160 68% 53%;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 16px 40px rgba(0, 0, 0, 0.5);
