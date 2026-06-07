@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { OnboardingChat } from "@/components/blog-engine/onboarding/OnboardingChat";
-import { ProfileMigrationBanner } from "@/components/profile/ProfileMigrationBanner";
+import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
 
 export function OnboardingClient() {
   const router = useRouter();
@@ -14,7 +14,7 @@ export function OnboardingClient() {
   return (
     <div className="h-full flex flex-col">
       <div className="px-6 pt-6">
-        <ProfileMigrationBanner what="Identity, brokerage, market, target clients, brand colors, and CTAs" />
+        <ProfileFieldsBanner what="Identity, brokerage, market, target clients, brand colors, and CTAs" />
       </div>
       <div className="flex-1 min-h-0">
         <OnboardingChat onComplete={handleComplete} />
