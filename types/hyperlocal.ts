@@ -181,11 +181,9 @@ export interface HlCrmConnection {
 // Email Connections
 // ---------------------------------------------------------------------------
 
-export type EmailProvider = "google" | "microsoft" | "resend";
+export type EmailProvider = "resend";
 
 export const EMAIL_PROVIDER_LABELS: Record<EmailProvider, string> = {
-  google: "Gmail",
-  microsoft: "Outlook / Microsoft 365",
   resend: "Resend (verified domain)",
 };
 
@@ -199,15 +197,15 @@ export interface HlEmailConnection {
   email_address: string;
   display_name?: string | null;
 
-  oauth_access_token_encrypted?: string | null;
-  oauth_refresh_token_encrypted?: string | null;
-  oauth_expires_at?: string | null;
-  oauth_scope?: string | null;
-
   resend_api_key_encrypted?: string | null;
+  resend_webhook_secret_encrypted?: string | null;
   resend_domain?: string | null;
   resend_domain_id?: string | null;
   resend_dkim_status?: ResendDkimStatus | null;
+
+  paused?: boolean;
+  paused_reason?: string | null;
+  paused_at?: string | null;
 
   is_active: boolean;
   is_default: boolean;

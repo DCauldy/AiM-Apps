@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Star, Trash2, AlertCircle, CheckCircle2, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { Star, Trash2, AlertCircle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
@@ -17,7 +17,6 @@ export function EmailTab({
   const toast = useHlToast();
   const { confirm, dialog } = useHlDialog();
   const [connections, setConnections] = useState(initialConnections);
-  const [showResend, setShowResend] = useState(false);
   const [resendApiKey, setResendApiKey] = useState("");
   const [resendDomain, setResendDomain] = useState("");
   const [resendFrom, setResendFrom] = useState("");
@@ -30,10 +29,6 @@ export function EmailTab({
     const res = await fetch("/api/apps/hyperlocal/email-connections");
     const json = await res.json();
     setConnections(json.connections ?? []);
-  };
-
-  const connectOAuth = (provider: "google" | "microsoft") => {
-    window.location.href = `/api/apps/hyperlocal/email-connections/oauth/${provider}/start`;
   };
 
   const verifyResend = async () => {
@@ -132,108 +127,85 @@ export function EmailTab({
     <div className="space-y-4">
       {dialog}
       <p className="text-sm text-muted-foreground">
-        Connect a sending account so Hyperlocal emails go out from your own
-        identity. We recommend Gmail or Outlook for personal sends, or Resend
-        for a high-volume verified domain.
+        Hyperlocal sends through your own Resend account so deliverability,
+        domain ownership, and billing stay with you. Connect your API key
+        and verified sending domain below.
       </p>
 
-      {/* Connect buttons */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <ProviderTile
-          name="Gmail"
-          description="Send from your Google Workspace or personal Gmail."
-          onClick={() => connectOAuth("google")}
-        />
-        <ProviderTile
-          name="Outlook / 365"
-          description="Send from your Microsoft 365 mailbox via Graph API."
-          onClick={() => connectOAuth("microsoft")}
-        />
-        <ProviderTile
-          name="Resend (BYO)"
-          description="Bring your own Resend account + verified domain. Full ownership of deliverability & billing."
-          onClick={() => setShowResend((s) => !s)}
-          active={showResend}
-        />
-      </div>
-
       {/* Resend setup panel */}
-      {showResend && (
-        <div className="rounded-lg border border-border bg-card p-5 space-y-4">
-          <h3 className="text-sm font-semibold">Connect your Resend account</h3>
-          <p className="text-xs text-muted-foreground">
-            Bring your own Resend account — your API key, your domain, your
-            sending reputation. We'll validate the key, kick off domain
-            verification, and return the DNS records to add. Once DNS
-            propagates (5 min – 24 hr), come back and click <strong>Check</strong>.
+      <div className="rounded-lg border border-border bg-card p-5 space-y-4">
+        <h3 className="text-sm font-semibold">Connect your Resend account</h3>
+        <p className="text-xs text-muted-foreground">
+          We&apos;ll validate the key, kick off domain verification, and return
+          the DNS records to add. Once DNS propagates (5 min – 24 hr), come
+          back and click <strong>Check</strong>.
+        </p>
+        <Field label="Resend API key">
+          <Input
+            type="password"
+            value={resendApiKey}
+            onChange={(e) => setResendApiKey(e.target.value)}
+            placeholder="re_••••••••••••••••••"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Get one at{" "}
+            <a
+              href="https://resend.com/api-keys"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline"
+            >
+              resend.com/api-keys
+            </a>{" "}
+            — full-access permission is required for domain verification.
           </p>
-          <Field label="Resend API key">
+        </Field>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Field label="Domain">
             <Input
-              type="password"
-              value={resendApiKey}
-              onChange={(e) => setResendApiKey(e.target.value)}
-              placeholder="re_••••••••••••••••••"
+              value={resendDomain}
+              onChange={(e) => setResendDomain(e.target.value)}
+              placeholder="mail.yourbrokerage.com"
             />
-            <p className="text-xs text-muted-foreground mt-1">
-              Get one at{" "}
-              <a
-                href="https://resend.com/api-keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:no-underline"
-              >
-                resend.com/api-keys
-              </a>{" "}
-              — full-access permission is required for domain verification.
-            </p>
           </Field>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Field label="Domain">
-              <Input
-                value={resendDomain}
-                onChange={(e) => setResendDomain(e.target.value)}
-                placeholder="mail.yourbrokerage.com"
-              />
-            </Field>
-            <Field label="From address">
-              <Input
-                type="email"
-                value={resendFrom}
-                onChange={(e) => setResendFrom(e.target.value)}
-                placeholder="jane@mail.yourbrokerage.com"
-              />
-            </Field>
-            <Field label="Display name">
-              <Input
-                value={resendName}
-                onChange={(e) => setResendName(e.target.value)}
-                placeholder="Jane Smith"
-              />
-            </Field>
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={verifyResend} disabled={resendSaving}>
-              {resendSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying…
-                </>
-              ) : (
-                "Start verification"
-              )}
-            </Button>
-          </div>
-          {resendDns != null && (
-            <details className="rounded-md border border-border p-3" open>
-              <summary className="text-xs font-medium cursor-pointer">
-                Required DNS records
-              </summary>
-              <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto">
-                {JSON.stringify(resendDns, null, 2)}
-              </pre>
-            </details>
-          )}
+          <Field label="From address">
+            <Input
+              type="email"
+              value={resendFrom}
+              onChange={(e) => setResendFrom(e.target.value)}
+              placeholder="jane@mail.yourbrokerage.com"
+            />
+          </Field>
+          <Field label="Display name">
+            <Input
+              value={resendName}
+              onChange={(e) => setResendName(e.target.value)}
+              placeholder="Jane Smith"
+            />
+          </Field>
         </div>
-      )}
+        <div className="flex justify-end">
+          <Button onClick={verifyResend} disabled={resendSaving}>
+            {resendSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Verifying…
+              </>
+            ) : (
+              "Start verification"
+            )}
+          </Button>
+        </div>
+        {resendDns != null && (
+          <details className="rounded-md border border-border p-3" open>
+            <summary className="text-xs font-medium cursor-pointer">
+              Required DNS records
+            </summary>
+            <pre className="mt-2 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto">
+              {JSON.stringify(resendDns, null, 2)}
+            </pre>
+          </details>
+        )}
+      </div>
 
       {/* Existing connections */}
       {connections.length === 0 ? (
@@ -320,34 +292,6 @@ export function EmailTab({
         </ul>
       )}
     </div>
-  );
-}
-
-function ProviderTile({
-  name,
-  description,
-  onClick,
-  active,
-}: {
-  name: string;
-  description: string;
-  onClick: () => void;
-  active?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg border ${
-        active ? "border-[#F43F5E] bg-[#F43F5E]/5" : "border-border bg-card"
-      } p-4 text-left hover:bg-muted/40 transition-colors`}
-    >
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold">{name}</p>
-        <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-      </div>
-      <p className="text-xs text-muted-foreground mt-1">{description}</p>
-    </button>
   );
 }
 

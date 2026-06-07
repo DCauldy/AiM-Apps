@@ -1,31 +1,15 @@
 import type { HlEmailConnection } from "@/types/hyperlocal";
-import { googleProvider } from "./providers/google";
-import { microsoftProvider } from "./providers/microsoft";
 import { resendProvider } from "./providers/resend";
-import type {
-  EmailMessage,
-  EmailProviderClient,
-  SendResult,
-} from "./providers/types";
+import type { EmailMessage, SendResult } from "./providers/types";
 
-function getProvider(conn: HlEmailConnection): EmailProviderClient {
-  switch (conn.provider) {
-    case "google":
-      return googleProvider;
-    case "microsoft":
-      return microsoftProvider;
-    case "resend":
-      return resendProvider;
-    default: {
-      const _exhaust: never = conn.provider;
-      throw new Error(`Unknown email provider: ${String(_exhaust)}`);
-    }
-  }
-}
-
+/**
+ * Dispatch a Hyperlocal email through the connection's provider. Resend is
+ * the only supported provider — Gmail and Outlook OAuth flows were removed
+ * to keep AiM out of the deliverability liability path for customer mail.
+ */
 export async function dispatchEmail(
   conn: HlEmailConnection,
   msg: EmailMessage
 ): Promise<SendResult> {
-  return getProvider(conn).send(conn, msg);
+  return resendProvider.send(conn, msg);
 }
