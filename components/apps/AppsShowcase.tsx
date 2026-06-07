@@ -25,10 +25,6 @@ import {
   BookOpen,
   Users,
   Award,
-  Building2,
-  Palette,
-  ShieldCheck,
-  Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
@@ -41,7 +37,6 @@ export interface UsageStats {
   "prompt-studio": { used: number; limit: number; period: string } | null;
   "blog-engine": { used: number; limit: number; period: string } | null;
   "radar": { used: number; limit: number; period: string } | null;
-  "profile": { used: number; limit: number; period: string } | null;
   "hyperlocal": { used: number; limit: number; period: string } | null;
 }
 
@@ -148,26 +143,6 @@ const APPS: AppMeta[] = [
       { icon: <MapPin className="h-4 w-4" />, text: "Segments by ZIP, city, or neighborhood automatically" },
       { icon: <PenTool className="h-4 w-4" />, text: "Claude-written market reports using your MLS data" },
       { icon: <Mail className="h-4 w-4" />, text: "Sends from your Gmail, Outlook, or verified domain" },
-    ],
-  },
-  {
-    id: "profile",
-    name: "Profile",
-    description: "Your company identities — name, brokerage, market, brand",
-    tagline: "One profile per company. The platform conforms to whichever profile you're operating as.",
-    route: "/apps/profile",
-    icon: <Building2 className="h-5 w-5" />,
-    previewIcon: <Building2 className="h-10 w-10" />,
-    flagKey: "PROFILE",
-    requiresPro: false,
-    gradient: ["#475569", "#1A2A3A"],
-    accentColor: "#64748B",
-    category: "Foundation",
-    features: [
-      { icon: <Building2 className="h-4 w-4" />, text: "Capture identity, market, target clients, license info in one place" },
-      { icon: <Palette className="h-4 w-4" />, text: "Brand colors and assets used by Blog Engine images and Hyperlocal emails" },
-      { icon: <Repeat className="h-4 w-4" />, text: "Switch profiles to operate every app as a different company" },
-      { icon: <ShieldCheck className="h-4 w-4" />, text: "CAN-SPAM address, license number, compliance disclaimers — all in one record" },
     ],
   },
   {
