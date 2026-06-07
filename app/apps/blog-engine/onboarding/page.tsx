@@ -1,19 +1,18 @@
-"use client";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { requireActiveProfileOrRedirect } from "@/lib/profiles/require-active";
+import { OnboardingClient } from "./onboarding-client";
 
-import { useRouter } from "next/navigation";
-import { OnboardingChat } from "@/components/blog-engine/onboarding/OnboardingChat";
+export const dynamic = "force-dynamic";
 
-export default function OnboardingPage() {
-  const router = useRouter();
+export default async function BlogEngineOnboardingPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const handleComplete = () => {
-    // Navigate to dashboard after onboarding completes
-    router.push("/apps/blog-engine/dashboard");
-  };
+  await requireActiveProfileOrRedirect(user.id, "/apps/blog-engine/onboarding");
 
-  return (
-    <div className="h-full flex flex-col">
-      <OnboardingChat onComplete={handleComplete} />
-    </div>
-  );
+  return <OnboardingClient />;
 }
