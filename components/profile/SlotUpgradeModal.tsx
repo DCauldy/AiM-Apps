@@ -104,16 +104,16 @@ export function SlotUpgradeModal({
               <Building2 className="h-5 w-5 text-white" />
             </div>
             <h2 className="text-lg font-bold text-foreground">
-              {reason === "limit" ? "All slots in use" : "Add a Profile Slot"}
+              {reason === "limit" ? "You are at your Profile limit" : "Add another Profile"}
             </h2>
             <div className="text-sm text-muted-foreground mt-1">
               {reason === "limit" && currentUsage ? (
                 <>
-                  You have {currentUsage.activeCount} of {currentUsage.slotCount} slots in
-                  use. Buy another slot to run another company identity.
+                  You have {currentUsage.activeCount} of {currentUsage.slotCount} Profiles in
+                  use. Add another Profile to run a second company identity.
                 </>
               ) : (
-                <>One slot per additional company identity. Apps run independently under each.</>
+                <>One Profile per company identity. Apps run independently under each.</>
               )}
             </div>
           </div>
@@ -122,7 +122,7 @@ export function SlotUpgradeModal({
             <div className="rounded-lg border border-[#31DBA5] bg-[#31DBA5]/5 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold">+1 Profile Slot</p>
+                  <p className="text-sm font-semibold">+1 Profile</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {loading
                       ? "Loading price…"
@@ -144,7 +144,7 @@ export function SlotUpgradeModal({
                 </li>
                 <li className="flex items-start gap-2">
                   <Check className="h-3 w-3 text-[#31DBA5] mt-0.5 shrink-0" />
-                  Archive or delete a profile any time — the slot stays yours.
+                  Archive or delete a Profile any time and replace it at no charge.
                 </li>
               </ul>
             </div>
@@ -152,8 +152,8 @@ export function SlotUpgradeModal({
 
           <div className="px-6 pb-4">
             <p className="text-xs text-muted-foreground">
-              Annual subscription. Cancel any time — your slot stays active through the end of
-              the billing period.
+              Annual subscription. Cancel any time — your Profile stays active through the end
+              of the billing period.
             </p>
           </div>
 
@@ -163,7 +163,7 @@ export function SlotUpgradeModal({
               disabled={!price || redirecting}
               onClick={handleCheckout}
             >
-              {redirecting ? "Redirecting to checkout…" : "Buy a slot"}
+              {redirecting ? "Redirecting to checkout…" : "Add a Profile"}
             </Button>
           </div>
         </div>
