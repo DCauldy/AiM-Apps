@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import {
   DropdownMenu,
@@ -10,17 +10,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User, LogOut, Shield } from "lucide-react";
+import { CreditCard, LogOut, Shield } from "lucide-react";
 
 export function UserMenu() {
   const router = useRouter();
-  const pathname = usePathname();
   const { user, signOut } = useAuth();
-
-  const isBlogEngine = pathname?.startsWith("/apps/blog-engine");
-  const settingsPath = isBlogEngine
-    ? "/apps/blog-engine/settings"
-    : "/apps/prompt-studio/settings";
 
   if (!user) return null;
 
@@ -65,9 +59,9 @@ export function UserMenu() {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push(settingsPath)}>
-          <User className="mr-2 h-4 w-4" />
-          <span>Profile</span>
+        <DropdownMenuItem onClick={() => router.push("/account")}>
+          <CreditCard className="mr-2 h-4 w-4" />
+          <span>Account &amp; Billing</span>
         </DropdownMenuItem>
         {user.app_metadata?.is_admin === true && (
           <>

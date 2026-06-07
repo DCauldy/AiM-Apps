@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, Sparkles, FileText, Radar, Mail, Lock, ExternalLink, LayoutGrid } from "lucide-react";
+import { ChevronDown, Sparkles, FileText, Radar, Mail, Lock, ExternalLink, LayoutGrid, User, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import {
@@ -65,7 +65,24 @@ const APPS: AppDefinition[] = [
     requiresPro: true,
     iconClassName: "bg-gradient-to-br from-[#E11D48] to-[#7C3AED]",
   },
+  {
+    id: "profile",
+    name: "Profile",
+    description: "Manage your company identities",
+    route: "/apps/profile",
+    icon: <User className="h-4 w-4" />,
+    requiresPro: false,
+    iconClassName: "bg-gradient-to-br from-[#475569] to-[#1A2A3A]",
+  },
 ];
+
+interface ProfileSummary {
+  id: string;
+  display_name: string;
+  brokerage: string | null;
+  primary_color: string;
+  accent_color: string;
+}
 
 export function AppSwitcher() {
   const router = useRouter();
@@ -77,12 +94,58 @@ export function AppSwitcher() {
   const subscriptionTier = user?.app_metadata?.subscription_tier;
   const isPro = subscriptionTier === "pro";
 
+  const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [profileSwitchBusy, setProfileSwitchBusy] = useState(false);
+
   useEffect(() => {
     fetch("/api/app-availability")
       .then((res) => res.json())
       .then((data) => setAvailability(data.apps ?? null))
       .catch(() => setAvailability(null));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/profiles")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data?.profiles) return;
+        const summaries: ProfileSummary[] = data.profiles
+          .filter((p: { archived_at: string | null }) => !p.archived_at)
+          .map((p: ProfileSummary) => ({
+            id: p.id,
+            display_name: p.display_name,
+            brokerage: p.brokerage,
+            primary_color: p.primary_color,
+            accent_color: p.accent_color,
+          }));
+        setProfiles(summaries);
+      })
+      .catch(() => setProfiles([]));
+
+    fetch("/api/profile")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setActiveProfileId(data?.active_profile_id ?? null))
+      .catch(() => setActiveProfileId(null));
+  }, [user]);
+
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
+  const otherProfiles = profiles.filter((p) => p.id !== activeProfileId);
+
+  async function switchProfile(profileId: string) {
+    if (profileId === activeProfileId) return;
+    setProfileSwitchBusy(true);
+    try {
+      const res = await fetch(`/api/profiles/${profileId}/activate`, { method: "POST" });
+      if (res.ok) {
+        setActiveProfileId(profileId);
+        router.refresh();
+      }
+    } finally {
+      setProfileSwitchBusy(false);
+    }
+  }
 
   // Determine which app is currently active
   const currentApp = APPS.find((app) => pathname?.startsWith(app.route)) ?? APPS[0];
@@ -161,6 +224,61 @@ export function AppSwitcher() {
               </DropdownMenuItem>
             );
           })}
+
+          {profiles.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <div className="px-2 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Operating as
+              </div>
+              {activeProfile && (
+                <div className="px-2 py-1.5 mx-1 mb-1 rounded-md bg-accent/50">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-6 h-6 rounded-md shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, ${activeProfile.primary_color}, ${activeProfile.accent_color})`,
+                      }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold truncate">{activeProfile.display_name}</p>
+                      {activeProfile.brokerage && (
+                        <p className="text-[11px] text-muted-foreground truncate">{activeProfile.brokerage}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {otherProfiles.slice(0, 5).map((p) => (
+                <DropdownMenuItem
+                  key={p.id}
+                  onClick={() => switchProfile(p.id)}
+                  disabled={profileSwitchBusy}
+                  className="flex items-center gap-2 py-1.5 cursor-pointer"
+                >
+                  <span
+                    className="w-6 h-6 rounded-md shrink-0"
+                    style={{ background: `linear-gradient(135deg, ${p.primary_color}, ${p.accent_color})` }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">{p.display_name}</p>
+                    {p.brokerage && (
+                      <p className="text-[11px] text-muted-foreground truncate">{p.brokerage}</p>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuItem
+                onClick={() => router.push("/apps/profile")}
+                className="flex items-center gap-2 py-1.5 cursor-pointer text-muted-foreground"
+              >
+                <span className="flex items-center justify-center w-6 h-6 rounded-md bg-muted">
+                  <Building2 className="h-3.5 w-3.5" />
+                </span>
+                <p className="text-xs">Manage profiles</p>
+              </DropdownMenuItem>
+            </>
+          )}
 
           <DropdownMenuSeparator />
 

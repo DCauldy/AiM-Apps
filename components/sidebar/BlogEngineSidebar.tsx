@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { AppSwitcher } from "@/components/layout/AppSwitcher";
-import { ProfileSection } from "@/components/layout/ProfileSection";
 import { Separator } from "@/components/ui/separator";
 import { useEffect, useState, useCallback } from "react";
 
@@ -135,8 +134,6 @@ export function BlogEngineSidebar({ isOpen = true, onToggle }: BlogEngineSidebar
           </div>
         )}
 
-        {/* Profile section */}
-        <ProfileSection appBasePath="/apps/blog-engine" onMobileClose={onToggle} />
       </aside>
 
       {/* Mobile overlay */}
