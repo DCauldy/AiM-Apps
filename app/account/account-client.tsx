@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { SlotUpgradeModal } from "@/components/profile/SlotUpgradeModal";
+import { ToastProvider, useToast } from "@/components/ui/toast";
 import { LogOut, Shield, ExternalLink, User } from "lucide-react";
 
 interface Props {
@@ -16,7 +19,15 @@ interface Props {
   isAdmin: boolean;
 }
 
-export function AccountClient({
+export function AccountClient(props: Props) {
+  return (
+    <ToastProvider>
+      <AccountClientInner {...props} />
+    </ToastProvider>
+  );
+}
+
+function AccountClientInner({
   email,
   fullName,
   subscriptionTier,
@@ -27,10 +38,30 @@ export function AccountClient({
 }: Props) {
   const router = useRouter();
   const { signOut } = useAuth();
+  const { addToast } = useToast();
+  const [showSlotModal, setShowSlotModal] = useState(false);
+  const [openingPortal, setOpeningPortal] = useState(false);
 
   async function handleSignOut() {
     await signOut();
     router.push("/");
+  }
+
+  async function openBillingPortal() {
+    setOpeningPortal(true);
+    try {
+      const res = await fetch("/api/profiles/slots/portal", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Could not open billing portal");
+      window.location.href = data.url;
+    } catch (err) {
+      addToast({
+        title: "Could not open billing portal",
+        description: err instanceof Error ? err.message : "Try again shortly.",
+        variant: "destructive",
+      });
+      setOpeningPortal(false);
+    }
   }
 
   return (
@@ -90,16 +121,25 @@ export function AccountClient({
               </span>
             </Row>
           )}
-          <div className="pt-2 flex items-center gap-3">
+          <div className="pt-2 flex items-center gap-3 flex-wrap">
             <Link href="/apps/profile">
               <Button variant="outline" size="sm" className="gap-2">
                 <User className="h-4 w-4" />
                 Manage profiles
               </Button>
             </Link>
-            <Button variant="outline" size="sm" disabled className="gap-2">
+            <Button size="sm" className="gap-2" onClick={() => setShowSlotModal(true)}>
               <ExternalLink className="h-4 w-4" />
-              Buy more slots (coming soon)
+              Buy a slot
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={openBillingPortal}
+              disabled={openingPortal}
+            >
+              {openingPortal ? "Opening…" : "Manage billing"}
             </Button>
           </div>
         </Section>
@@ -122,6 +162,8 @@ export function AccountClient({
           </Button>
         </Section>
       </div>
+
+      <SlotUpgradeModal open={showSlotModal} onClose={() => setShowSlotModal(false)} />
     </div>
   );
 }

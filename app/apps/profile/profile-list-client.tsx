@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Plus, Star, Archive, ArchiveRestore, Trash2, Check, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { SlotUpgradeModal } from "@/components/profile/SlotUpgradeModal";
 import { useToast } from "@/components/ui/toast";
 import type { PlatformProfile } from "@/types/platform-profile";
 
@@ -28,6 +29,7 @@ export function ProfileListClient({
   const [busy, setBusy] = useState<string | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<PlatformProfile | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PlatformProfile | null>(null);
+  const [showSlotModal, setShowSlotModal] = useState(false);
 
   const active = profiles.filter((p) => !p.archived_at);
   const archived = profiles.filter((p) => p.archived_at);
@@ -135,12 +137,19 @@ export function ProfileListClient({
             conform to your active profile.
           </p>
         </div>
-        <Link href="/apps/profile/new">
-          <Button disabled={atSlotLimit} className="gap-2">
-            {atSlotLimit ? <Lock className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            New Profile
+        {atSlotLimit ? (
+          <Button className="gap-2" onClick={() => setShowSlotModal(true)}>
+            <Lock className="h-4 w-4" />
+            Buy a slot
           </Button>
-        </Link>
+        ) : (
+          <Link href="/apps/profile/new">
+            <Button className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Profile
+            </Button>
+          </Link>
+        )}
       </header>
 
       {overSlot && inGrace && slotGraceUntil && (
@@ -207,6 +216,13 @@ export function ProfileListClient({
           ))}
         </section>
       )}
+
+      <SlotUpgradeModal
+        open={showSlotModal}
+        onClose={() => setShowSlotModal(false)}
+        reason="limit"
+        currentUsage={{ activeCount: active.length, slotCount }}
+      />
 
       <ConfirmDialog
         open={Boolean(archiveTarget)}
