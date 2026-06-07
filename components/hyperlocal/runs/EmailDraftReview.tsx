@@ -18,6 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
 import { useHlDialog } from "@/components/hyperlocal/ui/HlDialog";
+import {
+  ComplianceFixItBanner,
+  type ComplianceIssue,
+} from "@/components/hyperlocal/runs/ComplianceFixItBanner";
 import { cn } from "@/lib/utils";
 import type { HlEmail } from "@/types/hyperlocal";
 
@@ -57,6 +61,9 @@ export function EmailDraftReview({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("preview");
   const [approving, setApproving] = useState(false);
+  const [complianceIssues, setComplianceIssues] = useState<
+    ComplianceIssue[] | null
+  >(null);
   const [testSending, setTestSending] = useState(false);
 
   // Block-editor local state (mirrors selected draft)
@@ -314,14 +321,16 @@ export function EmailDraftReview({
     }
   };
 
-  const approveAndSend = async () => {
-    const ok = await confirm({
-      title: "Approve all drafts and start sending?",
-      message: `${totalRecipients.toLocaleString()} email${totalRecipients === 1 ? "" : "s"} will be queued for delivery. The send can't be paused mid-batch.`,
-      confirmLabel: "Send now",
-      destructive: true,
-    });
-    if (!ok) return;
+  const approveAndSend = async (opts: { skipConfirm?: boolean } = {}) => {
+    if (!opts.skipConfirm) {
+      const ok = await confirm({
+        title: "Approve all drafts and start sending?",
+        message: `${totalRecipients.toLocaleString()} email${totalRecipients === 1 ? "" : "s"} will be queued for delivery. The send can't be paused mid-batch.`,
+        confirmLabel: "Send now",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     setApproving(true);
     try {
       const res = await fetch(
@@ -333,7 +342,16 @@ export function EmailDraftReview({
         }
       );
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Approve failed");
+      if (!res.ok) {
+        // Compliance gate refused the launch — surface the structured issue
+        // list inline so the user knows exactly what to fix and where.
+        if (Array.isArray(json.issues) && json.issues.length > 0) {
+          setComplianceIssues(json.issues as ComplianceIssue[]);
+          return;
+        }
+        throw new Error(json.error ?? "Approve failed");
+      }
+      setComplianceIssues(null);
       toast.success(`Sending ${json.approved_count} email(s)`);
       onApproved();
     } catch (e) {
@@ -371,7 +389,16 @@ export function EmailDraftReview({
     : 0;
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
+    <>
+      {complianceIssues && (
+        <ComplianceFixItBanner
+          issues={complianceIssues}
+          retrying={approving}
+          onRetry={() => approveAndSend({ skipConfirm: true })}
+          onDismiss={() => setComplianceIssues(null)}
+        />
+      )}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
       {dialog}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
         <div>
@@ -382,7 +409,7 @@ export function EmailDraftReview({
           </p>
         </div>
         <Button
-          onClick={approveAndSend}
+          onClick={() => approveAndSend()}
           disabled={approving || testSending}
           className="bg-[#E11D48] hover:bg-[#BE123C]"
         >
@@ -644,6 +671,7 @@ export function EmailDraftReview({
         </aside>
       </div>
     </div>
+    </>
   );
 }
 
