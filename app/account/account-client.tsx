@@ -71,11 +71,16 @@ export function AccountClient({
 
         <Section
           title="Profile slots"
-          description="Each profile is a separate company identity. Apps run independently under each one."
+          description="Each slot can hold one company identity. Archive or delete a profile any time to free up its slot for a new one — your slot stays yours."
         >
-          <Row label="Slots used">
+          <Row label="Slots in use">
             <span className="font-mono text-sm">
               {activeProfileCount} / {slotCount}
+            </span>
+          </Row>
+          <Row label="Available">
+            <span className="font-mono text-sm">
+              {Math.max(0, slotCount - activeProfileCount)}
             </span>
           </Row>
           {slotGraceUntil && new Date(slotGraceUntil) > new Date() && (
