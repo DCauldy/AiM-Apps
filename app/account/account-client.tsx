@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { SlotUpgradeModal } from "@/components/profile/SlotUpgradeModal";
 import { ToastProvider, useToast } from "@/components/ui/toast";
-import { LogOut, Shield, ExternalLink, User } from "lucide-react";
+import { LogOut, Shield, Sparkles, User } from "lucide-react";
 
 interface Props {
   email: string;
@@ -129,7 +129,7 @@ function AccountClientInner({
               </Button>
             </Link>
             <Button size="sm" className="gap-2" onClick={() => setShowSlotModal(true)}>
-              <ExternalLink className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" />
               Buy a slot
             </Button>
             <Button

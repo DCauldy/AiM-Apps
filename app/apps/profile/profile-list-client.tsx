@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Star, Archive, ArchiveRestore, Trash2, Check, Lock } from "lucide-react";
+import { Plus, Star, Archive, ArchiveRestore, Trash2, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { SlotUpgradeModal } from "@/components/profile/SlotUpgradeModal";
@@ -139,7 +139,7 @@ export function ProfileListClient({
         </div>
         {atSlotLimit ? (
           <Button className="gap-2" onClick={() => setShowSlotModal(true)}>
-            <Lock className="h-4 w-4" />
+            <Sparkles className="h-4 w-4" />
             Buy a slot
           </Button>
         ) : (
