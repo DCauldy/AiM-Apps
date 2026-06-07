@@ -6,8 +6,6 @@ import Link from "next/link";
 interface ProfileSummary {
   id: string;
   display_name: string;
-  primary_color: string;
-  accent_color: string;
 }
 
 /**
@@ -36,8 +34,6 @@ export function ActiveProfileBadge() {
         setProfile({
           id: data.profile.id,
           display_name: data.profile.display_name,
-          primary_color: data.profile.primary_color,
-          accent_color: data.profile.accent_color,
         });
       }
     }
@@ -56,12 +52,6 @@ export function ActiveProfileBadge() {
       className="hidden lg:inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-[hsl(var(--border))] text-xs font-medium hover:bg-[hsl(var(--accent))] transition-colors max-w-[220px]"
       title="Manage profiles"
     >
-      <span
-        className="w-3 h-3 rounded-sm shrink-0"
-        style={{
-          background: `linear-gradient(135deg, ${profile.primary_color}, ${profile.accent_color})`,
-        }}
-      />
       <span className="text-[hsl(var(--muted-foreground))]">as</span>
       <span className="truncate">{profile.display_name}</span>
     </Link>
