@@ -26,15 +26,16 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "No messages provided" }, { status: 400 });
     }
 
-    // Get existing profile to check onboarding status
+    // Check onboarding status on bofu_schedules (the new home for Blog
+    // Engine app-specific extras like onboarding_completed).
     const serviceClient = createServiceRoleClient();
-    const { data: profile } = await serviceClient
-      .from("user_profiles")
+    const { data: schedule } = await serviceClient
+      .from("bofu_schedules")
       .select("id, onboarding_completed")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (profile?.onboarding_completed) {
+    if (schedule?.onboarding_completed) {
       return Response.json(
         { error: "Onboarding already completed" },
         { status: 400 }

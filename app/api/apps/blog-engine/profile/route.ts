@@ -399,8 +399,61 @@ function mapFieldsToColumns(fields: Record<string, unknown>): Record<string, unk
 }
 
 /**
+ * Columns that belong on bofu_schedules (Blog Engine app-specific config),
+ * not on the shared platform_profiles identity.
+ */
+const SCHEDULE_APP_COLUMNS = new Set([
+  "cta_primary",
+  "cta_link",
+  "cta_secondary",
+  "cta_secondary_link",
+  "blog_tone",
+  "include_disclaimers",
+  "onboarding_completed",
+  "onboarding_chat_thread_id",
+]);
+
+/**
+ * Splits a fields object into per-destination updates. Also translates legacy
+ * Blog Engine field names to their platform_profiles equivalents:
+ *   business_name → brokerage
+ *   brand_colors  → primary_color/secondary_color/accent_color
+ */
+function splitFieldsByTable(fields: Record<string, unknown>): {
+  profileFields: Record<string, unknown>;
+  scheduleAppFields: Record<string, unknown>;
+} {
+  const profileFields: Record<string, unknown> = {};
+  const scheduleAppFields: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(fields)) {
+    if (SCHEDULE_APP_COLUMNS.has(key)) {
+      scheduleAppFields[key] = value;
+      continue;
+    }
+    if (key === "business_name") {
+      profileFields.brokerage = value;
+      continue;
+    }
+    if (key === "brand_colors") {
+      const colors = value as { primary?: string; secondary?: string; accent?: string } | null | undefined;
+      if (colors?.primary) profileFields.primary_color = colors.primary;
+      if (colors?.secondary) profileFields.secondary_color = colors.secondary;
+      if (colors?.accent) profileFields.accent_color = colors.accent;
+      continue;
+    }
+    profileFields[key] = value;
+  }
+
+  return { profileFields, scheduleAppFields };
+}
+
+/**
  * GET /api/apps/blog-engine/profile
- * Returns the current user's Blog Engine profile.
+ *
+ * Returns a unified Blog Engine profile shape stitching platform_profiles
+ * (shared identity) + bofu_schedules (Blog Engine app-specific extras).
+ * Maintains the legacy response shape so existing settings UI keeps working.
  */
 export async function GET() {
   try {
@@ -410,11 +463,49 @@ export async function GET() {
     } = await supabase.auth.getUser();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data: meta } = await supabase
+      .from("profiles")
+      .select("active_profile_id")
+      .eq("id", user.id)
+      .single();
+
+    const [{ data: profileRow }, { data: schedule }] = await Promise.all([
+      meta?.active_profile_id
+        ? supabase
+            .from("platform_profiles")
+            .select("*")
+            .eq("id", meta.active_profile_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase
+        .from("bofu_schedules")
+        .select("cta_primary, cta_link, cta_secondary, cta_secondary_link, blog_tone, include_disclaimers, onboarding_completed, onboarding_chat_thread_id")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+
+    const profile = profileRow
+      ? {
+          ...profileRow,
+          // Translate platform_profiles fields back to the legacy shape so
+          // existing UI code reading `business_name` and `brand_colors` still works.
+          business_name: profileRow.brokerage,
+          brand_colors: {
+            primary: profileRow.primary_color,
+            secondary: profileRow.secondary_color,
+            accent: profileRow.accent_color,
+          },
+          // Overlay the Blog Engine app-specific extras.
+          cta_primary: schedule?.cta_primary ?? null,
+          cta_link: schedule?.cta_link ?? null,
+          cta_secondary: schedule?.cta_secondary ?? null,
+          cta_secondary_link: schedule?.cta_secondary_link ?? null,
+          blog_tone: schedule?.blog_tone ?? "professional",
+          include_disclaimers: schedule?.include_disclaimers ?? true,
+          onboarding_completed: schedule?.onboarding_completed ?? false,
+          onboarding_chat_thread_id: schedule?.onboarding_chat_thread_id ?? null,
+        }
+      : null;
 
     return Response.json({ profile });
   } catch (error: unknown) {
@@ -447,62 +538,61 @@ export async function POST(req: NextRequest) {
 
     const serviceClient = createServiceRoleClient();
 
-    // Check if profile exists
-    const { data: existing } = await serviceClient
-      .from("user_profiles")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    // Find the user's active platform_profile — required before chat onboarding
+    // can write anything. The Profile-first guard on /apps/blog-engine/onboarding
+    // ensures this exists.
+    const { data: userMeta } = await serviceClient
+      .from("profiles")
+      .select("active_profile_id")
+      .eq("id", user.id)
+      .single();
 
-    if (existing) {
-      // Update existing profile with new section data
-      const updateData: Record<string, unknown> = {
-        ...fields,
-        updated_at: new Date().toISOString(),
-      };
+    if (!userMeta?.active_profile_id) {
+      return Response.json(
+        { error: "No active Profile. Create one at /apps/profile/new first." },
+        { status: 400 }
+      );
+    }
 
-      if (complete) {
-        updateData.onboarding_completed = true;
-      }
+    const { profileFields, scheduleAppFields } = splitFieldsByTable(fields);
+    if (complete) scheduleAppFields.onboarding_completed = true;
 
-      const { error } = await serviceClient
-        .from("user_profiles")
-        .update(updateData)
-        .eq("user_id", user.id);
+    // Update platform_profiles with the shared identity fields, if any
+    if (Object.keys(profileFields).length > 0) {
+      const { error: profileError } = await serviceClient
+        .from("platform_profiles")
+        .update({ ...profileFields, updated_at: new Date().toISOString() })
+        .eq("id", userMeta.active_profile_id);
 
-      if (error) {
-        console.error("Failed to update profile:", error);
+      if (profileError) {
+        console.error("Failed to update platform_profile:", profileError);
         return Response.json(
-          { error: "Failed to update profile", details: error.message },
+          { error: "Failed to update profile", details: profileError.message },
           { status: 500 }
         );
       }
-    } else {
-      // Create new profile with initial section data
-      const insertData: Record<string, unknown> = {
-        user_id: user.id,
-        // Defaults that will be filled during onboarding
-        professional_type: "solo_agent",
-        full_name: "",
-        state: "",
-        metro_area: "",
-        blog_tone: "professional",
-        include_disclaimers: true,
-        ...fields,
-      };
+    }
 
-      if (complete) {
-        insertData.onboarding_completed = true;
-      }
+    // Upsert bofu_schedules with the Blog Engine app-specific extras.
+    // We always upsert (not update) so a chat onboarding write before the
+    // schedule section bootstraps the row with sane defaults.
+    if (Object.keys(scheduleAppFields).length > 0) {
+      const { error: scheduleAppError } = await serviceClient
+        .from("bofu_schedules")
+        .upsert(
+          {
+            user_id: user.id,
+            profile_id: userMeta.active_profile_id,
+            ...scheduleAppFields,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
 
-      const { error } = await serviceClient
-        .from("user_profiles")
-        .insert(insertData);
-
-      if (error) {
-        console.error("Failed to create profile:", error);
+      if (scheduleAppError) {
+        console.error("Failed to upsert Blog Engine extras on bofu_schedules:", scheduleAppError);
         return Response.json(
-          { error: "Failed to create profile", details: error.message },
+          { error: "Failed to update Blog Engine extras", details: scheduleAppError.message },
           { status: 500 }
         );
       }
@@ -571,7 +661,10 @@ export async function POST(req: NextRequest) {
 
 /**
  * PUT /api/apps/blog-engine/profile
- * Full profile update (settings page).
+ *
+ * Full profile update from the Blog Engine settings page. Splits the body
+ * into platform_profiles updates (shared identity) + bofu_schedules updates
+ * (CTAs, blog_tone, include_disclaimers) and writes both in parallel.
  */
 export async function PUT(req: NextRequest) {
   try {
@@ -584,13 +677,44 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
     const serviceClient = createServiceRoleClient();
 
-    const { error } = await serviceClient
-      .from("user_profiles")
-      .update({
-        ...body,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", user.id);
+    const { data: userMeta } = await serviceClient
+      .from("profiles")
+      .select("active_profile_id")
+      .eq("id", user.id)
+      .single();
+
+    if (!userMeta?.active_profile_id) {
+      return Response.json(
+        { error: "No active Profile. Create one at /apps/profile/new first." },
+        { status: 400 }
+      );
+    }
+
+    const { profileFields, scheduleAppFields } = splitFieldsByTable(body);
+
+    const [profileResult, scheduleResult] = await Promise.all([
+      Object.keys(profileFields).length > 0
+        ? serviceClient
+            .from("platform_profiles")
+            .update({ ...profileFields, updated_at: new Date().toISOString() })
+            .eq("id", userMeta.active_profile_id)
+        : Promise.resolve({ error: null }),
+      Object.keys(scheduleAppFields).length > 0
+        ? serviceClient
+            .from("bofu_schedules")
+            .upsert(
+              {
+                user_id: user.id,
+                profile_id: userMeta.active_profile_id,
+                ...scheduleAppFields,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id" }
+            )
+        : Promise.resolve({ error: null }),
+    ]);
+
+    const error = profileResult.error || scheduleResult.error;
 
     if (error) {
       return Response.json(

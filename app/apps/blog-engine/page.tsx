@@ -3,7 +3,7 @@ import { redirectIfOnboardingComplete } from "@/lib/apps/onboarding";
 
 export default async function BlogEnginePage() {
   await redirectIfOnboardingComplete({
-    profileTable: "user_profiles",
+    profileTable: "bofu_schedules",
     dashboardHref: "/apps/blog-engine/dashboard",
   });
 

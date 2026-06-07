@@ -11,14 +11,15 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
-  // Check onboarding
-  const { data: profile } = await supabase
-    .from("user_profiles")
+  // Check onboarding (now lives on bofu_schedules alongside the rest of
+  // per-profile Blog Engine config)
+  const { data: schedule } = await supabase
+    .from("bofu_schedules")
     .select("onboarding_completed")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (!profile?.onboarding_completed) {
+  if (!schedule?.onboarding_completed) {
     redirect("/apps/blog-engine/onboarding");
   }
 

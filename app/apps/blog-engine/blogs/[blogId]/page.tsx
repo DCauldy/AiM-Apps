@@ -25,12 +25,20 @@ export default async function BlogPage({ params }: BlogPageProps) {
 
   if (!blog) notFound();
 
-  // Load profile for author name
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("full_name")
-    .eq("user_id", user.id)
+  // Load active profile for author name (via platform_profiles, scoped by
+  // the user's active_profile_id)
+  const { data: userMeta } = await supabase
+    .from("profiles")
+    .select("active_profile_id")
+    .eq("id", user.id)
     .maybeSingle();
+  const { data: profile } = userMeta?.active_profile_id
+    ? await supabase
+        .from("platform_profiles")
+        .select("full_name")
+        .eq("id", userMeta.active_profile_id)
+        .maybeSingle()
+    : { data: null };
 
   // Load chat history
   const { data: chats } = await supabase
