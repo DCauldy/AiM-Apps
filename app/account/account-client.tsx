@@ -101,10 +101,10 @@ function AccountClientInner({
         </Section>
 
         <Section
-          title="Profile slots"
-          description="Each slot can hold one company identity. Archive or delete a profile any time to free up its slot for a new one — your slot stays yours."
+          title="Profiles"
+          description="Each Profile is one company identity. Archive or delete a Profile any time and replace it at no charge."
         >
-          <Row label="Slots in use">
+          <Row label="Profiles in use">
             <span className="font-mono text-sm">
               {activeProfileCount} / {slotCount}
             </span>
@@ -130,7 +130,7 @@ function AccountClientInner({
             </Link>
             <Button size="sm" className="gap-2" onClick={() => setShowSlotModal(true)}>
               <Sparkles className="h-4 w-4" />
-              Buy a slot
+              Add a Profile
             </Button>
             <Button
               variant="outline"

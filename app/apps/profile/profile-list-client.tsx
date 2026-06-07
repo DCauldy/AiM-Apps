@@ -140,7 +140,7 @@ export function ProfileListClient({
         {atSlotLimit ? (
           <Button className="gap-2" onClick={() => setShowSlotModal(true)}>
             <Sparkles className="h-4 w-4" />
-            Buy a slot
+            Add a Profile
           </Button>
         ) : (
           <Link href="/apps/profile/new">
@@ -154,23 +154,23 @@ export function ProfileListClient({
 
       {overSlot && inGrace && slotGraceUntil && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-          <strong>Action needed:</strong> You have {active.length} active profiles but only{" "}
-          {slotCount} slots. Archive {active.length - slotCount} profile
+          <strong>Action needed:</strong> You have {active.length} active Profiles but only{" "}
+          {slotCount} available. Archive {active.length - slotCount} Profile
           {active.length - slotCount === 1 ? "" : "s"} before{" "}
-          {new Date(slotGraceUntil).toLocaleDateString()} or upgrade your subscription to continue
+          {new Date(slotGraceUntil).toLocaleDateString()} or add another Profile to continue
           using the apps.
         </div>
       )}
 
       {overSlot && !inGrace && (
         <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm">
-          <strong>Apps are locked.</strong> You exceed your slot count. Archive a profile or
-          upgrade to unblock.
+          <strong>Apps are locked.</strong> You exceed your Profile limit. Archive a Profile
+          or add another to unblock.
         </div>
       )}
 
       <div className="text-xs text-muted-foreground">
-        {active.length} of {slotCount} slot{slotCount === 1 ? "" : "s"} used
+        {active.length} of {slotCount} Profile{slotCount === 1 ? "" : "s"} in use
       </div>
 
       {active.length === 0 && (
