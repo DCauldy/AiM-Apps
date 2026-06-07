@@ -47,7 +47,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
   return (
     <div
       className={cn(
-        "relative z-50 w-full max-w-lg bg-white rounded-lg shadow-xl overflow-hidden flex flex-col",
+        "relative z-50 w-full max-w-lg glass-modal text-white rounded-2xl overflow-hidden flex flex-col",
         className
       )}
     >

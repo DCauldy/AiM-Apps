@@ -169,7 +169,7 @@ export function AppSwitcher() {
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         </DropdownMenuTrigger>
 
-        <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuContent align="start" className="w-64 glass-dropdown text-white border-0">
           {APPS.map((app) => {
             const isActive = pathname?.startsWith(app.route);
             const isUnavailable = availability ? availability[app.id] === false : false;

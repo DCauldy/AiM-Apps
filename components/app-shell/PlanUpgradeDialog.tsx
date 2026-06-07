@@ -101,7 +101,7 @@ export function PlanUpgradeDialog<TPlan extends PlanUpgradeDialogPlan>({
         onClick={handleClose}
       />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-        <div className="relative w-full max-w-md rounded-2xl border bg-background shadow-2xl overflow-hidden pointer-events-auto">
+        <div className="relative w-full max-w-md rounded-2xl glass-modal text-white overflow-hidden pointer-events-auto">
           <button
             type="button"
             onClick={handleClose}

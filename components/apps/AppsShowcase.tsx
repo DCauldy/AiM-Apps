@@ -284,10 +284,10 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
                 key={app.id}
                 onClick={() => selectApp(app.id)}
                 className={cn(
-                  "group relative flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-left transition-all duration-200 border border-transparent",
+                  "group relative flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-left transition-all duration-200",
                   isSelected
-                    ? "glass-panel-active shadow-lg"
-                    : "bg-white/[0.04] hover:bg-white/[0.08] border-white/10"
+                    ? "glass-card"
+                    : "bg-white/[0.04] hover:bg-white/[0.08] border border-white/10"
                 )}
                 style={
                   isSelected
@@ -373,7 +373,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
         {/* Right panel — Preview */}
         <div
           key={animKey}
-          className="flex-1 rounded-3xl overflow-hidden glass-panel animate-slide-in-right min-h-[520px] flex flex-col"
+          className="flex-1 rounded-3xl overflow-hidden glass-card animate-slide-in-right min-h-[520px] flex flex-col"
           style={{ borderColor: `${selectedApp.accentColor}20` }}
         >
           {/* Hero gradient */}
@@ -556,7 +556,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
             <div
               key={app.id}
               className={cn(
-                "rounded-2xl overflow-hidden transition-all duration-300 glass-panel",
+                "rounded-2xl overflow-hidden transition-all duration-300 glass-card",
                 isExpanded && "shadow-lg"
               )}
               style={
