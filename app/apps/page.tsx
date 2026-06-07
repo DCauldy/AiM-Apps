@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getFeatureFlags } from "@/lib/admin-config.server";
 import { AppsShowcase } from "@/components/apps/AppsShowcase";
 import { ActiveProfileChip } from "@/components/profile/ActiveProfileChip";
+import { Circuitry } from "@/components/decor/Circuitry";
 import { getTrialStatus } from "@/lib/trial";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
 import type { UsageStats } from "@/components/apps/AppsShowcase";
@@ -64,31 +65,42 @@ export default async function AppsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-start justify-center p-4 md:p-8 md:pt-16">
-      <div className="w-full max-w-5xl space-y-8">
+    <div className="apps-landing-bg min-h-screen flex items-start justify-center p-4 md:p-8 md:pt-16">
+      {/* Decorative circuitry — same pattern + pulse cadence as the AiM
+          dashboard chatbot, positioned in opposite corners. */}
+      <Circuitry
+        color="white"
+        opacity={0.06}
+        scale={0.7}
+        position={{ bottom: "-100px", right: "0" }}
+        transformOrigin="bottom right"
+        pulse={{ opacity: 0.2, duration: "6s" }}
+      />
+      <Circuitry
+        color="white"
+        opacity={0.06}
+        scale={0.7}
+        position={{ top: "-100px", left: "0" }}
+        transformOrigin="left center"
+        rotate="90deg"
+        pulse={{ opacity: 0.2, duration: "6s", delay: "2s" }}
+      />
+      <div className="relative z-10 w-full max-w-5xl space-y-8">
         <div className="text-center space-y-3">
           <h1 className="flex items-center justify-center gap-3">
             <Image
-              src="/logo.svg"
+              src="/logo-white.svg"
               alt="AiM"
               width={180}
               height={51}
-              className="h-10 w-auto dark:hidden"
+              className="h-10 w-auto"
               priority
             />
-            <Image
-              src="/logo-dark.svg"
-              alt="AiM"
-              width={180}
-              height={51}
-              className="h-10 w-auto hidden dark:block"
-              priority
-            />
-            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold tracking-wide bg-gradient-to-r from-[#1C4C8A]/10 to-[#31DBA5]/10 text-[#1C4C8A] dark:text-[#31DBA5] border border-[#31DBA5]/25">
+            <span className="inline-flex items-center px-4 py-1.5 rounded-full text-sm font-semibold tracking-wide bg-white/10 text-white border border-white/25 backdrop-blur-sm">
               Automations
             </span>
           </h1>
-          <p className="text-muted-foreground text-sm max-w-lg mx-auto">
+          <p className="text-white/70 text-sm max-w-lg mx-auto">
             AI-powered tools built for real estate professionals. Generate content, optimize prompts, and monitor your AI search visibility — all in one place.
           </p>
           <div className="pt-2 flex items-center justify-center">
