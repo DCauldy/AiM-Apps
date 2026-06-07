@@ -11,13 +11,14 @@ export default async function HyperlocalPage() {
     redirect("/login");
   }
 
-  // Check if user has at least one campaign + sender + email connection
-  // (rough "onboarded" signal — refined when onboarding chat ships in PR11)
-  const [{ count: senderCount }, { count: emailCount }] = await Promise.all([
+  // "Onboarded" check: user has an active Profile (sender identity lives there
+  // now) AND at least one active email connection.
+  const [{ data: meta }, { count: emailCount }] = await Promise.all([
     supabase
-      .from("platform_sender_profiles")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id),
+      .from("profiles")
+      .select("active_profile_id")
+      .eq("id", user.id)
+      .maybeSingle(),
     supabase
       .from("hl_email_connections")
       .select("*", { count: "exact", head: true })
@@ -25,7 +26,7 @@ export default async function HyperlocalPage() {
       .eq("is_active", true),
   ]);
 
-  const isOnboarded = (senderCount ?? 0) > 0 && (emailCount ?? 0) > 0;
+  const isOnboarded = Boolean(meta?.active_profile_id) && (emailCount ?? 0) > 0;
 
   if (isOnboarded) {
     redirect("/apps/hyperlocal/dashboard");

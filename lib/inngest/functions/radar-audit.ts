@@ -125,12 +125,19 @@ export const radarAudit = inngest.createFunction(
       scoring_breakdown: ScoringBreakdown;
       recommendations: AuditRecommendation[];
     }> = await step.run("score-pages", async () => {
-      // Load user profile for context
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_id", userId)
+      // Load active platform_profile for context
+      const { data: userMeta } = await supabase
+        .from("profiles")
+        .select("active_profile_id")
+        .eq("id", userId)
         .maybeSingle();
+      const { data: profile } = userMeta?.active_profile_id
+        ? await supabase
+            .from("platform_profiles")
+            .select("*")
+            .eq("id", userMeta.active_profile_id)
+            .maybeSingle()
+        : { data: null };
 
       if (!profile) {
         // Fallback: use rule-based scores only

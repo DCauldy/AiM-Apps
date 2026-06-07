@@ -6,10 +6,12 @@ import { AppAvailabilityTab } from "./tabs/AppAvailabilityTab";
 import { PackConfigTab } from "./tabs/PackConfigTab";
 import { AdminAccessTab } from "./tabs/AdminAccessTab";
 import { UserOverviewTab } from "./tabs/UserOverviewTab";
+import { StripeProductsTab } from "./tabs/StripeProductsTab";
 
 const TABS = [
   { id: "availability", label: "App Availability" },
-  { id: "packs", label: "Pack Config" },
+  { id: "packs", label: "App Packs" },
+  { id: "stripe", label: "Global Products" },
   { id: "admins", label: "Admin Access" },
   { id: "users", label: "User Overview" },
 ] as const;
@@ -44,6 +46,7 @@ export function AdminDashboard() {
       {/* Tab content */}
       {activeTab === "availability" && <AppAvailabilityTab />}
       {activeTab === "packs" && <PackConfigTab />}
+      {activeTab === "stripe" && <StripeProductsTab />}
       {activeTab === "admins" && <AdminAccessTab />}
       {activeTab === "users" && <UserOverviewTab />}
     </div>

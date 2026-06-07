@@ -1,8 +1,25 @@
 import { getStripe } from "@/lib/stripe";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getBlogPacks, getRadarPacks } from "@/lib/admin-config.server";
+import { getSlotProductId } from "@/lib/profiles/slot-billing";
 import { NextRequest } from "next/server";
 import type Stripe from "stripe";
+
+/**
+ * Checks if the subscription is the Profile Slot add-on.
+ *
+ * Detection priority:
+ *   1. Explicit subscription metadata.product === "profile_slot"
+ *   2. Price.product matches the admin-configured slot product id
+ */
+async function isSlotSubscription(subscription: Stripe.Subscription): Promise<boolean> {
+  if (subscription.metadata?.product === "profile_slot") return true;
+  const productOnPrice = subscription.items.data[0]?.price?.product;
+  if (!productOnPrice) return false;
+  const slotProductId = await getSlotProductId();
+  if (!slotProductId) return false;
+  return (typeof productOnPrice === "string" ? productOnPrice : productOnPrice.id) === slotProductId;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +166,40 @@ export async function POST(req: NextRequest) {
       return new Response("OK", { status: 200 });
     }
 
+    // ── Profile Slot subscription ─────────────────────────────────────
+    if (session.metadata?.product === "profile_slot") {
+      const slotUserId = session.metadata.supabase_user_id;
+      const subscriptionId =
+        typeof session.subscription === "string"
+          ? session.subscription
+          : session.subscription?.id;
+
+      if (!slotUserId || !subscriptionId) {
+        console.error("[stripe-webhook] slot checkout missing user_id or subscription:", session.id);
+        return new Response("OK", { status: 200 });
+      }
+
+      const stripe = getStripe();
+      const sub = await stripe.subscriptions.retrieve(subscriptionId);
+      const quantity = sub.items.data[0]?.quantity ?? 1;
+
+      const { error: slotError } = await serviceClient
+        .from("profiles")
+        .update({
+          slot_stripe_subscription_id: subscriptionId,
+          profile_slot_count: 1 + quantity,
+          slot_grace_period_ends_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", slotUserId);
+
+      if (slotError) {
+        console.error("[stripe-webhook] failed to update slot count:", slotError.message);
+      }
+      console.log(`[stripe-webhook] Slot subscription activated: user=${slotUserId}, slots=${1 + quantity}`);
+      return new Response("OK", { status: 200 });
+    }
+
     // Unknown metadata — log and skip
     if (!user_id) {
       console.error("[stripe-webhook] missing user_id metadata on session:", session.id);
@@ -163,6 +214,37 @@ export async function POST(req: NextRequest) {
       typeof subscription.customer === "string"
         ? subscription.customer
         : (subscription.customer as Stripe.Customer).id;
+
+    // ── Profile Slot subscription updated ─────────────────────────────
+    if (await isSlotSubscription(subscription)) {
+      const quantity = subscription.items.data[0]?.quantity ?? 1;
+      const isActive = subscription.status === "active" || subscription.status === "trialing";
+      const cancelingAtPeriodEnd = subscription.cancel_at_period_end;
+
+      // While active and not winding down → slots are 1 (included) + quantity.
+      // Winding down or any non-active status → leave slots as-is but set grace.
+      const newSlots = isActive && !cancelingAtPeriodEnd ? 1 + quantity : null;
+      const graceEnd = cancelingAtPeriodEnd
+        ? new Date(((subscription as unknown as { current_period_end?: number }).current_period_end ?? 0) * 1000).toISOString()
+        : null;
+
+      const update: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (newSlots !== null) update.profile_slot_count = newSlots;
+      if (graceEnd) update.slot_grace_period_ends_at = graceEnd;
+      else if (isActive && !cancelingAtPeriodEnd) update.slot_grace_period_ends_at = null;
+
+      await serviceClient
+        .from("profiles")
+        .update(update)
+        .eq("stripe_customer_id", customerId);
+
+      console.log(
+        `[stripe-webhook] Slot subscription updated: customer=${customerId}, slots=${newSlots ?? "unchanged"}, grace=${graceEnd ?? "cleared"}`
+      );
+      return new Response("OK", { status: 200 });
+    }
 
     // Get the current price from the subscription
     const priceId = subscription.items.data[0]?.price?.id;
@@ -226,6 +308,21 @@ export async function POST(req: NextRequest) {
       typeof subscription.customer === "string"
         ? subscription.customer
         : (subscription.customer as Stripe.Customer).id;
+
+    // ── Profile Slot subscription canceled (after grace) ──────────────
+    if (await isSlotSubscription(subscription)) {
+      await serviceClient
+        .from("profiles")
+        .update({
+          slot_stripe_subscription_id: null,
+          profile_slot_count: 1,
+          slot_grace_period_ends_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("stripe_customer_id", customerId);
+      console.log(`[stripe-webhook] Slot subscription deleted: customer=${customerId}, slots reset to 1`);
+      return new Response("OK", { status: 200 });
+    }
 
     // Check if this is a blog engine subscription by looking up the customer
     const { data: schedule } = await serviceClient

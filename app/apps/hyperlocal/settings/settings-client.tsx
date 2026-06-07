@@ -3,11 +3,10 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { SenderTab } from "@/components/hyperlocal/settings/SenderTab";
-import { BrandingTab } from "@/components/hyperlocal/settings/BrandingTab";
 import { CrmTab } from "@/components/hyperlocal/settings/CrmTab";
 import { EmailTab } from "@/components/hyperlocal/settings/EmailTab";
 import { SuppressionTab } from "@/components/hyperlocal/settings/SuppressionTab";
+import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
 import type {
   PlatformSenderProfile,
   PlatformBrandingProfile,
@@ -16,33 +15,30 @@ import type {
   HlSuppression,
 } from "@/types/hyperlocal";
 
-type Tab = "sender" | "branding" | "crm" | "email" | "suppression";
+type Tab = "crm" | "email" | "suppression";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "sender", label: "Sender" },
-  { id: "branding", label: "Branding" },
   { id: "crm", label: "CRMs" },
   { id: "email", label: "Email" },
   { id: "suppression", label: "Suppression" },
 ];
 
 export function SettingsClient({
-  senderProfiles,
-  brandingProfiles,
   crmConnections,
   emailConnections,
   suppressions,
 }: {
-  senderProfiles: PlatformSenderProfile[];
-  brandingProfiles: PlatformBrandingProfile[];
+  /** Accepted for backwards compatibility — sender + branding now live on /apps/profile. */
+  senderProfiles?: PlatformSenderProfile[];
+  brandingProfiles?: PlatformBrandingProfile[];
   crmConnections: HlCrmConnection[];
   emailConnections: HlEmailConnection[];
   suppressions: HlSuppression[];
 }) {
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get("tab") as Tab) ?? "sender";
+  const initialTab = (searchParams.get("tab") as Tab) ?? "crm";
   const [activeTab, setActiveTab] = useState<Tab>(
-    TABS.find((t) => t.id === initialTab) ? initialTab : "sender"
+    TABS.find((t) => t.id === initialTab) ? initialTab : "crm"
   );
 
   return (
@@ -50,10 +46,11 @@ export function SettingsClient({
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Configure your sender identity, branding, connected CRMs and email
-          accounts, and global suppression list.
+          Connected CRMs, email accounts, and global suppression list.
         </p>
       </div>
+
+      <ProfileFieldsBanner what="Sender identity, brokerage, and brand visuals" />
 
       {/* Tab nav */}
       <div className="border-b border-border mb-6 -mx-4 sm:mx-0 overflow-x-auto">
@@ -79,10 +76,6 @@ export function SettingsClient({
         </nav>
       </div>
 
-      {activeTab === "sender" && <SenderTab initialProfiles={senderProfiles} />}
-      {activeTab === "branding" && (
-        <BrandingTab initialProfiles={brandingProfiles} />
-      )}
       {activeTab === "crm" && <CrmTab initialConnections={crmConnections} />}
       {activeTab === "email" && (
         <EmailTab initialConnections={emailConnections} />

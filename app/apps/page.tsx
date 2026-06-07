@@ -2,6 +2,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import { getFeatureFlags } from "@/lib/admin-config.server";
 import { AppsShowcase } from "@/components/apps/AppsShowcase";
+import { ActiveProfileChip } from "@/components/profile/ActiveProfileChip";
 import { getTrialStatus } from "@/lib/trial";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
 import type { UsageStats } from "@/components/apps/AppsShowcase";
@@ -90,6 +91,9 @@ export default async function AppsPage() {
           <p className="text-muted-foreground text-sm max-w-lg mx-auto">
             AI-powered tools built for real estate professionals. Generate content, optimize prompts, and monitor your AI search visibility — all in one place.
           </p>
+          <div className="pt-2 flex items-center justify-center">
+            <ActiveProfileChip />
+          </div>
         </div>
         <AppsShowcase
           flags={flags}

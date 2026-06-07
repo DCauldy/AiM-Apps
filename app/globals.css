@@ -403,6 +403,32 @@ pre code {
 /* ── Hyperlocal Dark Theme Scope ──
    Same dark surfaces as Blog Engine, distinct rose accent so the app
    reads as its own identity (not the AiM teal-blue brand gradient). */
+/* ── Profile Dark Theme Scope ──
+   Foundation/utility app — neutral slate accent (no app-brand color)
+   so it visually subordinates to whichever profile-app you switch to. */
+.profile-theme {
+  color-scheme: dark;
+  --background: 215 20% 9%;
+  --foreground: 213 33% 93%;
+  --card: 215 18% 13%;
+  --card-foreground: 213 33% 93%;
+  --popover: 215 18% 13%;
+  --popover-foreground: 213 33% 93%;
+  --primary: 213 33% 93%;
+  --primary-foreground: 215 20% 9%;
+  --secondary: 215 18% 16%;
+  --secondary-foreground: 213 33% 93%;
+  --muted: 215 18% 16%;
+  --muted-foreground: 214 8% 57%;
+  --accent: 215 18% 16%;
+  --accent-foreground: 213 33% 93%;
+  --destructive: 0 62.8% 50%;
+  --destructive-foreground: 213 33% 93%;
+  --border: 215 18% 20%;
+  --input: 215 18% 20%;
+  --ring: 213 33% 93%;
+}
+
 .hyperlocal-theme {
   color-scheme: dark;
   --background: 222 25% 8%;

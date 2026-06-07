@@ -83,36 +83,60 @@ export const hlGenerate = inngest.createFunction(
     const ctx: GenerateContext = await step.run("load-context", async () => {
       const { data: run } = await supabase
         .from("hl_runs")
-        .select("id, user_id, campaign_id, sender_profile_id, branding_profile_id")
+        .select("id, user_id, campaign_id, profile_id, sender_profile_id, branding_profile_id")
         .eq("id", runId)
         .single();
       if (!run) throw new Error("Run not found");
 
-      const [
-        { data: campaign },
-        { data: sender },
-        { data: branding },
-        { data: allReady },
-      ] = await Promise.all([
-        supabase
-          .from("hl_campaigns")
+      // Sender + branding resolution: prefer run.profile_id (post-backfill path
+      // — pulls from platform_profiles), fall back to legacy per-run snapshots.
+      let sender: Record<string, unknown> | null = null;
+      let branding: Record<string, unknown> | null = null;
+
+      if (run.profile_id) {
+        const { data: pp } = await supabase
+          .from("platform_profiles")
           .select("*")
-          .eq("id", run.campaign_id)
-          .single(),
-        run.sender_profile_id
-          ? supabase
-              .from("platform_sender_profiles")
-              .select("*")
-              .eq("id", run.sender_profile_id)
-              .single()
-          : Promise.resolve({ data: null }),
-        run.branding_profile_id
-          ? supabase
-              .from("platform_branding_profiles")
-              .select("*")
-              .eq("id", run.branding_profile_id)
-              .single()
-          : Promise.resolve({ data: null }),
+          .eq("id", run.profile_id)
+          .maybeSingle();
+        if (pp) {
+          sender = {
+            id: pp.id,
+            full_name: pp.full_name ?? pp.display_name,
+            title: pp.title,
+            brokerage: pp.brokerage,
+            phone: pp.phone,
+            reply_to_email: pp.reply_to_email,
+            license_number: pp.license_number,
+            physical_address: pp.physical_address,
+            sign_off: pp.sign_off,
+          };
+          branding = {
+            id: pp.id,
+            name: pp.display_name,
+            primary_color: pp.primary_color,
+            secondary_color: pp.secondary_color,
+            accent_color: pp.accent_color,
+            heading_font: pp.heading_font,
+            body_font: pp.body_font,
+            motifs: pp.motifs,
+            corner_style: pp.corner_style,
+            button_shape: pp.button_shape,
+            density: pp.density,
+            header_treatment: pp.header_treatment,
+            header_image_url: pp.header_image_url,
+            metric_box_style: pp.metric_box_style,
+            divider_style: pp.divider_style,
+            logo_url: pp.logo_url,
+            headshot_url: pp.headshot_url,
+            brokerage_badge_url: pp.brokerage_badge_url,
+            legal_disclaimer: pp.legal_disclaimer,
+          };
+        }
+      }
+
+      const [{ data: campaign }, { data: allReady }] = await Promise.all([
+        supabase.from("hl_campaigns").select("*").eq("id", run.campaign_id).single(),
         supabase
           .from("hl_segments")
           .select("*")
@@ -120,6 +144,9 @@ export const hlGenerate = inngest.createFunction(
           .eq("status", "ready")
           .order("contact_count", { ascending: false }),
       ]);
+
+      if (!sender) throw new Error("Run is missing a Profile — sender identity unresolved");
+      if (!branding) throw new Error("Run is missing a Profile — branding unresolved");
 
       if (!campaign) throw new Error("Campaign not found");
       if (!sender) throw new Error("No sender profile selected for run");
@@ -149,8 +176,8 @@ export const hlGenerate = inngest.createFunction(
         runId,
         userId: run.user_id,
         campaign: campaign as HlCampaign,
-        sender: sender as PlatformSenderProfile,
-        branding: branding as PlatformBrandingProfile | null,
+        sender: sender as unknown as PlatformSenderProfile,
+        branding: branding as unknown as PlatformBrandingProfile | null,
         segments,
         cachePath: `${run.user_id}/${runId}/discovery.json`,
       };

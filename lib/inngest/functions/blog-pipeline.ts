@@ -17,8 +17,9 @@ import { checkTopicDuplicate } from "@/lib/blog-engine/dedup";
 import { generateAndUploadImage } from "@/lib/blog-engine/image-generation";
 import { publishToWordPress } from "@/lib/blog-engine/cms/wordpress";
 import { publishToWebhook } from "@/lib/blog-engine/cms/webhook";
+import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
 import { generateText } from "ai";
-import type { BofuProfile, BofuTopic, BofuCmsConnection, ImageStyle } from "@/types/blog-engine";
+import type { BofuTopic, BofuCmsConnection, ImageStyle } from "@/types/blog-engine";
 
 // ---------------------------------------------------------------------------
 // Event type
@@ -50,19 +51,12 @@ export const blogPipeline = inngest.createFunction(
     const supabase = createServiceRoleClient();
 
     // -----------------------------------------------------------------------
-    // Step 1: Load user profile
+    // Step 1: Load effective profile (platform_profiles if active, else legacy)
     // -----------------------------------------------------------------------
     const profile = await step.run("load-profile", async () => {
-      const { data, error } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .single();
-
-      if (error || !data) {
-        throw new Error(`Profile not found for user ${userId}`);
-      }
-      return data as BofuProfile;
+      const data = await getProfileForBlogEngine(userId);
+      if (!data) throw new Error(`Profile not found for user ${userId}`);
+      return data;
     });
 
     // -----------------------------------------------------------------------

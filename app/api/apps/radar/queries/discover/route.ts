@@ -1,9 +1,9 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getRadarQueryDiscoveryModel } from "@/lib/openrouter";
 import { getQueryDiscoveryPrompt } from "@/lib/radar/prompts";
+import { getProfileForBlogEngine } from "@/lib/profiles/effective-profile";
 import { generateText } from "ai";
 import { NextRequest } from "next/server";
-import type { BofuProfile } from "@/types/blog-engine";
 
 export const dynamic = "force-dynamic";
 
@@ -21,21 +21,14 @@ export async function POST(_req: NextRequest) {
 
     const serviceClient = createServiceRoleClient();
 
-    // Load user profile
-    const { data: profile } = await serviceClient
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (!profile) {
+    // Load effective profile (platform_profiles if active, else legacy)
+    const typedProfile = await getProfileForBlogEngine(user.id);
+    if (!typedProfile) {
       return Response.json(
         { error: "Profile not found. Complete onboarding first." },
         { status: 404 }
       );
     }
-
-    const typedProfile = profile as BofuProfile;
 
     // Generate query suggestions via LLM
     const prompt = getQueryDiscoveryPrompt(typedProfile);
