@@ -64,13 +64,20 @@ export async function POST(_req: NextRequest) {
       );
     }
 
-    // Get website_url from user_profiles
+    // Get website_url from the active platform_profile.
     const serviceClient = createServiceRoleClient();
-    const { data: profile } = await serviceClient
-      .from("user_profiles")
-      .select("website_url")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    const { data: userMeta } = await serviceClient
+      .from("profiles")
+      .select("active_profile_id")
+      .eq("id", user.id)
+      .single();
+    const { data: profile } = userMeta?.active_profile_id
+      ? await serviceClient
+          .from("platform_profiles")
+          .select("website_url")
+          .eq("id", userMeta.active_profile_id)
+          .maybeSingle()
+      : { data: null };
 
     if (!profile?.website_url) {
       return Response.json(
