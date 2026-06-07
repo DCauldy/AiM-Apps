@@ -292,8 +292,8 @@ function ProfileCard({
 }: CardProps) {
   return (
     <div
-      className={`rounded-lg border p-4 transition-colors ${
-        isActive ? "border-foreground/40 bg-accent/50" : "border-border"
+      className={`glass-card rounded-lg p-4 ${
+        isActive ? "ring-1 ring-foreground/30" : ""
       } ${archived ? "opacity-60" : ""}`}
     >
       <div className="flex items-start gap-4">
