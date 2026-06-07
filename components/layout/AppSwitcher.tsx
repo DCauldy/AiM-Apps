@@ -223,21 +223,11 @@ export function AppSwitcher() {
                 Operating as
               </div>
               {activeProfile && (
-                <div className="px-2 py-1.5 mx-1 mb-1 rounded-md bg-accent/50">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-6 h-6 rounded-md shrink-0"
-                      style={{
-                        background: `linear-gradient(135deg, ${activeProfile.primary_color}, ${activeProfile.accent_color})`,
-                      }}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold truncate">{activeProfile.display_name}</p>
-                      {activeProfile.brokerage && (
-                        <p className="text-[11px] text-muted-foreground truncate">{activeProfile.brokerage}</p>
-                      )}
-                    </div>
-                  </div>
+                <div className="px-3 py-1.5 mx-1 mb-1 rounded-md bg-accent/50">
+                  <p className="text-sm font-semibold truncate">{activeProfile.display_name}</p>
+                  {activeProfile.brokerage && (
+                    <p className="text-[11px] text-muted-foreground truncate">{activeProfile.brokerage}</p>
+                  )}
                 </div>
               )}
               {otherProfiles.slice(0, 5).map((p) => (

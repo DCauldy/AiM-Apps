@@ -91,12 +91,21 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "CRM connection not found" }, { status: 404 });
   }
 
+  // Capture the user's active profile on the run so the pipeline can render
+  // sender + branding from platform_profiles instead of legacy snapshots.
+  const { data: meta } = await service
+    .from("profiles")
+    .select("active_profile_id")
+    .eq("id", user.id)
+    .single();
+
   const { data: run, error } = await service
     .from("hl_runs")
     .insert({
       user_id: user.id,
       campaign_id,
       crm_connection_id,
+      profile_id: meta?.active_profile_id ?? null,
       sender_profile_id: sender_profile_id ?? null,
       branding_profile_id: branding_profile_id ?? null,
       email_connection_id: email_connection_id ?? null,
