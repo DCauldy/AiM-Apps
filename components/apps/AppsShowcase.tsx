@@ -287,7 +287,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
                   "group relative flex items-center gap-3.5 px-4 py-3.5 rounded-2xl text-left transition-all duration-200 border border-transparent",
                   isSelected
                     ? "glass-panel-active shadow-lg"
-                    : "hover:bg-white/[0.03]"
+                    : "bg-white/[0.04] hover:bg-white/[0.08] border-white/10"
                 )}
                 style={
                   isSelected
