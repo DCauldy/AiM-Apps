@@ -10,8 +10,8 @@ import { StripeProductsTab } from "./tabs/StripeProductsTab";
 
 const TABS = [
   { id: "availability", label: "App Availability" },
-  { id: "packs", label: "Pack Config" },
-  { id: "stripe", label: "Stripe Products" },
+  { id: "packs", label: "App Packs" },
+  { id: "stripe", label: "Global Products" },
   { id: "admins", label: "Admin Access" },
   { id: "users", label: "User Overview" },
 ] as const;
