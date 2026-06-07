@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { getStateRequirements } from "@/lib/hyperlocal/email/state-requirements";
 import type { PlatformProfile, PlatformProfileUpdate } from "@/types/platform-profile";
 
 interface Props {
@@ -71,6 +72,11 @@ export function ProfileEditor({ initialProfile }: Props) {
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  // State-aware disclosure requirements for Hyperlocal email compliance.
+  // The compliance gate in lib/hyperlocal/email/compliance.ts blocks runs
+  // when any of these are missing for a profile that wants to send.
+  const stateReqs = getStateRequirements(form.state);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -172,7 +178,10 @@ export function ProfileEditor({ initialProfile }: Props) {
             ))}
           </select>
         </Field>
-        <Field label="Brokerage">
+        <Field
+          label="Brokerage"
+          required={stateReqs.requires_brokerage_disclosure}
+        >
           <Input
             value={form.brokerage ?? ""}
             onChange={(e) => set("brokerage", e.target.value)}
@@ -254,12 +263,21 @@ export function ProfileEditor({ initialProfile }: Props) {
             onChange={(e) => set("reply_to_email", e.target.value)}
           />
         </Field>
-        <Field label="Physical address (required for outbound email)" className="md:col-span-2">
+        <Field
+          label="Physical address"
+          required
+          className="md:col-span-2"
+        >
           <Input
             value={form.physical_address ?? ""}
             onChange={(e) => set("physical_address", e.target.value)}
             placeholder="123 Main St, Cincinnati, OH 45202"
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            CAN-SPAM requires a valid postal address on every marketing email.
+            Use your brokerage address — not a home address — to keep personal
+            location out of your sends.
+          </p>
         </Field>
         <Field label="Sign-off">
           <Input
@@ -270,24 +288,45 @@ export function ProfileEditor({ initialProfile }: Props) {
         </Field>
       </Section>
 
-      <Section title="Compliance" description="License info and required disclaimers.">
-        <Field label="License number">
+      <Section
+        title="Compliance"
+        description={
+          form.state
+            ? `${stateReqs.display_name} disclosure rules apply to this profile's outbound email. Hyperlocal blocks sends that are missing any required field.`
+            : "License info and required disclaimers. Set your state above so we apply the right disclosure rules."
+        }
+      >
+        <Field
+          label="License number"
+          required={stateReqs.requires_license_number}
+        >
           <Input
             value={form.license_number ?? ""}
             onChange={(e) => set("license_number", e.target.value)}
+            placeholder="e.g. SL-3416289"
           />
         </Field>
         <Field label="Regulatory body">
           <Input
             value={form.regulatory_body ?? ""}
             onChange={(e) => set("regulatory_body", e.target.value)}
+            placeholder="e.g. Texas Real Estate Commission"
           />
         </Field>
-        <Field label="License info" className="md:col-span-2">
+        <Field
+          label="License info / supervising broker"
+          required={stateReqs.requires_supervising_broker}
+          className="md:col-span-2"
+        >
           <Textarea
             value={form.license_info ?? ""}
             onChange={(e) => set("license_info", e.target.value)}
             rows={2}
+            placeholder={
+              stateReqs.requires_supervising_broker
+                ? `${stateReqs.display_name} requires the supervising / sponsoring broker name + license in agent marketing.`
+                : "Optional. Add supervising broker info here if your state requires it."
+            }
           />
         </Field>
         <Field label="Compliance notes" className="md:col-span-2">

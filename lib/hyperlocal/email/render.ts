@@ -4,6 +4,10 @@ import type {
   PlatformBrandingProfile,
   PlatformSenderProfile,
 } from "@/types/hyperlocal";
+import {
+  FAIR_HOUSING_NOTICE,
+  getStateRequirements,
+} from "./state-requirements";
 
 interface RenderOpts {
   branding: PlatformBrandingProfile | null;
@@ -57,12 +61,52 @@ export function renderEmailHtml(opts: RenderOpts): string {
     ${opts.sender.phone ? `<p style="margin:8px 0 0;font-size:13px;">📞 ${escapeHtml(opts.sender.phone)}</p>` : ""}
   `;
 
-  const footerAddress = `
-    <p style="margin:0;color:#666;font-size:11px;line-height:1.5;white-space:pre-line;">${escapeHtml(opts.sender.physical_address)}</p>
+  // ---- State-aware compliance footer ----
+  const reqs = getStateRequirements(opts.sender.state);
+
+  const whyReceiving = `
+    <p style="margin:0 0 8px;color:#888;font-size:11px;line-height:1.5;">
+      You're receiving this hyperlocal market update because you're part of ${escapeHtml(opts.sender.full_name)}'s sphere${opts.sender.brokerage ? ` at ${escapeHtml(opts.sender.brokerage)}` : ""}.
+    </p>
   `;
 
-  const disclaimer = b.legal_disclaimer
-    ? `<p style="margin:12px 0 0;color:#888;font-size:11px;font-style:italic;">${escapeHtml(b.legal_disclaimer)}</p>`
+  const licenseLine = (() => {
+    const parts: string[] = [];
+    if (opts.sender.license_number) {
+      parts.push(`License #${escapeHtml(opts.sender.license_number)}`);
+    }
+    if (opts.sender.regulatory_body) {
+      parts.push(escapeHtml(opts.sender.regulatory_body));
+    }
+    if (opts.sender.brokerage) {
+      parts.push(escapeHtml(opts.sender.brokerage));
+    }
+    return parts.length > 0
+      ? `<p style="margin:0;color:#666;font-size:11px;line-height:1.5;">${parts.join(" · ")}</p>`
+      : "";
+  })();
+
+  const supervisingBroker =
+    reqs.requires_supervising_broker && opts.sender.license_info
+      ? `<p style="margin:4px 0 0;color:#666;font-size:11px;line-height:1.5;">${escapeHtml(opts.sender.license_info)}</p>`
+      : "";
+
+  const footerAddress = `
+    <p style="margin:8px 0 0;color:#666;font-size:11px;line-height:1.5;white-space:pre-line;">${escapeHtml(opts.sender.physical_address)}</p>
+  `;
+
+  const fairHousing = reqs.requires_fair_housing_notice
+    ? `<p style="margin:8px 0 0;color:#888;font-size:11px;line-height:1.5;">⌂ ${escapeHtml(FAIR_HOUSING_NOTICE)}</p>`
+    : "";
+
+  // Profile disclaimer takes precedence; state default fills the gap so
+  // there is always *something* in this slot when a state demands it.
+  const disclaimerText =
+    b.legal_disclaimer && b.legal_disclaimer.trim()
+      ? b.legal_disclaimer
+      : reqs.default_disclaimer;
+  const disclaimer = disclaimerText
+    ? `<p style="margin:8px 0 0;color:#888;font-size:11px;font-style:italic;line-height:1.5;">${escapeHtml(disclaimerText)}</p>`
     : "";
 
   return `<!doctype html>
@@ -110,10 +154,14 @@ export function renderEmailHtml(opts: RenderOpts): string {
           <!-- Footer -->
           <tr>
             <td style="padding:24px;background:#fafafa;border-top:1px solid #eee;">
+              ${whyReceiving}
+              ${licenseLine}
+              ${supervisingBroker}
               ${footerAddress}
+              ${fairHousing}
               ${disclaimer}
-              <p style="margin:12px 0 0;color:#888;font-size:11px;">
-                <a href="${opts.unsubscribeUrl}" style="color:#888;text-decoration:underline;">Unsubscribe</a> from these market updates.
+              <p style="margin:12px 0 0;color:#888;font-size:11px;line-height:1.5;">
+                <a href="${opts.unsubscribeUrl}" style="color:#888;text-decoration:underline;">Unsubscribe</a> from these hyperlocal market updates.
               </p>
             </td>
           </tr>

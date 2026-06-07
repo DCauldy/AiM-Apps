@@ -64,6 +64,9 @@ export async function rerenderEmail(emailId: string): Promise<{
     phone: profile.phone,
     reply_to_email: profile.reply_to_email,
     license_number: profile.license_number,
+    license_info: profile.license_info,
+    regulatory_body: profile.regulatory_body,
+    state: profile.state,
     physical_address: profile.physical_address,
     sign_off: profile.sign_off,
   };

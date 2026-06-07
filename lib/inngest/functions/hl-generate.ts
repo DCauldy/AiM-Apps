@@ -108,6 +108,9 @@ export const hlGenerate = inngest.createFunction(
             phone: pp.phone,
             reply_to_email: pp.reply_to_email,
             license_number: pp.license_number,
+            license_info: pp.license_info,
+            regulatory_body: pp.regulatory_body,
+            state: pp.state,
             physical_address: pp.physical_address,
             sign_off: pp.sign_off,
           };

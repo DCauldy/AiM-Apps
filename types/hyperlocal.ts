@@ -57,6 +57,12 @@ export interface PlatformSenderProfile {
   phone?: string | null;
   reply_to_email?: string | null;
   license_number?: string | null;
+  /** Free text describing supervising / sponsoring broker (CA, TX, IL etc.). */
+  license_info?: string | null;
+  /** "Texas Real Estate Commission" — agency the license is issued by. */
+  regulatory_body?: string | null;
+  /** State the agent operates in (ISO 2-letter code or display name). Drives state-aware disclosure rules at render time. */
+  state?: string | null;
 
   physical_address: string;       // CAN-SPAM requirement
   sign_off: string;
