@@ -65,7 +65,7 @@ export default async function AppsPage() {
   }
 
   return (
-    <div className="apps-landing-bg min-h-screen flex items-start justify-center p-4 md:p-8 md:pt-16">
+    <div className="apps-theme apps-landing-bg min-h-screen flex items-start justify-center p-4 md:p-8 md:pt-16">
       {/* Decorative circuitry — same pattern + pulse cadence as the AiM
           dashboard chatbot, positioned in opposite corners. */}
       <Circuitry

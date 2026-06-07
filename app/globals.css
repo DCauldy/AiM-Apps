@@ -770,13 +770,49 @@ pre code {
 /* ── /apps landing page chat-style background ──
    Mirrors the AiM Academy dashboard chat: dark green-blue gradient
    AVIF as the base layer, white text, room for two circuitry decorations
-   pulsing across the corners. */
+   pulsing across the corners. The .apps-theme dark token scope flips
+   --foreground/--card/etc so AppsShowcase reads light-on-dark against
+   the gradient. */
 .apps-landing-bg {
   background-image: url('/aim-chat-bg.avif');
   background-repeat: no-repeat;
   background-size: cover;
   background-position: center;
-  color: white;
   position: relative;
   overflow: hidden;
+}
+
+.apps-theme {
+  color-scheme: dark;
+  /* Slight darker tint than blog-engine so the AVIF gradient still
+     shows through where cards do not cover. */
+  --background: 200 35% 12%;
+  --foreground: 0 0% 100%;
+  --card: 200 35% 10%;
+  --card-foreground: 0 0% 100%;
+  --popover: 200 35% 10%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 160 68% 53%;
+  --primary-foreground: 200 35% 10%;
+  --secondary: 200 25% 18%;
+  --secondary-foreground: 0 0% 100%;
+  --muted: 200 25% 18%;
+  --muted-foreground: 0 0% 80%;
+  --accent: 200 25% 18%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 62.8% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 200 25% 28%;
+  --input: 200 25% 28%;
+  --ring: 160 68% 53%;
+}
+
+/* Force glass-panel-active to stay dark inside apps-theme even when the
+   user system color-scheme is light — the parent media query in this file
+   would otherwise flip it to white. */
+.apps-theme .glass-panel-active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
