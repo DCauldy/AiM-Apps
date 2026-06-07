@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Star, Archive, ArchiveRestore, Trash2, Check, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/toast";
 import type { PlatformProfile } from "@/types/platform-profile";
 
@@ -25,6 +26,8 @@ export function ProfileListClient({
   const { addToast } = useToast();
   const [profiles, setProfiles] = useState(initialProfiles);
   const [busy, setBusy] = useState<string | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<PlatformProfile | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PlatformProfile | null>(null);
 
   const active = profiles.filter((p) => !p.archived_at);
   const archived = profiles.filter((p) => p.archived_at);
@@ -69,7 +72,6 @@ export function ProfileListClient({
   }
 
   async function archive(id: string) {
-    if (!confirm("Archive this profile? Apps cannot run under it until you restore it.")) return;
     setBusy(id);
     try {
       const res = await fetch(`/api/profiles/${id}/archive`, { method: "POST" });
@@ -105,13 +107,7 @@ export function ProfileListClient({
     }
   }
 
-  async function hardDelete(id: string, name: string) {
-    if (
-      !confirm(
-        `Permanently delete "${name}"? This will cascade and delete ALL app data tied to this profile (blogs, campaigns, prompts, etc.). This cannot be undone.`
-      )
-    )
-      return;
+  async function hardDelete(id: string) {
     setBusy(id);
     try {
       const res = await fetch(`/api/profiles/${id}?confirm=true`, { method: "DELETE" });
@@ -186,8 +182,8 @@ export function ProfileListClient({
             busy={busy === p.id}
             onActivate={() => activate(p.id)}
             onSetDefault={() => setDefault(p.id)}
-            onArchive={() => archive(p.id)}
-            onHardDelete={() => hardDelete(p.id, p.display_name)}
+            onArchive={() => setArchiveTarget(p)}
+            onHardDelete={() => setDeleteTarget(p)}
           />
         ))}
       </div>
@@ -206,11 +202,49 @@ export function ProfileListClient({
               archived
               canRestore={!atSlotLimit}
               onRestore={() => restore(p.id)}
-              onHardDelete={() => hardDelete(p.id, p.display_name)}
+              onHardDelete={() => setDeleteTarget(p)}
             />
           ))}
         </section>
       )}
+
+      <ConfirmDialog
+        open={Boolean(archiveTarget)}
+        onOpenChange={(o) => !o && setArchiveTarget(null)}
+        title={archiveTarget ? `Archive “${archiveTarget.display_name}”?` : "Archive profile?"}
+        description={
+          <>
+            Apps cannot run under this profile until you restore it. All data
+            stays preserved — you can restore the profile any time as long as
+            you have a free slot.
+          </>
+        }
+        confirmLabel="Archive"
+        variant="destructive"
+        busy={busy === archiveTarget?.id}
+        onConfirm={async () => {
+          if (archiveTarget) await archive(archiveTarget.id);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title={deleteTarget ? `Delete “${deleteTarget.display_name}”?` : "Delete profile?"}
+        description={
+          <>
+            This permanently deletes the profile and <strong>cascades to all
+            app data</strong> tied to it (blogs, topics, campaigns, runs,
+            prompts, threads). This cannot be undone.
+          </>
+        }
+        confirmLabel="Delete forever"
+        variant="destructive"
+        busy={busy === deleteTarget?.id}
+        onConfirm={async () => {
+          if (deleteTarget) await hardDelete(deleteTarget.id);
+        }}
+      />
     </div>
   );
 }
