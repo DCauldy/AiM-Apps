@@ -232,7 +232,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ projectId: string; sceneId: string }> }
 ) {
   const { projectId, sceneId } = await params;
@@ -249,8 +249,12 @@ export async function DELETE(
     );
   }
 
+  const sourcePhotoId = new URL(request.url).searchParams.get("sourcePhotoId");
   const { data: deletedPhoto, error: deletePhotoError } = await access.supabase
-    .rpc("delete_tour_scene_source_photo", getDeleteAuthoritativeSourcePhotoRpcArgs({ projectId, sceneId }))
+    .rpc(
+      "delete_tour_scene_source_photo",
+      getDeleteAuthoritativeSourcePhotoRpcArgs({ projectId, sceneId, sourcePhotoId })
+    )
     .single<DeleteTourSceneSourcePhotoRpcRow>();
 
   if (deletePhotoError || !deletedPhoto) {

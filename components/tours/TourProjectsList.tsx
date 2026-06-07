@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, RefreshCw } from "lucide-react";
-import { DashboardCard, EmptyState } from "@/components/app-shell/PagePrimitives";
+import {
+  DashboardCard,
+  EmptyState,
+} from "@/components/app-shell/PagePrimitives";
 import { Button } from "@/components/ui/button";
 
 type TourProject = {
@@ -35,7 +38,12 @@ function formatDate(value: string) {
 }
 
 export function TourProjectsList() {
-  const { data: projects, error, isLoading, refetch } = useQuery({
+  const {
+    data: projects,
+    error,
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: ["tours", "projects", "open"],
     queryFn: fetchTourProjects,
   });
@@ -49,7 +57,10 @@ export function TourProjectsList() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2].map((item) => (
-            <div key={item} className="rounded-lg border border-border bg-card p-5">
+            <div
+              key={item}
+              className="rounded-lg border border-border bg-card p-5"
+            >
               <div className="h-5 w-56 animate-pulse rounded bg-muted" />
               <div className="mt-2 h-4 w-80 max-w-full animate-pulse rounded bg-muted" />
               <div className="mt-6 h-9 w-24 animate-pulse rounded bg-muted" />
@@ -63,7 +74,9 @@ export function TourProjectsList() {
   if (error) {
     return (
       <DashboardCard className="text-center">
-        <h2 className="text-xl font-semibold text-foreground">Could not load tour projects</h2>
+        <h2 className="text-xl font-semibold text-foreground">
+          Could not load tour projects
+        </h2>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
           {error.message}
         </p>
@@ -95,10 +108,13 @@ export function TourProjectsList() {
         <div>
           <h2 className="text-sm font-semibold">Open projects</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Continue active listing projects or archive paused work without deleting history.
+            Continue active listing projects or archive paused work without
+            deleting history.
           </p>
         </div>
-        <span className="text-xs text-muted-foreground">{projects.length} active</span>
+        <span className="text-xs text-muted-foreground">
+          {projects.length} active
+        </span>
       </div>
       <div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -108,7 +124,10 @@ export function TourProjectsList() {
               className="overflow-hidden rounded-lg border border-border bg-card"
             >
               {project.cover_photo_preview_url && (
-                <Link href={`/apps/tours/projects/${project.id}`} className="block aspect-[16/9] bg-muted">
+                <Link
+                  href={`/apps/tours/projects/${project.id}`}
+                  className="block aspect-[16/9] bg-muted"
+                >
                   <img
                     src={project.cover_photo_preview_url}
                     alt={`First TourScene photo for ${project.name}`}
@@ -117,16 +136,21 @@ export function TourProjectsList() {
                 </Link>
               )}
               <div className="p-4">
-                <Link href={`/apps/tours/projects/${project.id}`} className="group block min-w-0">
-                  <h3 className="text-sm font-semibold text-foreground">{project.name}</h3>
-                  <p className="mt-1 truncate text-xs text-muted-foreground">{project.property_address}</p>
-                  <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary group-hover:underline">
-                    Open workspace
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </span>
+                <Link
+                  href={`/apps/tours/projects/${project.id}`}
+                  className="group block min-w-0"
+                >
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {project.name}
+                  </h3>
+                  <p className="mt-1 truncate text-xs text-muted-foreground">
+                    {project.property_address}
+                  </p>
                 </Link>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">Created {formatDate(project.created_at)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Created {formatDate(project.created_at)}
+                  </p>
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/apps/tours/projects/${project.id}`}>
                       Open

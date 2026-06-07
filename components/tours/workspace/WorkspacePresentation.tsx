@@ -20,7 +20,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckCircle2, EllipsisVertical, ImagePlus, Loader2, Pencil, Plus, Trash2, UploadCloud } from "lucide-react";
+import { EllipsisVertical, ImagePlus, Loader2, Pencil, Plus, Trash2, UploadCloud } from "lucide-react";
 import type { TourScene } from "@/lib/tours/workspace";
 import { Button } from "@/components/ui/button";
 import {
@@ -239,7 +239,7 @@ function SceneTabButton({
         isActive
           ? "border-primary ring-2 ring-primary/25"
           : "border-border bg-background text-foreground hover:border-primary/60"
-      } ${scene.included ? "" : "opacity-60"} ${isDragging ? "z-10 shadow-lg" : ""}`}
+      } ${isDragging ? "z-10 shadow-lg" : ""}`}
       {...attributes}
       {...listeners}
     >
@@ -385,20 +385,25 @@ export function ProjectActionsMenu({
 
 export function SceneActionsMenu({
   scene,
+  selectedPhoto,
   onReplacePhoto,
   onRemovePhoto,
-  onToggleInclusion,
+  onRemoveScene,
   isRemovingPhoto,
-  isUpdatingInclusion,
+  isRemovingScene,
 }: {
   scene: TourScene;
+  selectedPhoto: TourScenePhoto | null;
   onReplacePhoto: () => void;
   onRemovePhoto: () => void;
-  onToggleInclusion: () => void;
+  onRemoveScene: () => void;
   isRemovingPhoto: boolean;
-  isUpdatingInclusion: boolean;
+  isRemovingScene: boolean;
 }) {
   const canRemovePhoto = scene.sourcePhotos.length > 1;
+  const selectedPhotoId = selectedPhoto?.id ?? scene.authoritativePhoto.id;
+  const selectedPhotoLabel =
+    selectedPhotoId === scene.authoritativePhoto.id ? "primary photo" : "secondary photo";
 
   return (
     <div className="absolute right-3 top-3 z-30">
@@ -420,26 +425,22 @@ export function SceneActionsMenu({
             disabled={!canRemovePhoto || isRemovingPhoto}
             title={
               canRemovePhoto
-                ? "Removes the primary photo; rail thumbnail selection only changes the displayed image."
-                : "A scene needs at least one primary photo."
+                ? `Removes the selected ${selectedPhotoLabel}.`
+                : "A scene needs at least one photo."
             }
             onClick={onRemovePhoto}
           >
             <Trash2 className="mr-2 h-4 w-4" />
-            {isRemovingPhoto ? "Removing..." : "Remove primary photo"}
+            {isRemovingPhoto ? "Removing..." : `Remove ${selectedPhotoLabel}`}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className={scene.included ? "text-destructive hover:text-destructive" : undefined}
-            disabled={isUpdatingInclusion}
-            onClick={onToggleInclusion}
+            className="text-destructive hover:text-destructive"
+            disabled={isRemovingScene}
+            onClick={onRemoveScene}
           >
-            {scene.included ? (
-              <Trash2 className="mr-2 h-4 w-4" />
-            ) : (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-            )}
-            {scene.included ? "Skip scene" : "Include scene"}
+            <Trash2 className="mr-2 h-4 w-4" />
+            {isRemovingScene ? "Removing..." : "Remove scene"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -744,53 +745,5 @@ export function SceneStrip({
         <Plus className="h-6 w-6" />
       </button>
     </div>
-  );
-}
-
-export function SceneDetailsPanel({
-  activeScene,
-  displayPhoto,
-  sceneIndex,
-  onAddScene,
-}: {
-  activeScene: TourScene | null;
-  displayPhoto: TourScenePhoto | null;
-  sceneIndex: number;
-  onAddScene: () => void;
-}) {
-  return (
-    <section className="min-h-48 rounded-md border border-border bg-background p-4 lg:min-h-[420px]">
-      {activeScene ? (
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">{activeScene.title}</h2>
-            <p className="mt-1 text-xs uppercase text-muted-foreground">
-              Scene {sceneIndex + 1} · {activeScene.cameraMotion.replace("_", " ")}
-            </p>
-          </div>
-          <div className="rounded-md bg-muted/40 p-3 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Scene/image description</p>
-            <p className="mt-2">Primary source image: {activeScene.authoritativePhoto.fileName}</p>
-            {displayPhoto && displayPhoto.id !== activeScene.authoritativePhoto.id ? (
-              <p className="mt-1">Viewing display image: {displayPhoto.fileName}</p>
-            ) : null}
-            <p className="mt-1">
-              {activeScene.included
-                ? "Included for the approval workflow."
-                : "Skipped from the approval workflow."}
-            </p>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={onAddScene}
-          className="flex min-h-40 w-full flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/30 p-4 text-center hover:bg-muted/50 lg:min-h-[360px]"
-        >
-          <ImagePlus className="h-8 w-8 text-primary" />
-          <span className="mt-3 text-sm font-semibold text-foreground">Add first scene</span>
-        </button>
-      )}
-    </section>
   );
 }

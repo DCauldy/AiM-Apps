@@ -2,8 +2,19 @@ import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
 import { LISTING_MEDIA_ACKNOWLEDGEMENT_COPY } from "@/lib/tours/listing-media-authorization";
+import { listTourSceneFactsForProject } from "@/lib/tours/facts";
 import { getTourScenesForProject } from "@/lib/tours/scenes";
 import { getTourSceneReadinessStatus } from "@/lib/tours/scenes.core";
+
+export type TourSceneFact = {
+  id: string;
+  text: string;
+  sourceType: "human" | "ai_suggestion";
+  sourceLabel: string | null;
+  sourcePhotoId: string | null;
+  proofStatus: "proofed" | "suggested" | "rejected";
+  sortOrder: number;
+};
 
 export type TourScene = {
   id: string;
@@ -25,6 +36,8 @@ export type TourScene = {
     contentType: string;
     previewUrl: string | null;
   }>;
+  facts: TourSceneFact[];
+  hasProofedContext: boolean;
   status: "ready" | "skipped";
 };
 
@@ -93,7 +106,24 @@ export async function getTourProjectWorkspaceViewModel(
     return null;
   }
 
-  const tourScenes = await getTourScenesForProject(project.id);
+  const [tourScenes, sceneFacts] = await Promise.all([
+    getTourScenesForProject(project.id),
+    listTourSceneFactsForProject(project.id),
+  ]);
+  const factsBySceneId = new Map<string, TourSceneFact[]>();
+  for (const fact of sceneFacts) {
+    const sceneFactsForScene = factsBySceneId.get(fact.sceneId) ?? [];
+    sceneFactsForScene.push({
+      id: fact.id,
+      text: fact.text,
+      sourceType: fact.sourceType,
+      sourceLabel: fact.sourceLabel,
+      sourcePhotoId: fact.sourcePhotoId,
+      proofStatus: fact.proofStatus,
+      sortOrder: fact.sortOrder,
+    });
+    factsBySceneId.set(fact.sceneId, sceneFactsForScene);
+  }
 
   const workspaceScenes = await Promise.all(tourScenes.map(async (scene) => {
     const signedSourcePhotos = await Promise.all(scene.sourcePhotos.map(async (photo) => {
@@ -127,6 +157,8 @@ export async function getTourProjectWorkspaceViewModel(
       cameraMotion: scene.cameraMotion,
       authoritativePhoto,
       sourcePhotos: signedSourcePhotos,
+      facts: factsBySceneId.get(scene.id) ?? [],
+      hasProofedContext: (factsBySceneId.get(scene.id) ?? []).some((fact) => fact.proofStatus === "proofed"),
       status: scene.included ? "ready" as const : "skipped" as const,
     };
   }));

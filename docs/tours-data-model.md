@@ -1,6 +1,6 @@
 # Tours Data Model
 
-This document summarizes the Tours tables added for listing-media authorization and the first TourScene source-photo model.
+This document summarizes the Tours tables added for listing-media authorization, TourScene source photos, and optional scene enrichment facts.
 
 ## `tours_projects`
 
@@ -52,8 +52,32 @@ Listing-photo source media attached to TourScenes. The highest-priority source p
 | `priority` | Source photo priority within the scene. Lower numbers are higher priority; `0` is the default authoritative photo. |
 | `created_at` | When the source photo row was created. |
 
+## `tour_scene_facts`
+
+Proofed or suggested facts attached to a TourScene. This is the shared model for human-entered scene facts now and optional AI enrichment later, so downstream script generation can read one ordered fact list instead of separate manual/AI surfaces.
+
+| Column | Purpose |
+| --- | --- |
+| `id` | Primary key for the scene fact row. |
+| `project_id` | Parent Tour Project. Duplicated with `scene_id` for authorization and query efficiency. |
+| `scene_id` | TourScene this fact belongs to. Deleting the scene deletes its facts. |
+| `fact_text` | Short fact about the room, feature, theme, selling point, or scene. Blank facts are rejected. |
+| `source_type` | Fact source: `human` for agent-entered facts, or `ai_suggestion` for future photo-only enrichment suggestions. |
+| `source_label` | Optional human-readable provenance label, such as `Agent entry` or the enrichment source name. |
+| `source_photo_id` | Optional source photo that produced or supports the fact. If that photo is deleted, only this pointer is cleared. |
+| `provenance` | JSON provenance payload for source-specific metadata, citations, model names, or prompt/run identifiers. |
+| `proof_status` | Review state: `proofed`, `suggested`, or `rejected`. Human-entered facts must be `proofed`. |
+| `proofed_at` | Timestamp for when the fact became proofed. Defaults to now for human-entered proofed facts. |
+| `proofed_by` | Optional user who proofed the fact. |
+| `proof_metadata` | Optional JSON payload for review/edit metadata. |
+| `sort_order` | Saved fact order within the scene. Unique per scene. |
+| `created_at` | When the fact row was created. |
+| `updated_at` | When the fact row was last updated. |
+
+Human-entered facts from the workspace sidebar should insert with `source_type = 'human'` and `proof_status = 'proofed'`, making them immediately available as proofed scene context. Future AI enrichment can insert `source_type = 'ai_suggestion'` facts as `suggested` with `source_photo_id` and provenance metadata, then update the same rows to `proofed` or `rejected` during review.
+
 ## Authorization notes
 
-- Row-level security ties scenes and source photos back to the owning `tours_projects.user_id`.
-- Scene and source-photo writes are allowed only for open Tour Projects owned by the current user.
+- Row-level security ties scenes, source photos, and facts back to the owning `tours_projects.user_id`.
+- Scene, source-photo, and fact writes are allowed only for open Tour Projects owned by the current user.
 - Listing-media acknowledgement is stored on the owning `tours_projects` row.

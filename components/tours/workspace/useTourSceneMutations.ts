@@ -42,13 +42,18 @@ async function addSceneListingPhoto(projectId: string, sceneId: string, formData
   return payload;
 }
 
-async function removeAuthoritativeSceneListingPhoto(projectId: string, sceneId: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`, {
+async function removeSceneListingPhoto(projectId: string, sceneId: string, sourcePhotoId: string | null) {
+  const url = new URL(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`, window.location.origin);
+  if (sourcePhotoId) {
+    url.searchParams.set("sourcePhotoId", sourcePhotoId);
+  }
+
+  const response = await fetch(url, {
     method: "DELETE",
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error ?? "Could not remove the authoritative listing photo.");
+    throw new Error(payload.error ?? "Could not remove the listing photo.");
   }
   return payload;
 }
@@ -75,6 +80,17 @@ async function toggleSceneInclusion(projectId: string, sceneId: string, included
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload.error ?? "Could not update TourScene inclusion.");
+  }
+  return payload;
+}
+
+async function deleteTourScene(projectId: string, sceneId: string) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}`, {
+    method: "DELETE",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not remove the TourScene.");
   }
   return payload;
 }
@@ -124,7 +140,8 @@ export function useTourSceneMutations({
     onSettled: onAddPhotoSettled,
   });
   const removePhotoMutation = useMutation({
-    mutationFn: (sceneId: string) => removeAuthoritativeSceneListingPhoto(projectId, sceneId),
+    mutationFn: ({ sceneId, sourcePhotoId }: { sceneId: string; sourcePhotoId: string | null }) =>
+      removeSceneListingPhoto(projectId, sceneId, sourcePhotoId),
     onSuccess: invalidateWorkspace,
   });
   const reorderScenesMutation = useMutation({
@@ -140,7 +157,7 @@ export function useTourSceneMutations({
     getId: useCallback((scene: TourScene) => scene.id, []),
     getSyncKey: useCallback(
       (scene: TourScene) =>
-        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}\u001e${scene.sourcePhotos.map((photo) => `${photo.id}:${photo.previewUrl ?? ""}`).join("\u001d")}`,
+        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}\u001e${scene.sourcePhotos.map((photo) => `${photo.id}:${photo.previewUrl ?? ""}`).join("\u001d")}\u001e${scene.facts.map((fact) => `${fact.id}:${fact.text}:${fact.sortOrder}`).join("\u001d")}`,
       []
     ),
     isLocked: reorderScenesMutation.isPending,
@@ -149,6 +166,10 @@ export function useTourSceneMutations({
   const toggleSceneInclusionMutation = useMutation({
     mutationFn: ({ sceneId, included }: { sceneId: string; included: boolean }) =>
       toggleSceneInclusion(projectId, sceneId, included),
+    onSuccess: invalidateWorkspace,
+  });
+  const deleteSceneMutation = useMutation({
+    mutationFn: (sceneId: string) => deleteTourScene(projectId, sceneId),
     onSuccess: invalidateWorkspace,
   });
 
@@ -180,6 +201,7 @@ export function useTourSceneMutations({
     removePhoto: removePhotoMutation.mutate,
     reorderById: tourScenes.reorderById,
     toggleInclusion,
+    deleteScene: deleteSceneMutation.mutateAsync,
     mutations: {
       createScene: createSceneMutation,
       replacePhoto: replacePhotoMutation,
@@ -187,6 +209,7 @@ export function useTourSceneMutations({
       removePhoto: removePhotoMutation,
       reorderScenes: reorderScenesMutation,
       toggleSceneInclusion: toggleSceneInclusionMutation,
+      deleteScene: deleteSceneMutation,
     },
   };
 }

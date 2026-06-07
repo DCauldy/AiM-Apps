@@ -16,12 +16,12 @@ import {
   ProjectDetailsDialog,
   ReplacePhotoDialog,
   SceneActionsMenu,
-  SceneDetailsPanel,
   SceneImageRail,
   SceneStrip,
   SceneUploadDialog,
   type ProjectDetailsForm,
 } from "./WorkspacePresentation";
+import { SceneDetailsPanel } from "./SceneDetailsPanel";
 import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
 import { useTourSceneMutations } from "./useTourSceneMutations";
 
@@ -61,6 +61,42 @@ async function archiveTourProject(projectId: string) {
   return payload;
 }
 
+async function createSceneFact(projectId: string, sceneId: string, text: string) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not save the scene fact.");
+  }
+  return payload;
+}
+
+async function updateSceneFact(projectId: string, sceneId: string, factId: string, text: string) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts/${factId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not update the scene fact.");
+  }
+  return payload;
+}
+
+async function deleteSceneFact(projectId: string, sceneId: string, factId: string) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts/${factId}`, {
+    method: "DELETE",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not delete the scene fact.");
+  }
+  return payload;
+}
 
 export function TourProjectWorkspace({
   viewModel,
@@ -119,6 +155,52 @@ export function TourProjectWorkspace({
       router.push("/apps/tours/dashboard");
     },
   });
+  const sceneFactMutation = useMutation({
+    mutationFn: ({ sceneId, text }: { sceneId: string; text: string }) =>
+      createSceneFact(viewModel.project.id, sceneId, text),
+    onSuccess: (payload, variables) => {
+      if (payload?.fact) {
+        tourScenes.updateItem(variables.sceneId, (scene) => ({
+          ...scene,
+          facts: [...scene.facts, payload.fact],
+          hasProofedContext: scene.hasProofedContext || payload.fact.proofStatus === "proofed",
+        }));
+      }
+      invalidateWorkspace();
+    },
+  });
+  const updateSceneFactMutation = useMutation({
+    mutationFn: ({ sceneId, factId, text }: { sceneId: string; factId: string; text: string }) =>
+      updateSceneFact(viewModel.project.id, sceneId, factId, text),
+    onSuccess: (payload, variables) => {
+      if (payload?.fact) {
+        tourScenes.updateItem(variables.sceneId, (scene) => ({
+          ...scene,
+          facts: scene.facts.map((fact) => (fact.id === variables.factId ? payload.fact : fact)),
+          hasProofedContext: scene.facts.some((fact) =>
+            fact.id === variables.factId ? payload.fact.proofStatus === "proofed" : fact.proofStatus === "proofed"
+          ),
+        }));
+      }
+      invalidateWorkspace();
+    },
+  });
+  const deleteSceneFactMutation = useMutation({
+    mutationFn: ({ sceneId, factId }: { sceneId: string; factId: string }) =>
+      deleteSceneFact(viewModel.project.id, sceneId, factId),
+    onSuccess: (_payload, variables) => {
+      tourScenes.updateItem(variables.sceneId, (scene) => {
+        const facts = scene.facts.filter((fact) => fact.id !== variables.factId);
+        return {
+          ...scene,
+          facts,
+          hasProofedContext: facts.some((fact) => fact.proofStatus === "proofed"),
+        };
+      });
+      invalidateWorkspace();
+    },
+  });
+
   const sceneMutations = useTourSceneMutations({
     projectId: viewModel.project.id,
     scenes: viewModel.tourScenes,
@@ -147,13 +229,14 @@ export function TourProjectWorkspace({
     removePhoto: removePhotoMutation,
     reorderScenes: reorderScenesMutation,
     toggleSceneInclusion: toggleSceneInclusionMutation,
+    deleteScene: deleteSceneMutation,
   } = sceneMutations.mutations;
   const sourcePhotoSelection = useSourcePhotoSelection({
     scenes: tourScenes.items,
     activeSceneId,
   });
   const { activeScene, selectedSourcePhoto, pendingPhotoForActiveScene } = sourcePhotoSelection;
-  const includedSceneCount = tourScenes.items.filter((scene) => scene.included).length;
+  const sceneCount = tourScenes.items.length;
   const replacingScene = sceneToReplacePhoto
     ? tourScenes.items.find((scene) => scene.id === sceneToReplacePhoto.id) ?? sceneToReplacePhoto
     : null;
@@ -243,18 +326,22 @@ export function TourProjectWorkspace({
     tourScenes.reorderById(active.id, over?.id);
   }
 
-  async function handleToggleSceneInclusion(sceneId: string, included: boolean) {
-    await sceneMutations.toggleInclusion(sceneId, included);
-  }
-
   function confirmSceneDelete() {
     if (!sceneToDelete) {
       return;
     }
 
-    handleToggleSceneInclusion(sceneToDelete.id, false).finally(() => {
-      setSceneToDelete(null);
-    });
+    const deletedSceneId = sceneToDelete.id;
+    const nextActiveSceneId = tourScenes.items.find((scene) => scene.id !== deletedSceneId)?.id ?? null;
+
+    sceneMutations
+      .deleteScene(deletedSceneId)
+      .then(() => {
+        tourScenes.setItems(tourScenes.items.filter((scene) => scene.id !== deletedSceneId));
+        setActiveSceneId(nextActiveSceneId);
+        setSceneToDelete(null);
+      })
+      .catch(() => undefined);
   }
 
   return (
@@ -346,26 +433,21 @@ export function TourProjectWorkspace({
                   {activeScene && (
                     <SceneActionsMenu
                       scene={activeScene}
+                      selectedPhoto={selectedSourcePhoto}
                       onReplacePhoto={() => {
                         setReplacementPhoto(null);
                         setSceneToReplacePhoto(activeScene);
                       }}
-                      onRemovePhoto={() => removePhotoMutation.mutate(activeScene.id)}
-                      onToggleInclusion={() => {
-                        if (activeScene.included) {
-                          setSceneToDelete(activeScene);
-                          return;
-                        }
-                        handleToggleSceneInclusion(activeScene.id, true);
-                      }}
+                      onRemovePhoto={() =>
+                        removePhotoMutation.mutate({
+                          sceneId: activeScene.id,
+                          sourcePhotoId: selectedSourcePhoto?.id ?? activeScene.authoritativePhoto.id,
+                        })
+                      }
+                      onRemoveScene={() => setSceneToDelete(activeScene)}
                       isRemovingPhoto={removePhotoMutation.isPending}
-                      isUpdatingInclusion={toggleSceneInclusionMutation.isPending}
+                      isRemovingScene={deleteSceneMutation.isPending}
                     />
-                  )}
-                  {activeScene && !activeScene.included && (
-                    <span className="absolute bottom-3 left-3 rounded-md bg-background/90 px-2 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-                      Skipped
-                    </span>
                   )}
                 </PhotoStageDropzone>
               </div>
@@ -374,13 +456,37 @@ export function TourProjectWorkspace({
                 activeScene={activeScene}
                 displayPhoto={selectedSourcePhoto}
                 sceneIndex={activeScene ? tourScenes.items.findIndex((scene) => scene.id === activeScene.id) : -1}
+                isSubmittingFact={sceneFactMutation.isPending}
+                isUpdatingFact={updateSceneFactMutation.isPending}
+                isDeletingFact={deleteSceneFactMutation.isPending}
+                factError={sceneFactMutation.error}
+                factActionError={updateSceneFactMutation.error ?? deleteSceneFactMutation.error}
                 onAddScene={() => setIsAddSceneOpen(true)}
+                onCreateFact={async (text) => {
+                  if (!activeScene) {
+                    return;
+                  }
+                  await sceneFactMutation.mutateAsync({ sceneId: activeScene.id, text });
+                }}
+                onUpdateFact={async (factId, text) => {
+                  if (!activeScene) {
+                    return;
+                  }
+                  await updateSceneFactMutation.mutateAsync({ sceneId: activeScene.id, factId, text });
+                }}
+                onDeleteFact={async (factId) => {
+                  if (!activeScene) {
+                    return;
+                  }
+                  await deleteSceneFactMutation.mutateAsync({ sceneId: activeScene.id, factId });
+                }}
               />
             </div>
 
             {(tourScenes.error ??
               reorderScenesMutation.error ??
               toggleSceneInclusionMutation.error ??
+              deleteSceneMutation.error ??
               addPhotoMutation.error ??
               removePhotoMutation.error) && (
               <div className="mt-4">
@@ -388,6 +494,7 @@ export function TourProjectWorkspace({
                   {(tourScenes.error ??
                     reorderScenesMutation.error ??
                     toggleSceneInclusionMutation.error ??
+                    deleteSceneMutation.error ??
                     addPhotoMutation.error ??
                     removePhotoMutation.error)?.message ??
                     "Could not update TourScenes."}
@@ -398,7 +505,7 @@ export function TourProjectWorkspace({
             <Button
               type="button"
               className="mt-4 h-14 w-full text-base lg:ml-auto lg:block lg:max-w-sm"
-              disabled={includedSceneCount === 0}
+              disabled={sceneCount === 0}
               onClick={() => setWorkflowDialogOpen(true)}
             >
               Approve all and generate
@@ -456,12 +563,12 @@ export function TourProjectWorkspace({
       />
       <ConfirmDialog
         open={Boolean(sceneToDelete)}
-        title="Skip scene?"
-        body="This removes the scene from the approval workflow. The listing photo stays attached and the scene can be included again later."
-        confirmText="Skip scene"
-        pendingText="Skipping..."
-        error={toggleSceneInclusionMutation.error}
-        isPending={toggleSceneInclusionMutation.isPending}
+        title="Remove scene?"
+        body="This permanently removes the scene, its listing photos, and its proofed facts from this Tour Project."
+        confirmText="Remove scene"
+        pendingText="Removing..."
+        error={deleteSceneMutation.error}
+        isPending={deleteSceneMutation.isPending}
         onOpenChange={(open) => {
           if (!open) {
             setSceneToDelete(null);

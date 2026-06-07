@@ -200,6 +200,10 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
 
 export type { NewTourSceneSourcePhoto, TourSceneCameraMotion, TourSceneModel };
 
+type DeleteTourSceneRpcRow = {
+  removed_storage_path: string;
+};
+
 export async function createTourSceneFromAuthoritativePhoto(input: {
   projectId: string;
   title: string;
@@ -229,4 +233,31 @@ export async function toggleTourSceneInclusion(input: {
 }): Promise<ToggleTourSceneInclusionResult> {
   const repository = await createSupabaseTourScenesRepository();
   return toggleTourSceneInclusionForProject(input.projectId, input.sceneId, input.included, repository);
+}
+
+export async function deleteTourScene(input: {
+  projectId: string;
+  sceneId: string;
+}): Promise<{ ok: true; storagePaths: string[] } | { ok: false; error: string }> {
+  if (!input.sceneId) {
+    return { ok: false, error: "Choose a TourScene to remove." };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("delete_tour_scene", {
+    p_project_id: input.projectId,
+    p_scene_id: input.sceneId,
+  });
+
+  if (error) {
+    return { ok: false, error: error.message || "Could not remove the TourScene." };
+  }
+
+  const rows = (data ?? []) as DeleteTourSceneRpcRow[];
+  return {
+    ok: true,
+    storagePaths: rows
+      .map((row) => row.removed_storage_path)
+      .filter((path): path is string => typeof path === "string" && path.length > 0),
+  };
 }

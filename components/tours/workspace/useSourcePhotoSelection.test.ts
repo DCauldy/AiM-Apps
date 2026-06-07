@@ -26,6 +26,8 @@ function scene(sourcePhotos: SourcePhoto[]): TourScene {
     cameraMotion: "push_in",
     authoritativePhoto,
     sourcePhotos,
+    facts: [],
+    hasProofedContext: false,
     status: "ready",
   };
 }
