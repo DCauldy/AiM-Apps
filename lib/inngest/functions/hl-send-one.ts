@@ -79,7 +79,7 @@ export const hlSendOne = inngest.createFunction(
       // Check if user cancelled the run mid-flight
       const { data: run } = await supabase
         .from("hl_runs")
-        .select("phase, profile_id, sender_profile_id")
+        .select("phase, profile_id")
         .eq("id", runId)
         .single();
       if (!run || run.phase === "cancelled" || run.phase === "failed") {
@@ -109,15 +109,7 @@ export const hlSendOne = inngest.createFunction(
           };
         }
       }
-      if (!sender && run.sender_profile_id) {
-        const { data: legacy } = await supabase
-          .from("platform_sender_profiles")
-          .select("*")
-          .eq("id", run.sender_profile_id)
-          .maybeSingle();
-        sender = legacy;
-      }
-      if (!sender) throw new Error("Sender profile missing");
+      if (!sender) throw new Error("Sender profile missing — run.profile_id is required");
 
       return {
         skip: false,

@@ -135,14 +135,8 @@ export const hlGenerate = inngest.createFunction(
         }
       }
 
-      const [{ data: campaign }, { data: senderLegacy }, { data: brandingLegacy }, { data: allReady }] = await Promise.all([
+      const [{ data: campaign }, { data: allReady }] = await Promise.all([
         supabase.from("hl_campaigns").select("*").eq("id", run.campaign_id).single(),
-        !sender && run.sender_profile_id
-          ? supabase.from("platform_sender_profiles").select("*").eq("id", run.sender_profile_id).single()
-          : Promise.resolve({ data: null }),
-        !branding && run.branding_profile_id
-          ? supabase.from("platform_branding_profiles").select("*").eq("id", run.branding_profile_id).single()
-          : Promise.resolve({ data: null }),
         supabase
           .from("hl_segments")
           .select("*")
@@ -151,8 +145,8 @@ export const hlGenerate = inngest.createFunction(
           .order("contact_count", { ascending: false }),
       ]);
 
-      if (!sender) sender = senderLegacy;
-      if (!branding) branding = brandingLegacy;
+      if (!sender) throw new Error("Run is missing a Profile — sender identity unresolved");
+      if (!branding) throw new Error("Run is missing a Profile — branding unresolved");
 
       if (!campaign) throw new Error("Campaign not found");
       if (!sender) throw new Error("No sender profile selected for run");

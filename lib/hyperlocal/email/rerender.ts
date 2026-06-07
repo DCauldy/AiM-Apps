@@ -43,31 +43,51 @@ export async function rerenderEmail(emailId: string): Promise<{
 
   const { data: run } = await supabase
     .from("hl_runs")
-    .select("sender_profile_id, branding_profile_id")
+    .select("profile_id")
     .eq("id", email.run_id)
     .single();
-  if (!run) throw new Error("Run not found");
+  if (!run?.profile_id) throw new Error("Run profile not set — cannot re-render");
 
-  const [{ data: sender }, { data: branding }] = await Promise.all([
-    run.sender_profile_id
-      ? supabase
-          .from("platform_sender_profiles")
-          .select("*")
-          .eq("id", run.sender_profile_id)
-          .single()
-      : Promise.resolve({ data: null }),
-    run.branding_profile_id
-      ? supabase
-          .from("platform_branding_profiles")
-          .select("*")
-          .eq("id", run.branding_profile_id)
-          .single()
-      : Promise.resolve({ data: null }),
-  ]);
+  const { data: profile } = await supabase
+    .from("platform_profiles")
+    .select("*")
+    .eq("id", run.profile_id)
+    .single();
+  if (!profile) throw new Error("Profile not found — cannot re-render email");
 
-  if (!sender) {
-    throw new Error("Sender profile required to re-render email");
-  }
+  // Shape into the Sender + Branding objects the renderer expects.
+  const sender = {
+    id: profile.id,
+    full_name: profile.full_name ?? profile.display_name,
+    title: profile.title,
+    brokerage: profile.brokerage,
+    phone: profile.phone,
+    reply_to_email: profile.reply_to_email,
+    license_number: profile.license_number,
+    physical_address: profile.physical_address,
+    sign_off: profile.sign_off,
+  };
+  const branding = {
+    id: profile.id,
+    name: profile.display_name,
+    primary_color: profile.primary_color,
+    secondary_color: profile.secondary_color,
+    accent_color: profile.accent_color,
+    heading_font: profile.heading_font,
+    body_font: profile.body_font,
+    motifs: profile.motifs,
+    corner_style: profile.corner_style,
+    button_shape: profile.button_shape,
+    density: profile.density,
+    header_treatment: profile.header_treatment,
+    header_image_url: profile.header_image_url,
+    metric_box_style: profile.metric_box_style,
+    divider_style: profile.divider_style,
+    logo_url: profile.logo_url,
+    headshot_url: profile.headshot_url,
+    brokerage_badge_url: profile.brokerage_badge_url,
+    legal_disclaimer: profile.legal_disclaimer,
+  };
 
   const staticMapUrl = await buildStaticMapUrl({
     zip: (segment as HlSegment).geo_key,

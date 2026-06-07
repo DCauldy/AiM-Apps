@@ -84,11 +84,21 @@ export async function runRadarAudit({ userId, url }: RunAuditInput) {
       recommendations: AuditRecommendation[];
     }>;
 
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("*")
-      .eq("user_id", userId)
+    // Read identity from the user's active Profile (the audit only consumes a
+    // few fields — full_name, brokerage, metro_area, website_url —
+    // which all exist on platform_profiles).
+    const { data: userMeta } = await supabase
+      .from("profiles")
+      .select("active_profile_id")
+      .eq("id", userId)
       .maybeSingle();
+    const { data: profile } = userMeta?.active_profile_id
+      ? await supabase
+          .from("platform_profiles")
+          .select("*")
+          .eq("id", userMeta.active_profile_id)
+          .maybeSingle()
+      : { data: null };
 
     if (!profile) {
       scoredPages = pagesWithSignals.map((p) => {

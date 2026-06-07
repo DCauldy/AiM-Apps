@@ -66,11 +66,12 @@ export async function POST(
 
   const service = createServiceRoleClient();
 
-  // Load run with its sender + email connection (need service role to read
-  // encrypted OAuth tokens / Resend keys)
+  // Load run with its profile + email connection (need service role to read
+  // encrypted OAuth tokens / Resend keys). Sender identity now lives on
+  // platform_profiles, referenced by run.profile_id.
   const { data: run } = await service
     .from("hl_runs")
-    .select("id, user_id, phase, sender_profile_id, email_connection_id")
+    .select("id, user_id, phase, profile_id, email_connection_id")
     .eq("id", runId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -81,9 +82,9 @@ export async function POST(
       { status: 400 }
     );
   }
-  if (!run.sender_profile_id) {
+  if (!run.profile_id) {
     return Response.json(
-      { error: "No sender profile configured for this run" },
+      { error: "No Profile configured for this run" },
       { status: 400 }
     );
   }
@@ -100,7 +101,7 @@ export async function POST(
     emailsQuery = emailsQuery.eq("id", onlyEmailId);
   }
 
-  const [{ data: connection }, { data: sender }, { data: emails }] =
+  const [{ data: connection }, { data: profile }, { data: emails }] =
     await Promise.all([
       service
         .from("hl_email_connections")
@@ -108,12 +109,27 @@ export async function POST(
         .eq("id", run.email_connection_id)
         .single(),
       service
-        .from("platform_sender_profiles")
-        .select("*")
-        .eq("id", run.sender_profile_id)
+        .from("platform_profiles")
+        .select("id, display_name, full_name, title, brokerage, phone, reply_to_email, license_number, physical_address, sign_off")
+        .eq("id", run.profile_id)
         .single(),
       emailsQuery,
     ]);
+
+  // Shape the row into the Sender-like object the downstream renderer expects.
+  const sender = profile
+    ? {
+        id: profile.id,
+        full_name: profile.full_name ?? profile.display_name,
+        title: profile.title,
+        brokerage: profile.brokerage,
+        phone: profile.phone,
+        reply_to_email: profile.reply_to_email,
+        license_number: profile.license_number,
+        physical_address: profile.physical_address,
+        sign_off: profile.sign_off,
+      }
+    : null;
 
   if (!connection) {
     return Response.json(
