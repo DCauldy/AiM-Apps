@@ -227,7 +227,11 @@ export const hlSendOne = inngest.createFunction(
         text: finalText,
         headers: unsubscribeUrl
           ? {
-              "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@${connection.email_address.split("@")[1] ?? "apps.aimarketingacademy.com"}>`,
+              // HTTPS one-click only — the mailto half is optional in RFC 2369
+              // and we don't operate an inbox to receive it, so listing it
+              // would silently drop unsubscribe attempts from clients that
+              // prefer mailto over HTTPS.
+              "List-Unsubscribe": `<${unsubscribeUrl}>`,
               "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
             }
           : undefined,

@@ -39,14 +39,42 @@ const PERSPECTIVE_GUIDANCE: Record<Perspective, string> = {
   both: `Write a balanced section that speaks to both potential sellers and buyers, but stay grounded in the data.`,
 };
 
+/** Optional trend context derived from hl_market_snapshots. When omitted the
+ *  prompt simply doesn't reference trends — the writer falls back to the
+ *  current-month metrics only. */
+export interface TrendContext {
+  yoy_price_change_pct: number | null;
+  three_year_price_change_pct: number | null;
+}
+
+function formatTrends(t: TrendContext | undefined): string {
+  if (!t) return "";
+  const lines: string[] = [];
+  if (t.yoy_price_change_pct != null) {
+    const dir = t.yoy_price_change_pct > 0 ? "up" : t.yoy_price_change_pct < 0 ? "down" : "flat";
+    lines.push(
+      `- Median sale ${dir} ${Math.abs(t.yoy_price_change_pct).toFixed(1)}% YoY (vs same month last year)`,
+    );
+  }
+  if (t.three_year_price_change_pct != null) {
+    const dir = t.three_year_price_change_pct > 0 ? "up" : t.three_year_price_change_pct < 0 ? "down" : "flat";
+    lines.push(
+      `- Median sale ${dir} ${Math.abs(t.three_year_price_change_pct).toFixed(1)}% over the last 3 years`,
+    );
+  }
+  if (lines.length === 0) return "";
+  return `\n\nTREND CONTEXT — weave one of these naturally if it strengthens the story; never both:\n${lines.join("\n")}`;
+}
+
 export function getEmailWriterPrompt(opts: {
   sender: PlatformSenderProfile | null;
   segment: HlSegment;
   metrics: MlsMetrics | null;
   perspective: Perspective;
   campaign: Pick<HlCampaign, "lens">;
+  trends?: TrendContext;
 }): string {
-  const { sender, segment, metrics, perspective, campaign } = opts;
+  const { sender, segment, metrics, perspective, campaign, trends } = opts;
   const senderBlock = sender
     ? `Sender: ${sender.full_name}${sender.title ? `, ${sender.title}` : ""}${sender.brokerage ? `, ${sender.brokerage}` : ""}.`
     : "Sender details will be appended.";
@@ -59,7 +87,7 @@ SECTION PERSPECTIVE: ${perspective}
 ${PERSPECTIVE_GUIDANCE[perspective]}
 
 REAL MARKET DATA — do not invent numbers, only use what's here:
-${formatMetrics(metrics)}
+${formatMetrics(metrics)}${formatTrends(trends)}
 
 OUTPUT FORMAT: clean HTML, no <html> or <body> wrapper. Use <p>, <strong>, <em>, and one <ul> if you call out 2–4 data points as bullets. NO emojis. NO marketing fluff. Sound like a knowledgeable agent texting a neighbor, not a brochure.
 

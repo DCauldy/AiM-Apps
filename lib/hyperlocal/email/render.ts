@@ -8,6 +8,7 @@ import {
   FAIR_HOUSING_NOTICE,
   getStateRequirements,
 } from "./state-requirements";
+import { googleFontsLinkFor } from "@/lib/fonts/google-fonts";
 
 interface RenderOpts {
   branding: PlatformBrandingProfile | null;
@@ -20,6 +21,10 @@ interface RenderOpts {
   unsubscribeUrl: string;
   /** Mapbox Static Images URL — embedded as <img> between header + metrics. */
   staticMapUrl?: string | null;
+  /** YoY / 3-year price-change deltas from hl_market_snapshots. When null we
+   *  skip the trend chip entirely instead of showing "0%" or "—". */
+  yoyPriceChangePct?: number | null;
+  threeYearPriceChangePct?: number | null;
 }
 
 const DEFAULT_BRAND = {
@@ -42,7 +47,12 @@ export function renderEmailHtml(opts: RenderOpts): string {
       ? `linear-gradient(135deg, ${b.primary_color}, ${b.secondary_color})`
       : b.primary_color;
 
-  const metricsBlock = renderMetricsTable(opts.metrics, b.accent_color);
+  const metricsBlock = renderMetricsTable(
+    opts.metrics,
+    b.accent_color,
+    opts.yoyPriceChangePct ?? null,
+    opts.threeYearPriceChangePct ?? null,
+  );
 
   const sellerSection = opts.sellerHtml
     ? `<h2 style="font-family:${b.heading_font};color:${b.primary_color};font-size:18px;margin:32px 0 8px;">For Homeowners</h2>${opts.sellerHtml}`
@@ -109,12 +119,22 @@ export function renderEmailHtml(opts: RenderOpts): string {
     ? `<p style="margin:8px 0 0;color:#888;font-size:11px;font-style:italic;line-height:1.5;">${escapeHtml(disclaimerText)}</p>`
     : "";
 
+  // Load the agent's chosen Google Fonts so heading_font / body_font actually
+  // render on supporting clients (Apple Mail, Gmail web, iOS Mail). Outlook
+  // desktop ignores web fonts and falls back to the family fallback chain,
+  // which is fine — sans-serif / serif renders cleanly.
+  const fontsLink = googleFontsLinkFor(b.heading_font, b.body_font);
+  const fontsHead = fontsLink
+    ? `<link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link rel="stylesheet" href="${fontsLink}" />`
+    : "";
+
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(heading)}</title>
+  ${fontsHead}
 </head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:${b.body_font};color:#1a1a1a;">
   <span style="display:none !important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;font-size:1px;line-height:1px;mso-hide:all;">${escapeHtml(opts.preheader)}</span>
@@ -175,15 +195,18 @@ export function renderEmailHtml(opts: RenderOpts): string {
 
 function renderMetricsTable(
   metrics: MlsMetrics | null,
-  accentColor: string
+  accentColor: string,
+  yoyPct: number | null,
+  threeYearPct: number | null,
 ): string {
   if (!metrics || Object.keys(metrics).length === 0) return "";
 
-  const cells: { label: string; value: string }[] = [];
+  const cells: { label: string; value: string; subline?: string }[] = [];
   if (metrics.median_sale_price)
     cells.push({
       label: "Median Sale",
       value: "$" + Math.round(metrics.median_sale_price).toLocaleString(),
+      subline: formatTrendBadge(yoyPct, "YoY"),
     });
   if (metrics.median_days_on_market)
     cells.push({
@@ -209,15 +232,41 @@ function renderMetricsTable(
       <td style="padding:12px;text-align:center;border:1px solid #eee;background:#fff;">
         <p style="margin:0;color:#666;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(c.label)}</p>
         <p style="margin:4px 0 0;color:${accentColor};font-size:18px;font-weight:700;">${escapeHtml(c.value)}</p>
+        ${c.subline ? `<p style=\"margin:2px 0 0;font-size:10px;font-weight:600;\">${c.subline}</p>` : ""}
       </td>`
     )
     .join("");
+
+  // 3-year context line sits below the table so the cells stay one-liner-clean.
+  const threeYearLine =
+    threeYearPct != null
+      ? `<p style="margin:6px 0 0;color:#888;font-size:11px;text-align:center;">${formatThreeYearLine(threeYearPct)}</p>`
+      : "";
 
   return `
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
       <tr>${cellHtml}</tr>
     </table>
+    ${threeYearLine}
   `;
+}
+
+function formatTrendBadge(pct: number | null, period: string): string | undefined {
+  if (pct == null || !Number.isFinite(pct)) return undefined;
+  const positive = pct > 0;
+  const negative = pct < 0;
+  if (!positive && !negative) return undefined;
+  const color = positive ? "#16A34A" : "#DC2626";
+  const arrow = positive ? "▲" : "▼";
+  const value = Math.abs(pct).toFixed(1);
+  return `<span style="color:${color};">${arrow} ${value}% ${period}</span>`;
+}
+
+function formatThreeYearLine(pct: number): string {
+  const positive = pct > 0;
+  const verb = positive ? "up" : pct < 0 ? "down" : "flat";
+  if (pct === 0) return "Median sale price flat over the last 3 years.";
+  return `Median sale price ${verb} <strong>${Math.abs(pct).toFixed(1)}%</strong> over the last 3 years.`;
 }
 
 /**

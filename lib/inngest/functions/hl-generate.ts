@@ -54,6 +54,8 @@ const MAX_SEGMENTS_PER_RUN = 30;
 interface GenerateContext {
   runId: string;
   userId: string;
+  /** Active profile this run is scoped to — drives snapshot lookups. */
+  profileId: string | null;
   campaign: HlCampaign;
   sender: PlatformSenderProfile;
   branding: PlatformBrandingProfile | null;
@@ -178,6 +180,7 @@ export const hlGenerate = inngest.createFunction(
       return {
         runId,
         userId: run.user_id,
+        profileId: run.profile_id ?? null,
         campaign: campaign as HlCampaign,
         sender: sender as unknown as PlatformSenderProfile,
         branding: branding as unknown as PlatformBrandingProfile | null,
@@ -252,6 +255,23 @@ async function processSegment(
   let sellerHtml: string | null = null;
   let buyerHtml: string | null = null;
 
+  // Resolve trends once per segment (used by both renderer + writer prompt)
+  // so we don't re-hit the snapshots table for each perspective.
+  let yoyPct: number | null = null;
+  let threeYearPct: number | null = null;
+  if (ctx.profileId) {
+    const { getTrendsForGeo } = await import("@/lib/hyperlocal/mls/snapshots");
+    const trends = await getTrendsForGeo(supabase, ctx.profileId, segment.geo_key).catch(
+      () => null,
+    );
+    yoyPct = trends?.yoy_price_change_pct ?? null;
+    threeYearPct = trends?.three_year_price_change_pct ?? null;
+  }
+  const trendContext = {
+    yoy_price_change_pct: yoyPct,
+    three_year_price_change_pct: threeYearPct,
+  };
+
   for (const perspective of tasks) {
     const prompt = getEmailWriterPrompt({
       sender: ctx.sender,
@@ -259,6 +279,7 @@ async function processSegment(
       metrics,
       perspective,
       campaign: ctx.campaign,
+      trends: trendContext,
     });
     const result = await generateText({
       model: getHyperlocalEmailWriterModel(),
@@ -302,6 +323,8 @@ async function processSegment(
     preheader,
     unsubscribeUrl: "{{UNSUBSCRIBE_URL}}",
     staticMapUrl,
+    yoyPriceChangePct: yoyPct,
+    threeYearPriceChangePct: threeYearPct,
   });
   const plain = htmlToPlainText(html);
 

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { SettingsClient } from "./settings-client";
+import type { HlEmailConnection } from "@/types/hyperlocal";
 
 export const dynamic = "force-dynamic";
 
@@ -34,10 +35,23 @@ export default async function HyperlocalSettingsPage() {
       .limit(200),
   ]);
 
+  // Reshape: never send the encrypted webhook secret to the client. Replace
+  // it with a boolean indicator so the UI can show "configured / not".
+  const shapedEmailConnections: HlEmailConnection[] = (emailConnections ?? []).map(
+    (c) => {
+      const row = c as HlEmailConnection;
+      const { resend_webhook_secret_encrypted, ...rest } = row;
+      return {
+        ...rest,
+        webhook_secret_set: !!resend_webhook_secret_encrypted,
+      } as HlEmailConnection;
+    },
+  );
+
   return (
     <SettingsClient
       crmConnections={crmConnections ?? []}
-      emailConnections={emailConnections ?? []}
+      emailConnections={shapedEmailConnections}
       suppressions={suppressions ?? []}
     />
   );

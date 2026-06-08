@@ -221,6 +221,10 @@ export interface HlEmailConnection {
 
   created_at: string;
   updated_at: string;
+
+  /** Client-side only: true when `resend_webhook_secret_encrypted` is populated.
+   *  The encrypted secret itself is never sent to the client. */
+  webhook_secret_set?: boolean;
 }
 
 // ---------------------------------------------------------------------------

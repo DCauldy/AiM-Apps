@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { renderEmailHtml, htmlToPlainText } from "./render";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
+import { getTrendsForGeo } from "@/lib/hyperlocal/mls/snapshots";
 import type {
   HlEmail,
   HlSegment,
@@ -97,6 +98,12 @@ export async function rerenderEmail(emailId: string): Promise<{
     token: process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "",
   }).catch(() => null);
 
+  const trends = await getTrendsForGeo(
+    supabase,
+    run.profile_id,
+    (segment as HlSegment).geo_key,
+  ).catch(() => null);
+
   const html = renderEmailHtml({
     branding: branding as PlatformBrandingProfile | null,
     sender: sender as PlatformSenderProfile,
@@ -108,6 +115,8 @@ export async function rerenderEmail(emailId: string): Promise<{
     // Token placeholder — replaced per-recipient at send time
     unsubscribeUrl: "{{UNSUBSCRIBE_URL}}",
     staticMapUrl,
+    yoyPriceChangePct: trends?.yoy_price_change_pct ?? null,
+    threeYearPriceChangePct: trends?.three_year_price_change_pct ?? null,
   });
   return { html, plain_text: htmlToPlainText(html) };
 }

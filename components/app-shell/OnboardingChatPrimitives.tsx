@@ -19,7 +19,7 @@ export function OnboardingChatFrame({
   containerClassName,
 }: OnboardingChatFrameProps) {
   return (
-    <div className={cn("container max-w-2xl mx-auto px-4 py-8", containerClassName)}>
+    <div className={cn("container max-w-3xl mx-auto px-4 py-8", containerClassName)}>
       <div
         className={cn(
           "rounded-lg border border-border bg-card overflow-hidden flex flex-col h-[600px]",
@@ -90,8 +90,16 @@ export function ChatBubble({
   const isUser = role === "user";
 
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
-      <div className={cn("flex items-start gap-2", isUser && "flex-row-reverse")}>
+    <div className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}>
+      {/* max-w lives on the row wrapper, not the bubble — putting it on the
+          bubble computes the percentage against this shrink-to-content row
+          and collapses the bubble to its longest word. */}
+      <div
+        className={cn(
+          "flex items-start gap-2 max-w-[85%]",
+          isUser && "flex-row-reverse",
+        )}
+      >
         {showAvatar && (
           <div
             className={cn(
@@ -110,8 +118,8 @@ export function ChatBubble({
           className={cn(
             "px-3 py-2",
             isUser
-              ? "rounded-2xl rounded-tr-sm bg-primary text-primary-foreground max-w-[80%]"
-              : "rounded-2xl rounded-tl-sm bg-muted max-w-[85%]",
+              ? "rounded-2xl rounded-tr-sm bg-primary text-primary-foreground"
+              : "rounded-2xl rounded-tl-sm bg-muted",
             isUser ? userClassName : assistantClassName
           )}
         >

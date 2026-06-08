@@ -2,6 +2,10 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 import { parseMlsFile, detectFormat } from "@/lib/hyperlocal/mls/parser";
 import { computeMetrics } from "@/lib/hyperlocal/mls/metrics";
+import {
+  computeMonthlySnapshots,
+  upsertSnapshots,
+} from "@/lib/hyperlocal/mls/snapshots";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +35,7 @@ export async function POST(
   const service = createServiceRoleClient();
   const { data: run } = await service
     .from("hl_runs")
-    .select("id, user_id, phase")
+    .select("id, user_id, phase, profile_id")
     .eq("id", runId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -40,7 +44,7 @@ export async function POST(
   // Verify segment belongs to this run
   const { data: segment } = await service
     .from("hl_segments")
-    .select("id, geo_key, geo_label")
+    .select("id, geo_key, geo_label, geo_type")
     .eq("id", segmentId)
     .eq("run_id", runId)
     .maybeSingle();
@@ -122,10 +126,25 @@ export async function POST(
     })
     .eq("id", segmentId);
 
+  // Permanent monthly snapshots for trend reporting (YoY, MoM, 3-year).
+  let snapshotsUpserted = 0;
+  if (run.profile_id) {
+    const snapshots = computeMonthlySnapshots(parsed.rows, parsed.columns, {
+      key: segment.geo_key,
+      label: segment.geo_label ?? null,
+      type: (segment as { geo_type?: string | null }).geo_type ?? null,
+    });
+    snapshotsUpserted = snapshots.length;
+    await upsertSnapshots(service, run.profile_id, upload.id, snapshots).catch(
+      (e) => console.error("[segment mls-upload] snapshot upsert failed", e),
+    );
+  }
+
   return Response.json({
     upload,
     metrics,
     row_count: parsed.rows.length,
     columns: parsed.columns,
+    snapshots_upserted: snapshotsUpserted,
   });
 }

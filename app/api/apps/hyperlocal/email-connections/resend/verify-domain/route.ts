@@ -1,6 +1,9 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { encrypt } from "@/lib/hyperlocal/encryption";
-import { createResendDomain } from "@/lib/hyperlocal/email/providers/resend";
+import {
+  deleteResendDomain,
+  getOrCreateResendDomain,
+} from "@/lib/hyperlocal/email/providers/resend";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +13,9 @@ export const dynamic = "force-dynamic";
  * Body: { api_key, domain, from_email, display_name? }
  *
  * BYO Resend: user supplies their own API key. We validate it by calling
- * Resend's domains.create, then encrypt + persist on the connection.
+ * Resend's domains.create — or, when the domain is already registered on the
+ * user's Resend account, by reading the existing domain instead. Either way
+ * we end up with a domain id + DNS record snapshot to persist.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -45,24 +50,42 @@ export async function POST(req: NextRequest) {
 
   let resendInfo;
   try {
-    resendInfo = await createResendDomain(apiKey, domain);
+    resendInfo = await getOrCreateResendDomain(apiKey, domain);
   } catch (e) {
     return Response.json(
-      { error: e instanceof Error ? e.message : "Resend domain creation failed" },
+      { error: e instanceof Error ? e.message : "Resend domain setup failed" },
       { status: 500 }
     );
   }
 
   const service = createServiceRoleClient();
+
+  // Scope this connection to the user's active profile so the gate +
+  // dashboard's profile-scoped queries count it. Required since the
+  // multi-profile refactor.
+  const { data: profileMeta } = await service
+    .from("profiles")
+    .select("active_profile_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!profileMeta?.active_profile_id) {
+    return Response.json(
+      { error: "No active profile — set one up before connecting a sending account" },
+      { status: 400 },
+    );
+  }
+
   const { count } = await service
     .from("hl_email_connections")
     .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("profile_id", profileMeta.active_profile_id);
 
   const { data: row, error } = await service
     .from("hl_email_connections")
     .insert({
       user_id: user.id,
+      profile_id: profileMeta.active_profile_id,
       provider: "resend",
       email_address: fromEmail,
       display_name: displayName,
@@ -79,11 +102,24 @@ export async function POST(req: NextRequest) {
     )
     .single();
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // Roll back the Resend-side create so a retry isn't stuck on a duplicate.
+    // Never delete a domain we reused — that would yank an already-verified
+    // sending domain out from under the user.
+    if (!resendInfo.reused) {
+      try {
+        await deleteResendDomain(apiKey, resendInfo.resend_domain_id);
+      } catch {
+        // Best-effort; getOrCreate will handle the leftover on next attempt.
+      }
+    }
+    return Response.json({ error: error.message }, { status: 500 });
+  }
 
   return Response.json({
     connection: row,
     dns_records: resendInfo.records,
     status: resendInfo.status,
+    reused: resendInfo.reused ?? false,
   });
 }

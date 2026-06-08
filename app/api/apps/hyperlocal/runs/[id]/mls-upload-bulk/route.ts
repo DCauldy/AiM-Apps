@@ -2,6 +2,11 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { NextRequest } from "next/server";
 import { parseMlsFile, detectFormat, detectMlsColumns } from "@/lib/hyperlocal/mls/parser";
 import { computeMetrics } from "@/lib/hyperlocal/mls/metrics";
+import {
+  computeMonthlySnapshots,
+  upsertSnapshots,
+  type MonthlySnapshot,
+} from "@/lib/hyperlocal/mls/snapshots";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +39,7 @@ export async function POST(
   const service = createServiceRoleClient();
   const { data: run } = await service
     .from("hl_runs")
-    .select("id, user_id, phase")
+    .select("id, user_id, phase, profile_id")
     .eq("id", runId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -131,7 +136,7 @@ export async function POST(
   // Load all pending segments for this run
   const { data: pendingSegments } = await service
     .from("hl_segments")
-    .select("id, geo_key, contact_count, below_min_size")
+    .select("id, geo_key, geo_label, geo_type, contact_count, below_min_size")
     .eq("run_id", runId)
     .eq("status", "pending");
 
@@ -140,6 +145,7 @@ export async function POST(
   let matchedContactCount = 0;
   let skippedContactCount = 0;
   const updatePromises: Promise<unknown>[] = [];
+  const allSnapshots: MonthlySnapshot[] = [];
 
   for (const seg of pendingSegments ?? []) {
     const normalizedSegKey = String(seg.geo_key).trim().toLowerCase().split("-")[0];
@@ -161,6 +167,17 @@ export async function POST(
             .eq("id", seg.id)
         )
       );
+
+      // Permanent monthly snapshots — let the renderer talk about trends
+      // ("up 4.2% YoY") rather than only the current month's slice.
+      if (run.profile_id) {
+        const snapshots = computeMonthlySnapshots(matchingRows, parsed.columns, {
+          key: seg.geo_key,
+          label: seg.geo_label ?? null,
+          type: seg.geo_type ?? null,
+        });
+        allSnapshots.push(...snapshots);
+      }
     } else {
       skippedCount += 1;
       skippedContactCount += seg.contact_count;
@@ -177,6 +194,13 @@ export async function POST(
 
   await Promise.all(updatePromises);
 
+  if (run.profile_id && allSnapshots.length > 0) {
+    // Best-effort: snapshot persistence shouldn't fail the upload.
+    await upsertSnapshots(service, run.profile_id, uploadRow.id, allSnapshots).catch(
+      (e) => console.error("[mls-upload-bulk] snapshot upsert failed", e),
+    );
+  }
+
   return Response.json({
     upload: uploadRow,
     summary: {
@@ -186,6 +210,7 @@ export async function POST(
       matched_contacts: matchedContactCount,
       skipped_segments: skippedCount,
       skipped_contacts: skippedContactCount,
+      snapshots_upserted: allSnapshots.length,
     },
   });
 }

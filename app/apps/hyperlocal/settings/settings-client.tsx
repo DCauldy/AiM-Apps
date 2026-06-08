@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { CrmTab } from "@/components/hyperlocal/settings/CrmTab";
 import { EmailTab } from "@/components/hyperlocal/settings/EmailTab";
 import { SuppressionTab } from "@/components/hyperlocal/settings/SuppressionTab";
+import { HistoryTab } from "@/components/hyperlocal/settings/HistoryTab";
 import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
 import type {
   PlatformSenderProfile,
@@ -15,11 +16,12 @@ import type {
   HlSuppression,
 } from "@/types/hyperlocal";
 
-type Tab = "crm" | "email" | "suppression";
+type Tab = "crm" | "email" | "suppression" | "history";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "crm", label: "CRMs" },
   { id: "email", label: "Email" },
+  { id: "history", label: "Historical data" },
   { id: "suppression", label: "Suppression" },
 ];
 
@@ -80,6 +82,7 @@ export function SettingsClient({
       {activeTab === "email" && (
         <EmailTab initialConnections={emailConnections} />
       )}
+      {activeTab === "history" && <HistoryTab />}
       {activeTab === "suppression" && (
         <SuppressionTab initialSuppressions={suppressions} />
       )}

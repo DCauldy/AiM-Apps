@@ -43,6 +43,9 @@ export interface DomainSnapshot {
   resend_domain_id: string;
   status: DomainStatus;
   records: DomainRecord[];
+  /** True when we reused an existing Resend domain instead of creating it.
+   * Callers use this to skip rollback on DB-side failures. */
+  reused?: boolean;
 }
 
 // ============================================================

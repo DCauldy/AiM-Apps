@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { getStateRequirements } from "@/lib/hyperlocal/email/state-requirements";
+import { FontSelect } from "@/components/profile/FontSelect";
 import type { PlatformProfile, PlatformProfileUpdate } from "@/types/platform-profile";
 
 interface Props {
@@ -380,10 +381,18 @@ export function ProfileEditor({ initialProfile }: Props) {
           <ColorInput value={form.accent_color ?? "#31DBA5"} onChange={(v) => set("accent_color", v)} />
         </Field>
         <Field label="Heading font">
-          <Input value={form.heading_font ?? ""} onChange={(e) => set("heading_font", e.target.value)} />
+          <FontSelect
+            value={form.heading_font}
+            onChange={(v) => set("heading_font", v)}
+            placeholder="Pick a heading font"
+          />
         </Field>
         <Field label="Body font">
-          <Input value={form.body_font ?? ""} onChange={(e) => set("body_font", e.target.value)} />
+          <FontSelect
+            value={form.body_font}
+            onChange={(v) => set("body_font", v)}
+            placeholder="Pick a body font"
+          />
         </Field>
         <Field label="Logo URL">
           <Input value={form.logo_url ?? ""} onChange={(e) => set("logo_url", e.target.value)} />

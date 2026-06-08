@@ -11,24 +11,28 @@ export default async function HyperlocalPage() {
     redirect("/login");
   }
 
-  // "Onboarded" check: user has an active Profile (sender identity lives there
-  // now) AND at least one active email connection.
-  const [{ data: meta }, { count: emailCount }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("active_profile_id")
-      .eq("id", user.id)
-      .maybeSingle(),
-    supabase
-      .from("hl_email_connections")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("is_active", true),
-  ]);
+  const { data: meta } = await supabase
+    .from("profiles")
+    .select("active_profile_id")
+    .eq("id", user.id)
+    .maybeSingle();
 
-  const isOnboarded = Boolean(meta?.active_profile_id) && (emailCount ?? 0) > 0;
+  // No active profile yet: punt to the unified profile setup, which will
+  // return the user here when done.
+  if (!meta?.active_profile_id) {
+    redirect("/apps/hyperlocal/onboarding");
+  }
 
-  if (isOnboarded) {
+  // Scope the readiness check to the active profile — a connection tied to a
+  // different profile must not count.
+  const { count: emailCount } = await supabase
+    .from("hl_email_connections")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("profile_id", meta.active_profile_id)
+    .eq("is_active", true);
+
+  if ((emailCount ?? 0) > 0) {
     redirect("/apps/hyperlocal/dashboard");
   }
 
