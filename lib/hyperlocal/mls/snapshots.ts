@@ -45,9 +45,10 @@ export function computeMonthlySnapshots(
   rows: Record<string, unknown>[],
   columns: string[],
   geo: { key: string; label: string | null; type: string | null },
+  columnMap?: ReturnType<typeof detectMlsColumns>,
 ): MonthlySnapshot[] {
   if (rows.length === 0) return [];
-  const map = detectMlsColumns(columns);
+  const map = columnMap ?? detectMlsColumns(columns);
 
   // Bucket: { "2026-3": { closed: [...], listed: [...], active: count } }
   type Bucket = {

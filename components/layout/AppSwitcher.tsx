@@ -138,8 +138,10 @@ export function AppSwitcher() {
     }
   }
 
-  // Determine which app is currently active
-  const currentApp = APPS.find((app) => pathname?.startsWith(app.route)) ?? APPS[0];
+  // Determine which app is currently active. Cross-app pages (/apps,
+  // /apps/profile) don't match any app's route — we render a neutral
+  // "All Apps" trigger instead of misleadingly highlighting Prompt Studio.
+  const currentApp = APPS.find((app) => pathname?.startsWith(app.route));
 
   const handleAppSelect = (app: AppDefinition) => {
     const isUnavailable = availability && availability[app.id] === false;
@@ -158,13 +160,15 @@ export function AppSwitcher() {
           <span
             className={cn(
               "flex items-center justify-center w-7 h-7 rounded-md text-white",
-              currentApp.iconClassName ?? DEFAULT_ICON_BG
+              currentApp ? (currentApp.iconClassName ?? DEFAULT_ICON_BG) : "bg-muted-foreground/30"
             )}
           >
-            {currentApp.icon}
+            {currentApp ? currentApp.icon : <LayoutGrid className="h-4 w-4" />}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{currentApp.name}</p>
+            <p className="text-sm font-semibold truncate">
+              {currentApp ? currentApp.name : "All Apps"}
+            </p>
           </div>
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         </DropdownMenuTrigger>

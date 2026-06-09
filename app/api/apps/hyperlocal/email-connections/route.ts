@@ -3,9 +3,15 @@ import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// `resend_webhook_secret_encrypted` deliberately NOT included — the column
-// is sensitive. We expose a `webhook_secret_set` boolean alias instead.
-const PUBLIC_FIELDS = `id, provider, email_address, display_name, is_active, is_default, paused, paused_reason, paused_at, resend_domain, resend_dkim_status, resend_webhook_secret_encrypted, last_send_at, last_error, created_at, updated_at`;
+// Encrypted credential columns (api_key, oauth_access_token, webhook_secret)
+// are deliberately NOT here — those are secret. We expose
+// `webhook_secret_set` as a boolean alias instead.
+//
+// `provider_metadata` IS included — campaign-mode manage panels
+// (MailchimpManagePanel, ActiveCampaignManagePanel) read list/audience
+// ids from it to decide whether to show the test-send section. Stripping
+// it caused the post-refresh "no test button" bug.
+const PUBLIC_FIELDS = `id, provider, email_address, display_name, is_active, is_default, paused, paused_reason, paused_at, resend_domain, resend_dkim_status, resend_webhook_secret_encrypted, provider_metadata, last_send_at, last_error, created_at, updated_at`;
 
 type RawRow = {
   resend_webhook_secret_encrypted: string | null;

@@ -61,6 +61,10 @@ interface GenerateContext {
   branding: PlatformBrandingProfile | null;
   segments: HlSegment[];               // already capped
   cachePath: string;
+  /** Sending provider for this run — drives renderer footer behavior.
+   *  Null when no email connection is attached (rare; generate normally
+   *  blocks earlier in that case). */
+  providerForRender: import("@/types/hyperlocal").EmailProvider | null;
 }
 
 export const hlGenerate = inngest.createFunction(
@@ -85,10 +89,22 @@ export const hlGenerate = inngest.createFunction(
     const ctx: GenerateContext = await step.run("load-context", async () => {
       const { data: run } = await supabase
         .from("hl_runs")
-        .select("id, user_id, campaign_id, profile_id, sender_profile_id, branding_profile_id")
+        .select("id, user_id, campaign_id, profile_id, sender_profile_id, branding_profile_id, email_connection_id")
         .eq("id", runId)
         .single();
       if (!run) throw new Error("Run not found");
+
+      // Resolve the run's email connection so the renderer can ask its
+      // adapter whether to skip the CAN-SPAM footer.
+      let providerForRender: import("@/types/hyperlocal").EmailProvider | null = null;
+      if (run.email_connection_id) {
+        const { data: conn } = await supabase
+          .from("hl_email_connections")
+          .select("provider")
+          .eq("id", run.email_connection_id)
+          .maybeSingle();
+        providerForRender = (conn?.provider as import("@/types/hyperlocal").EmailProvider) ?? null;
+      }
 
       // Sender + branding resolution: prefer run.profile_id (post-backfill path
       // — pulls from platform_profiles), fall back to legacy per-run snapshots.
@@ -186,6 +202,7 @@ export const hlGenerate = inngest.createFunction(
         branding: branding as unknown as PlatformBrandingProfile | null,
         segments,
         cachePath: `${run.user_id}/${runId}/discovery.json`,
+        providerForRender,
       };
     });
 
@@ -312,6 +329,18 @@ async function processSegment(
     token: process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "",
   }).catch(() => null);
 
+  // Resolve the sending provider's capabilities so the renderer knows
+  // whether to skip its CAN-SPAM footer (marketing ESPs append their own).
+  // State-specific real estate disclosures render regardless.
+  const { getAdapter, hasAdapter } = await import(
+    "@/lib/hyperlocal/email/providers/registry"
+  );
+  const connectionProvider = ctx.providerForRender;
+  const espHandlesComplianceFooter =
+    connectionProvider && hasAdapter(connectionProvider)
+      ? getAdapter(connectionProvider).capabilities.handles_compliance_footer
+      : false;
+
   // Render HTML — per-recipient unsubscribe placeholder is filled at send time
   const html = renderEmailHtml({
     branding: ctx.branding,
@@ -325,6 +354,7 @@ async function processSegment(
     staticMapUrl,
     yoyPriceChangePct: yoyPct,
     threeYearPriceChangePct: threeYearPct,
+    espHandlesComplianceFooter,
   });
   const plain = htmlToPlainText(html);
 

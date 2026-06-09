@@ -18,14 +18,22 @@ export async function GET(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const [{ data: run, error: runErr }, { data: segments }, { data: emails }] =
-    await Promise.all([
-      supabase
-        .from("hl_runs")
-        .select("*")
-        .eq("id", id)
-        .eq("user_id", user.id)
-        .maybeSingle(),
+  const [
+    { data: run, error: runErr },
+    { data: segments },
+    { data: emails },
+  ] = await Promise.all([
+    supabase
+      .from("hl_runs")
+      // Eagerly join the parent campaign so the run-client can render
+      // the context header (name + filters + segmentation + service area)
+      // without a second roundtrip.
+      .select(
+        "*, campaign:hl_campaigns(id, name, segmentation, property_type_filters, price_range_low, price_range_high, lens, service_area_zips)",
+      )
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
       // Skipped segments stay in the DB for audit but don't surface in the
       // UI — the user already chose to opt out of them via the service-area
       // picker (or they were sub-threshold and demoted).

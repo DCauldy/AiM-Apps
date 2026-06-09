@@ -25,6 +25,14 @@ interface RenderOpts {
    *  skip the trend chip entirely instead of showing "0%" or "—". */
   yoyPriceChangePct?: number | null;
   threeYearPriceChangePct?: number | null;
+  /** When the sending ESP appends its own CAN-SPAM footer + unsubscribe
+   *  (marketing ESPs like Mailchimp), we skip rendering ours to avoid
+   *  doubled disclosures + dueling unsubscribe links.
+   *
+   *  State-specific real estate disclosures (license #, brokerage,
+   *  supervising broker, fair-housing) ALWAYS render — in body, above
+   *  the sign-off — since marketing ESPs don't auto-inject those. */
+  espHandlesComplianceFooter?: boolean;
 }
 
 const DEFAULT_BRAND = {
@@ -62,24 +70,13 @@ export function renderEmailHtml(opts: RenderOpts): string {
     ? `<h2 style="font-family:${b.heading_font};color:${b.primary_color};font-size:18px;margin:32px 0 8px;">For Buyers</h2>${opts.buyerHtml}`
     : "";
 
-  const signOff = opts.sender.sign_off || "Talk soon,";
-  const senderBlock = `
-    <p style="margin:24px 0 4px;">${escapeHtml(signOff)}</p>
-    <p style="margin:0;font-weight:600;">${escapeHtml(opts.sender.full_name)}</p>
-    ${opts.sender.title ? `<p style="margin:0;color:#555;font-size:13px;">${escapeHtml(opts.sender.title)}</p>` : ""}
-    ${opts.sender.brokerage ? `<p style="margin:0;color:#555;font-size:13px;">${escapeHtml(opts.sender.brokerage)}</p>` : ""}
-    ${opts.sender.phone ? `<p style="margin:8px 0 0;font-size:13px;">📞 ${escapeHtml(opts.sender.phone)}</p>` : ""}
-  `;
-
-  // ---- State-aware compliance footer ----
   const reqs = getStateRequirements(opts.sender.state);
 
-  const whyReceiving = `
-    <p style="margin:0 0 8px;color:#888;font-size:11px;line-height:1.5;">
-      You're receiving this hyperlocal market update because you're part of ${escapeHtml(opts.sender.full_name)}'s sphere${opts.sender.brokerage ? ` at ${escapeHtml(opts.sender.brokerage)}` : ""}.
-    </p>
-  `;
-
+  // ---- State-aware real estate disclosures ----
+  // These render IN THE BODY (above the sign-off) so they appear regardless
+  // of whether the sending ESP handles its own CAN-SPAM footer. License
+  // numbers, brokerage, supervising broker, and the fair-housing notice
+  // are real-estate-specific obligations the ESP knows nothing about.
   const licenseLine = (() => {
     const parts: string[] = [];
     if (opts.sender.license_number) {
@@ -101,12 +98,8 @@ export function renderEmailHtml(opts: RenderOpts): string {
       ? `<p style="margin:4px 0 0;color:#666;font-size:11px;line-height:1.5;">${escapeHtml(opts.sender.license_info)}</p>`
       : "";
 
-  const footerAddress = `
-    <p style="margin:8px 0 0;color:#666;font-size:11px;line-height:1.5;white-space:pre-line;">${escapeHtml(opts.sender.physical_address)}</p>
-  `;
-
   const fairHousing = reqs.requires_fair_housing_notice
-    ? `<p style="margin:8px 0 0;color:#888;font-size:11px;line-height:1.5;">⌂ ${escapeHtml(FAIR_HOUSING_NOTICE)}</p>`
+    ? `<p style="margin:6px 0 0;color:#888;font-size:11px;line-height:1.5;">⌂ ${escapeHtml(FAIR_HOUSING_NOTICE)}</p>`
     : "";
 
   // Profile disclaimer takes precedence; state default fills the gap so
@@ -116,8 +109,46 @@ export function renderEmailHtml(opts: RenderOpts): string {
       ? b.legal_disclaimer
       : reqs.default_disclaimer;
   const disclaimer = disclaimerText
-    ? `<p style="margin:8px 0 0;color:#888;font-size:11px;font-style:italic;line-height:1.5;">${escapeHtml(disclaimerText)}</p>`
+    ? `<p style="margin:6px 0 0;color:#888;font-size:11px;font-style:italic;line-height:1.5;">${escapeHtml(disclaimerText)}</p>`
     : "";
+
+  // RE-disclosure block lives above the sign-off — light separator, then
+  // license/brokerage, supervising broker, fair housing, disclaimer.
+  const reDisclosures =
+    licenseLine || supervisingBroker || fairHousing || disclaimer
+      ? `
+    <div style="margin:24px 0 0;padding:12px 0 0;border-top:1px solid #eee;">
+      ${licenseLine}
+      ${supervisingBroker}
+      ${fairHousing}
+      ${disclaimer}
+    </div>
+  `
+      : "";
+
+  const signOff = opts.sender.sign_off || "Talk soon,";
+  const senderBlock = `
+    <p style="margin:24px 0 4px;">${escapeHtml(signOff)}</p>
+    <p style="margin:0;font-weight:600;">${escapeHtml(opts.sender.full_name)}</p>
+    ${opts.sender.title ? `<p style="margin:0;color:#555;font-size:13px;">${escapeHtml(opts.sender.title)}</p>` : ""}
+    ${opts.sender.brokerage ? `<p style="margin:0;color:#555;font-size:13px;">${escapeHtml(opts.sender.brokerage)}</p>` : ""}
+    ${opts.sender.phone ? `<p style="margin:8px 0 0;font-size:13px;">📞 ${escapeHtml(opts.sender.phone)}</p>` : ""}
+  `;
+
+  // ---- CAN-SPAM footer (skipped when the ESP handles it) ----
+  // Marketing ESPs like Mailchimp append their own footer with the agent's
+  // account-level physical address + an unsubscribe link tied to their
+  // audience. Rendering ours on top of that creates double disclosures +
+  // dueling unsubscribe paths.
+  const whyReceiving = `
+    <p style="margin:0 0 8px;color:#888;font-size:11px;line-height:1.5;">
+      You're receiving this hyperlocal market update because you're part of ${escapeHtml(opts.sender.full_name)}'s sphere${opts.sender.brokerage ? ` at ${escapeHtml(opts.sender.brokerage)}` : ""}.
+    </p>
+  `;
+
+  const footerAddress = `
+    <p style="margin:8px 0 0;color:#666;font-size:11px;line-height:1.5;white-space:pre-line;">${escapeHtml(opts.sender.physical_address)}</p>
+  `;
 
   // Load the agent's chosen Google Fonts so heading_font / body_font actually
   // render on supporting clients (Apple Mail, Gmail web, iOS Mail). Outlook
@@ -169,22 +200,24 @@ export function renderEmailHtml(opts: RenderOpts): string {
               ${sellerSection}
               ${buyerSection}
               ${senderBlock}
+              ${reDisclosures}
             </td>
           </tr>
-          <!-- Footer -->
+          ${
+            opts.espHandlesComplianceFooter
+              ? ""
+              : `
+          <!-- Footer (skipped when sending ESP handles CAN-SPAM) -->
           <tr>
             <td style="padding:24px;background:#fafafa;border-top:1px solid #eee;">
               ${whyReceiving}
-              ${licenseLine}
-              ${supervisingBroker}
               ${footerAddress}
-              ${fairHousing}
-              ${disclaimer}
               <p style="margin:12px 0 0;color:#888;font-size:11px;line-height:1.5;">
                 <a href="${opts.unsubscribeUrl}" style="color:#888;text-decoration:underline;">Unsubscribe</a> from these hyperlocal market updates.
               </p>
             </td>
-          </tr>
+          </tr>`
+          }
         </table>
       </td>
     </tr>

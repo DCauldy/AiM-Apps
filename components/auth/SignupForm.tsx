@@ -58,10 +58,10 @@ export function SignupForm() {
 
       addToast({
         title: "Account created",
-        description: "Welcome to Prompt Studio!",
+        description: "Welcome to AiM Automations!",
       });
 
-      router.push("/apps/prompt-studio/chat");
+      router.push("/apps");
       router.refresh();
     } catch (error: any) {
       addToast({

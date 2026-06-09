@@ -74,8 +74,47 @@ export async function POST(
     );
   }
 
-  // We need a ZIP column to split by ZIP
-  const detected = detectMlsColumns(parsed.columns);
+  // Auto-detect, then layer the user's confirmed overrides on top.
+  // The mapping-confirmation modal posts overrides as a JSON string in
+  // the `column_overrides` form field. Any canonical the user pinned
+  // wins over auto-detection — only undefined override keys fall
+  // through to the heuristic.
+  const autoDetected = detectMlsColumns(parsed.columns);
+  let overrides: Partial<typeof autoDetected> = {};
+  const overridesRaw = form.get("column_overrides");
+  if (typeof overridesRaw === "string" && overridesRaw.trim()) {
+    try {
+      const parsedOverrides = JSON.parse(overridesRaw) as Record<string, unknown>;
+      // Whitelist the canonical keys + only accept string values that
+      // actually exist in the file's column list.
+      const allowed = new Set([
+        "price",
+        "list_price",
+        "sold_price",
+        "status",
+        "zip",
+        "city",
+        "property_type",
+        "list_date",
+        "closed_date",
+        "days_on_market",
+      ] as const);
+      const columnsSet = new Set(parsed.columns);
+      for (const [k, v] of Object.entries(parsedOverrides)) {
+        if (!allowed.has(k as never)) continue;
+        if (typeof v === "string" && columnsSet.has(v)) {
+          (overrides as Record<string, string>)[k] = v;
+        }
+      }
+    } catch {
+      return Response.json(
+        { error: "column_overrides must be valid JSON" },
+        { status: 400 },
+      );
+    }
+  }
+  const detected = { ...autoDetected, ...overrides };
+
   if (!detected.zip) {
     return Response.json(
       {
@@ -133,12 +172,15 @@ export async function POST(
     rowsByZip.get(key)!.push(row);
   }
 
-  // Load all pending segments for this run
+  // Load segments that still need data. "skipped" is included so that
+  // a follow-up upload can fill segments missed by a prior upload —
+  // crucial for MLS systems with low per-export caps where agents do
+  // 3–5 separate exports to cover all their ZIPs.
   const { data: pendingSegments } = await service
     .from("hl_segments")
     .select("id, geo_key, geo_label, geo_type, contact_count, below_min_size")
     .eq("run_id", runId)
-    .eq("status", "pending");
+    .in("status", ["pending", "skipped"]);
 
   let matchedCount = 0;
   let skippedCount = 0;
@@ -152,7 +194,7 @@ export async function POST(
     const matchingRows = rowsByZip.get(normalizedSegKey);
 
     if (matchingRows && matchingRows.length > 0) {
-      const metrics = computeMetrics(matchingRows, parsed.columns);
+      const metrics = computeMetrics(matchingRows, parsed.columns, detected);
       matchedCount += 1;
       matchedContactCount += seg.contact_count;
       updatePromises.push(
@@ -171,11 +213,16 @@ export async function POST(
       // Permanent monthly snapshots — let the renderer talk about trends
       // ("up 4.2% YoY") rather than only the current month's slice.
       if (run.profile_id) {
-        const snapshots = computeMonthlySnapshots(matchingRows, parsed.columns, {
-          key: seg.geo_key,
-          label: seg.geo_label ?? null,
-          type: seg.geo_type ?? null,
-        });
+        const snapshots = computeMonthlySnapshots(
+          matchingRows,
+          parsed.columns,
+          {
+            key: seg.geo_key,
+            label: seg.geo_label ?? null,
+            type: seg.geo_type ?? null,
+          },
+          detected,
+        );
         allSnapshots.push(...snapshots);
       }
     } else {

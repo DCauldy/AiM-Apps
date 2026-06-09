@@ -1,13 +1,15 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt, decrypt } from "@/lib/hyperlocal/encryption";
-import { deleteResendWebhook } from "@/lib/hyperlocal/email/providers/resend";
+import { encrypt } from "@/lib/hyperlocal/encryption";
+import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// `resend_webhook_secret_encrypted` deliberately NOT in PUBLIC_FIELDS — we
-// reshape it into a `webhook_secret_set` boolean for the client.
-const PUBLIC_FIELDS = `id, provider, email_address, display_name, is_active, is_default, paused, paused_reason, paused_at, resend_domain, resend_dkim_status, resend_webhook_secret_encrypted, last_send_at, last_error, created_at, updated_at`;
+// Encrypted credential columns are deliberately NOT here — those are
+// secret. `resend_webhook_secret_encrypted` IS pulled so we can reshape
+// it into a `webhook_secret_set` boolean. `provider_metadata` is exposed
+// because campaign-mode panels read list/audience ids from it.
+const PUBLIC_FIELDS = `id, provider, email_address, display_name, is_active, is_default, paused, paused_reason, paused_at, resend_domain, resend_dkim_status, resend_webhook_secret_encrypted, provider_metadata, last_send_at, last_error, created_at, updated_at`;
 
 type RawRow = {
   resend_webhook_secret_encrypted: string | null;
@@ -85,33 +87,37 @@ export async function DELETE(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Look up the Resend ids before deleting so we can tidy up the customer's
-  // Resend account too — leftover webhooks accumulate and cause confusing
-  // "why am I still getting events" questions later.
+  // Load the row scoped to the user (auth check), then hand off to the
+  // shared disconnect helper. The helper runs provider-side cleanup
+  // (Resend webhook, Mailchimp audience webhook, etc.) and deletes the
+  // row via the service-role client — user-scoped deletes silently no-op
+  // under RLS, which is what caused the "still connected after disconnect"
+  // bug we hit before this refactor.
   const service = createServiceRoleClient();
   const { data: conn } = await service
     .from("hl_email_connections")
-    .select("resend_api_key_encrypted, resend_webhook_id")
+    .select(
+      "id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_api_key_encrypted, provider_oauth_access_token_encrypted, provider_metadata",
+    )
     .eq("id", id)
     .eq("user_id", user.id)
     .maybeSingle();
-
-  if (conn?.resend_webhook_id && conn.resend_api_key_encrypted) {
-    try {
-      const apiKey = decrypt(conn.resend_api_key_encrypted);
-      await deleteResendWebhook(apiKey, conn.resend_webhook_id);
-    } catch {
-      // Best-effort: don't block disconnect if Resend cleanup fails. The
-      // worst case is an orphaned webhook in their dashboard.
-    }
+  if (!conn) {
+    return Response.json({ error: "Connection not found" }, { status: 404 });
   }
 
-  const { error } = await supabase
-    .from("hl_email_connections")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  try {
+    await disconnectPriorConnection(service, conn);
+  } catch (e) {
+    return Response.json(
+      {
+        error:
+          e instanceof Error
+            ? e.message
+            : "Disconnect failed — see server logs.",
+      },
+      { status: 500 },
+    );
+  }
   return Response.json({ success: true });
 }

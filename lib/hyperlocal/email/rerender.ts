@@ -2,6 +2,8 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { renderEmailHtml, htmlToPlainText } from "./render";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
 import { getTrendsForGeo } from "@/lib/hyperlocal/mls/snapshots";
+import { getAdapter, hasAdapter } from "./providers/registry";
+import type { EmailProvider } from "@/types/hyperlocal";
 import type {
   HlEmail,
   HlSegment,
@@ -44,10 +46,26 @@ export async function rerenderEmail(emailId: string): Promise<{
 
   const { data: run } = await supabase
     .from("hl_runs")
-    .select("profile_id")
+    .select("profile_id, email_connection_id")
     .eq("id", email.run_id)
     .single();
   if (!run?.profile_id) throw new Error("Run profile not set — cannot re-render");
+
+  // Resolve the sending provider's footer-handling capability so re-renders
+  // stay consistent with what the run will actually send through.
+  let espHandlesComplianceFooter = false;
+  if (run.email_connection_id) {
+    const { data: conn } = await supabase
+      .from("hl_email_connections")
+      .select("provider")
+      .eq("id", run.email_connection_id)
+      .maybeSingle();
+    const provider = conn?.provider as EmailProvider | undefined;
+    if (provider && hasAdapter(provider)) {
+      espHandlesComplianceFooter =
+        getAdapter(provider).capabilities.handles_compliance_footer;
+    }
+  }
 
   const { data: profile } = await supabase
     .from("platform_profiles")
@@ -117,6 +135,7 @@ export async function rerenderEmail(emailId: string): Promise<{
     staticMapUrl,
     yoyPriceChangePct: trends?.yoy_price_change_pct ?? null,
     threeYearPriceChangePct: trends?.three_year_price_change_pct ?? null,
+    espHandlesComplianceFooter,
   });
   return { html, plain_text: htmlToPlainText(html) };
 }

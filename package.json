@@ -52,6 +52,7 @@
     "remark-gfm": "^4.0.1",
     "resend": "^6.12.4",
     "server-only": "^0.0.1",
+    "simple-icons": "^16.23.0",
     "streamdown": "^2.0.1",
     "stripe": "^22.1.0",
     "svix": "^1.95.1",

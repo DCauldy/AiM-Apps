@@ -4,6 +4,7 @@ import {
   deleteResendDomain,
   getOrCreateResendDomain,
 } from "@/lib/hyperlocal/email/providers/resend";
+import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +76,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // One sending connection per profile. Stash any existing connection
+  // (different provider) so we can disconnect it AFTER the new one is
+  // verified + persisted — never strand the agent with nothing connected
+  // if the new setup fails partway. UI gates this with a confirm modal.
+  const { data: priorConnection } = await service
+    .from("hl_email_connections")
+    .select("id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_metadata")
+    .eq("user_id", user.id)
+    .eq("profile_id", profileMeta.active_profile_id)
+    .limit(1)
+    .maybeSingle();
+
   const { count } = await service
     .from("hl_email_connections")
     .select("*", { count: "exact", head: true })
@@ -116,10 +129,18 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
+  // New connection persisted — now disconnect the prior one (one sending
+  // connection per profile). Best-effort: failure here doesn't roll back
+  // the new connection (user explicitly asked to replace).
+  if (priorConnection && priorConnection.id !== row.id) {
+    await disconnectPriorConnection(service, priorConnection);
+  }
+
   return Response.json({
     connection: row,
     dns_records: resendInfo.records,
     status: resendInfo.status,
     reused: resendInfo.reused ?? false,
+    replaced: priorConnection?.provider ?? null,
   });
 }

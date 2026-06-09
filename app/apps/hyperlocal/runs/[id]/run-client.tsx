@@ -9,12 +9,25 @@ import { SegmentList } from "@/components/hyperlocal/runs/SegmentList";
 import { ServiceAreaPicker } from "@/components/hyperlocal/runs/ServiceAreaPicker";
 import { MlsUploadPanel } from "@/components/hyperlocal/runs/MlsUploadPanel";
 import { EmailDraftReview } from "@/components/hyperlocal/runs/EmailDraftReview";
+import { RunBackButton } from "@/components/hyperlocal/runs/RunBackButton";
+import {
+  RunContextHeader,
+  type RunContext,
+} from "@/components/hyperlocal/runs/RunContextHeader";
+import { DiscoverProgress } from "@/components/hyperlocal/runs/DiscoverProgress";
+import { GenerateProgress } from "@/components/hyperlocal/runs/GenerateProgress";
+import { RunCompleteSummary } from "@/components/hyperlocal/runs/RunCompleteSummary";
 import { SendProgress } from "@/components/hyperlocal/runs/SendProgress";
+import { AudienceConfirmBanner } from "@/components/hyperlocal/run/AudienceConfirmBanner";
 import { HyperlocalMap } from "@/components/hyperlocal/map/HyperlocalMap";
 import { RUN_PHASE_LABELS } from "@/types/hyperlocal";
 import type { HlRun, HlSegment, HlEmail, RunPhase } from "@/types/hyperlocal";
 
 const POLL_PHASES: RunPhase[] = ["discover", "generate", "sending"];
+
+// Phases whose panel is compact enough to render alongside the map
+// on wide screens. Rich phases (awaiting_mls, review) take full width.
+const COMPACT_PHASES = new Set<RunPhase>(["discover", "generate"]);
 // awaiting_service_area / awaiting_mls don't poll — they're driven by user
 // action (selection / upload) which already calls fetchData on success.
 
@@ -122,18 +135,42 @@ export function RunClient({
     ? "contacts"
     : "in-area contacts";
 
+  // Shared map node — rendered alongside compact phases via
+  // <PhaseWithMap> on wide screens, or full-width below the phase
+  // panel for rich phases. Defined once to avoid the prop drift
+  // that comes from inlining the same JSX in 3 places.
+  const mapPanel =
+    segments.length > 0 ? (
+      <HyperlocalMap
+        segments={segments.map((s) => ({
+          zip: s.geo_key,
+          geo_label: s.geo_label,
+          contact_count: s.contact_count,
+          below_min_size: s.below_min_size,
+        }))}
+        selectedZips={new Set(segments.map((s) => s.geo_key))}
+        height={460}
+        overlayChip={`${segments.length} ZIP${segments.length === 1 ? "" : "s"} · ${activeContactCount.toLocaleString()} contacts`}
+      />
+    ) : null;
+
+  // max-w-screen-2xl (1536px) gives the review phase real horizontal
+  // room for the 3-column draft layout while staying centered on
+  // ultra-wide monitors. Earlier max-w-4xl (896px) squeezed the
+  // email preview to ~370px — unreadable.
   return (
-    <div className="container max-w-4xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-8 space-y-6">
       {dialog}
       <div>
-        <p className="text-xs text-muted-foreground uppercase tracking-wide">
-          Run
-        </p>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Started {new Date(run.created_at).toLocaleString()}
-        </h1>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {(run as unknown as { campaign?: { name?: string } }).campaign
+              ?.name ?? "Untitled Run"}
+          </h1>
+          <PhaseChip phase={run.phase} />
+        </div>
         <p className="text-sm text-muted-foreground mt-1">
-          {RUN_PHASE_LABELS[run.phase]}
+          Started {formatRelativeTime(run.created_at)}
           {displayedContactCount > 0 &&
             ` · ${displayedContactCount.toLocaleString()} ${contactCountLabel}`}
           {run.segments_count > 0 && ` · ${run.segments_count} segments`}
@@ -142,21 +179,59 @@ export function RunClient({
 
       <RunPhaseStepper phase={run.phase} />
 
+      <RunContextHeader
+        context={
+          {
+            campaign: (run as unknown as { campaign?: RunContext["campaign"] })
+              .campaign,
+            contactsCount: displayedContactCount,
+            contactsLabel: contactCountLabel,
+          } satisfies RunContext
+        }
+      />
+
       {run.error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-          <p className="text-sm font-medium text-destructive">Pipeline error</p>
-          <p className="text-sm text-destructive/80 mt-1">{run.error}</p>
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-destructive">Pipeline error</p>
+            <p className="text-sm text-destructive/80 mt-1">{run.error}</p>
+          </div>
+          {run.phase === "failed" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const res = await fetch(
+                  `/api/apps/hyperlocal/runs/${runId}/retry`,
+                  { method: "POST" },
+                );
+                const json = await res.json();
+                if (!res.ok) {
+                  toast.error(json.error ?? "Retry failed");
+                  return;
+                }
+                toast.success(`Resumed at ${json.phase}`);
+                await fetchData();
+              }}
+              className="shrink-0"
+            >
+              Retry from last checkpoint
+            </Button>
+          )}
         </div>
       )}
 
-      {/* Phase-specific panels */}
+      {/* Phase-specific panels.
+          Compact phases (discover/generate/sending/completed) sit
+          side-by-side with the map on wide screens to keep
+          everything visible without scrolling. Rich phases
+          (awaiting_mls, review) take full width — they have their
+          own internal multi-column structure that wouldn't fit
+          alongside a map. */}
       {run.phase === "discover" && (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <p className="text-sm font-medium">Pulling contacts from your CRM…</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            This usually takes 10–60 seconds depending on contact count.
-          </p>
-        </div>
+        <PhaseWithMap mapPanel={mapPanel}>
+          <DiscoverProgress run={run} />
+        </PhaseWithMap>
       )}
 
       {run.phase === "awaiting_service_area" && (
@@ -164,25 +239,53 @@ export function RunClient({
       )}
 
       {run.phase === "awaiting_mls" && (
-        <MlsUploadPanel
-          runId={runId}
-          segments={segments}
-          onUploadComplete={fetchData}
-          onAllReady={fetchData}
-        />
+        <div className="space-y-3">
+          <RunBackButton runId={runId} phase={run.phase} onMoved={fetchData} />
+          <MlsUploadPanel
+            runId={runId}
+            segments={segments}
+            onUploadComplete={fetchData}
+            onAllReady={fetchData}
+          />
+        </div>
       )}
 
       {run.phase === "generate" && (
-        <div className="rounded-lg border border-border bg-card p-6 text-center">
-          <p className="text-sm font-medium">Writing drafts…</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Claude is composing per-segment market reports. Usually 1–3 minutes.
-          </p>
+        <div className="space-y-3">
+          <RunBackButton runId={runId} phase={run.phase} onMoved={fetchData} />
+          <PhaseWithMap mapPanel={mapPanel}>
+            <GenerateProgress
+              segments={segments}
+              emailsCount={data.emails.length}
+            />
+          </PhaseWithMap>
         </div>
       )}
 
       {run.phase === "review" && (
-        <EmailDraftReview runId={runId} onApproved={fetchData} />
+        <div className="space-y-3">
+          <RunBackButton runId={runId} phase={run.phase} onMoved={fetchData} />
+          <EmailDraftReview runId={runId} onApproved={fetchData} />
+        </div>
+      )}
+
+      {run.phase === "awaiting_audience_confirmation" && (
+        <AudienceConfirmBanner runId={runId} onResolved={fetchData} />
+      )}
+
+      {run.phase === "completed" && recipientCounts && (
+        <RunCompleteSummary
+          run={run}
+          counts={recipientCounts}
+          campaignId={
+            (run as unknown as { campaign?: { id?: string } }).campaign?.id ??
+            null
+          }
+          campaignName={
+            (run as unknown as { campaign?: { name?: string } }).campaign?.name
+          }
+          segmentsCount={segments.length}
+        />
       )}
 
       {(run.phase === "sending" || run.phase === "completed") &&
@@ -190,21 +293,16 @@ export function RunClient({
           <SendProgress run={run} counts={recipientCounts} />
         )}
 
-      {/* Map of active segments — hidden during the picker phase (the
-          ServiceAreaPicker has its own embedded map) */}
-      {segments.length > 0 && run.phase !== "awaiting_service_area" && (
-        <HyperlocalMap
-          segments={segments.map((s) => ({
-            zip: s.geo_key,
-            geo_label: s.geo_label,
-            contact_count: s.contact_count,
-            below_min_size: s.below_min_size,
-          }))}
-          selectedZips={new Set(segments.map((s) => s.geo_key))}
-          height={460}
-          overlayChip={`${segments.length} ZIP${segments.length === 1 ? "" : "s"} · ${activeContactCount.toLocaleString()} contacts`}
-        />
-      )}
+      {/* Map of active segments — rendered standalone for phases
+          where the compact phase-panel doesn't pair with it
+          (awaiting_mls, review, awaiting_audience_confirmation, sending).
+          Compact phases (discover, generate, completed) embed the map
+          inside the phase block via <PhaseWithMap> instead.
+          Picker phase has its own embedded map so we skip both ways. */}
+      {segments.length > 0 &&
+        !COMPACT_PHASES.has(run.phase) &&
+        run.phase !== "awaiting_service_area" &&
+        mapPanel}
 
       {/* Segment list */}
       {segments.length > 0 && <SegmentList segments={segments} />}
@@ -218,4 +316,119 @@ export function RunClient({
       )}
     </div>
   );
+}
+
+// Wraps a compact phase panel beside the map on wide screens
+// (lg:grid-cols-5 with a 2:3 ratio — the panel doesn't need 50% of
+// the width). Stacks on narrow screens for mobile / split-pane use.
+function PhaseWithMap({
+  children,
+  mapPanel,
+}: {
+  children: React.ReactNode;
+  mapPanel: React.ReactNode;
+}) {
+  if (!mapPanel) return <>{children}</>;
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="lg:col-span-2">{children}</div>
+      <div className="lg:col-span-3">{mapPanel}</div>
+    </div>
+  );
+}
+
+// Phase-coded badge sized to sit beside the H1. Pulls its label from
+// RUN_PHASE_LABELS so any future phase rename ripples through.
+function PhaseChip({ phase }: { phase: RunPhase }) {
+  const style: Record<
+    string,
+    { bg: string; text: string; border: string; pulse?: boolean }
+  > = {
+    discover: {
+      bg: "bg-amber-500/10",
+      text: "text-amber-500",
+      border: "border-amber-500/30",
+      pulse: true,
+    },
+    awaiting_service_area: {
+      bg: "bg-amber-500/10",
+      text: "text-amber-500",
+      border: "border-amber-500/30",
+    },
+    awaiting_mls: {
+      bg: "bg-amber-500/10",
+      text: "text-amber-500",
+      border: "border-amber-500/30",
+    },
+    awaiting_audience_confirmation: {
+      bg: "bg-amber-500/10",
+      text: "text-amber-500",
+      border: "border-amber-500/30",
+    },
+    generate: {
+      bg: "bg-amber-500/10",
+      text: "text-amber-500",
+      border: "border-amber-500/30",
+      pulse: true,
+    },
+    review: {
+      bg: "bg-primary/15",
+      text: "text-primary",
+      border: "border-primary/30",
+    },
+    sending: {
+      bg: "bg-sky-500/10",
+      text: "text-sky-500",
+      border: "border-sky-500/30",
+      pulse: true,
+    },
+    completed: {
+      bg: "bg-emerald-500/10",
+      text: "text-emerald-500",
+      border: "border-emerald-500/30",
+    },
+    failed: {
+      bg: "bg-destructive/10",
+      text: "text-destructive",
+      border: "border-destructive/30",
+    },
+    cancelled: {
+      bg: "bg-muted",
+      text: "text-muted-foreground",
+      border: "border-border",
+    },
+  };
+  const s = style[phase] ?? style.discover;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border ${s.bg} ${s.text} ${s.border}`}
+    >
+      {s.pulse && (
+        <span className={`w-1.5 h-1.5 rounded-full ${s.text.replace("text-", "bg-")} animate-pulse`} />
+      )}
+      {RUN_PHASE_LABELS[phase]}
+    </span>
+  );
+}
+
+// Compact "2 hours ago" formatting. Falls back to absolute date for
+// runs older than ~7 days where relative loses meaning.
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const sec = Math.max(0, Math.round((now - then) / 1000));
+  if (sec < 60) return "just now";
+  if (sec < 3600) {
+    const m = Math.floor(sec / 60);
+    return `${m} minute${m === 1 ? "" : "s"} ago`;
+  }
+  if (sec < 86_400) {
+    const h = Math.floor(sec / 3600);
+    return `${h} hour${h === 1 ? "" : "s"} ago`;
+  }
+  if (sec < 604_800) {
+    const d = Math.floor(sec / 86_400);
+    return `${d} day${d === 1 ? "" : "s"} ago`;
+  }
+  return new Date(iso).toLocaleDateString();
 }

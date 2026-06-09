@@ -1,12 +1,20 @@
 import { Resend } from "resend";
+import { Webhook } from "svix";
 import { decrypt } from "@/lib/hyperlocal/encryption";
 import type { HlEmailConnection } from "@/types/hyperlocal";
+import {
+  RESEND_EVENT_MAP,
+  type EmailEventType,
+} from "@/lib/hyperlocal/email/webhook-events";
 import type {
   DomainRecord,
   DomainSnapshot,
   DomainStatus,
   EmailMessage,
+  EmailProviderAdapter,
   EmailProviderClient,
+  NormalizedEspEvent,
+  ProviderCapabilities,
   SendResult,
 } from "./types";
 
@@ -38,11 +46,94 @@ function formatFrom(msg: EmailMessage): string {
     : msg.from.email;
 }
 
-export const resendProvider: EmailProviderClient = {
+const RESEND_CAPABILITIES: ProviderCapabilities = {
+  // Resend is transactional — we own the rendered HTML end-to-end,
+  // including the compliance footer + unsubscribe link.
+  handles_compliance_footer: false,
+  handles_unsubscribe: false,
+  supports_per_contact_events: true,
+  supports_merge_tags: false,
+};
+
+export const resendAdapter: EmailProviderAdapter = {
+  mode: "transactional",
+  capabilities: RESEND_CAPABILITIES,
+
   async send(
     conn: HlEmailConnection,
-    msg: EmailMessage
+    msg: EmailMessage,
   ): Promise<SendResult> {
+    return resendSend(conn, msg);
+  },
+
+  verifyWebhookSignature(
+    rawBody: string,
+    headers: Headers,
+    secret: string,
+  ): boolean {
+    const svixId = headers.get("svix-id") ?? "";
+    const svixTimestamp = headers.get("svix-timestamp") ?? "";
+    const svixSignature = headers.get("svix-signature") ?? "";
+    if (!svixId || !svixTimestamp || !svixSignature) return false;
+    try {
+      const wh = new Webhook(secret);
+      wh.verify(rawBody, {
+        "svix-id": svixId,
+        "svix-timestamp": svixTimestamp,
+        "svix-signature": svixSignature,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  parseWebhookEvent(payload: unknown): NormalizedEspEvent | null {
+    if (!payload || typeof payload !== "object") return null;
+    const p = payload as {
+      type?: string;
+      created_at?: string;
+      data?: {
+        email_id?: string;
+        to?: string[] | string;
+        bounce?: { type?: string; message?: string };
+      };
+    };
+    const typeKey = p.type ?? "";
+    const mapped: EmailEventType | undefined = RESEND_EVENT_MAP[typeKey];
+    if (!mapped) return null;
+    const messageId = p.data?.email_id;
+    if (!messageId) return null;
+    const occurredAt = p.created_at ? new Date(p.created_at) : new Date();
+    const bounceTypeRaw = p.data?.bounce?.type?.toLowerCase();
+    const bounceType =
+      bounceTypeRaw === "hard" || bounceTypeRaw === "soft"
+        ? bounceTypeRaw
+        : undefined;
+    const reason =
+      p.data?.bounce?.message ??
+      (mapped === "complained" ? "spam complaint" : undefined);
+    return {
+      type: mapped,
+      provider_message_id: messageId,
+      occurred_at: occurredAt,
+      bounce_type: bounceType,
+      reason,
+      raw: payload,
+    };
+  },
+};
+
+/** @deprecated Use `resendAdapter`. Kept so existing imports keep working
+ *  during the multi-provider rollout. */
+export const resendProvider: EmailProviderClient = {
+  send: (conn, msg) => resendSend(conn, msg),
+};
+
+async function resendSend(
+  conn: HlEmailConnection,
+  msg: EmailMessage,
+): Promise<SendResult> {
     let res;
     try {
       const client = clientForConnection(conn);
@@ -76,15 +167,14 @@ export const resendProvider: EmailProviderClient = {
       throw new Error(`Resend transient error: ${res.error.message}`);
     }
 
-    // Terminal error: bad address, invalid sender, rejected content. No
-    // retry will help — mark recipient failed and move on.
-    return {
-      success: false,
-      error: res.error.message,
-      is_hard_bounce: isHardBounceError(res.error),
-    };
-  },
-};
+  // Terminal error: bad address, invalid sender, rejected content. No
+  // retry will help — mark recipient failed and move on.
+  return {
+    success: false,
+    error: res.error.message,
+    is_hard_bounce: isHardBounceError(res.error),
+  };
+}
 
 function isTransientResendError(error: { name?: string; message?: string }): boolean {
   // Resend SDK exposes a `name` discriminator; the names below are

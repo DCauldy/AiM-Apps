@@ -58,27 +58,33 @@ export async function POST(
     );
   }
 
+  // Trigger first; advance phase only on a confirmed send. Previous
+  // version flipped phase to "generate" optimistically then marked the
+  // run as `failed` on send error — too destructive for what's almost
+  // always a transient Inngest issue (missing env var, dev server not
+  // running). Leaving phase as awaiting_mls means the user can hit
+  // "Generate" again after fixing the root cause.
+  try {
+    await triggerGenerate(id);
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : "Failed to trigger generate";
+    console.error("[generate] triggerGenerate failed:", message, e);
+    return Response.json(
+      {
+        error: `Couldn't send the generate job to Inngest: ${message}. ` +
+          "Check INNGEST_EVENT_KEY / INNGEST_SIGNING_KEY env vars and that " +
+          "the Inngest dev server (or production endpoint) is reachable. " +
+          "Run is still in awaiting_mls — fix the issue and retry.",
+      },
+      { status: 500 },
+    );
+  }
+
   await service
     .from("hl_runs")
     .update({ phase: "generate", updated_at: new Date().toISOString() })
     .eq("id", id);
-
-  try {
-    await triggerGenerate(id);
-  } catch (e) {
-    await service
-      .from("hl_runs")
-      .update({
-        phase: "failed",
-        error: e instanceof Error ? e.message : "Failed to trigger generate",
-        completed_at: new Date().toISOString(),
-      })
-      .eq("id", id);
-    return Response.json(
-      { error: "Failed to trigger generation" },
-      { status: 500 }
-    );
-  }
 
   return Response.json({ success: true });
 }

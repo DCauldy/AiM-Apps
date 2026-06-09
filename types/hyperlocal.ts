@@ -187,10 +187,21 @@ export interface HlCrmConnection {
 // Email Connections
 // ---------------------------------------------------------------------------
 
-export type EmailProvider = "resend";
+export type EmailProvider =
+  | "resend"
+  | "sendgrid"
+  | "mailchimp"
+  | "activecampaign"
+  | "constantcontact"
+  | "klaviyo";
 
 export const EMAIL_PROVIDER_LABELS: Record<EmailProvider, string> = {
   resend: "Resend (verified domain)",
+  sendgrid: "SendGrid",
+  mailchimp: "Mailchimp",
+  activecampaign: "ActiveCampaign",
+  constantcontact: "Constant Contact",
+  klaviyo: "Klaviyo",
 };
 
 export type ResendDkimStatus = "pending" | "verified" | "failed";
@@ -208,6 +219,16 @@ export interface HlEmailConnection {
   resend_domain?: string | null;
   resend_domain_id?: string | null;
   resend_dkim_status?: ResendDkimStatus | null;
+
+  // Generic credentials used by non-Resend providers (SendGrid, future
+  // OAuth-based marketing ESPs). The Resend-named columns above stay
+  // populated only for Resend connections — they don't migrate.
+  provider_api_key_encrypted?: string | null;
+  provider_oauth_access_token_encrypted?: string | null;
+  provider_oauth_refresh_token_encrypted?: string | null;
+  provider_oauth_expires_at?: string | null;
+  /** Per-ESP JSON grab-bag (Mailchimp dc, AC list_id, SendGrid domain_id, etc.) */
+  provider_metadata?: Record<string, unknown> | null;
 
   paused?: boolean;
   paused_reason?: string | null;
@@ -235,6 +256,7 @@ export type RunPhase =
   | "discover"
   | "awaiting_service_area"
   | "awaiting_mls"
+  | "awaiting_audience_confirmation"
   | "generate"
   | "review"
   | "sending"
@@ -246,6 +268,7 @@ export const RUN_PHASE_LABELS: Record<RunPhase, string> = {
   discover: "Discovering",
   awaiting_service_area: "Pick your service area",
   awaiting_mls: "Waiting for MLS data",
+  awaiting_audience_confirmation: "Confirm audience changes",
   generate: "Generating drafts",
   review: "Awaiting review",
   sending: "Sending",

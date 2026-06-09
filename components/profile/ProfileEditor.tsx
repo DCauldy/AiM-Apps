@@ -394,16 +394,36 @@ export function ProfileEditor({ initialProfile }: Props) {
             placeholder="Pick a body font"
           />
         </Field>
-        <Field label="Logo URL">
-          <Input value={form.logo_url ?? ""} onChange={(e) => set("logo_url", e.target.value)} />
+        <Field
+          label="Logo URL"
+          hint="Previews on the brand header color (matches the email)."
+        >
+          <ImagePreviewField
+            value={form.logo_url ?? ""}
+            onChange={(v) => set("logo_url", v)}
+            // Match the renderer's email-header treatment so the preview
+            // looks identical to what the recipient sees.
+            background={form.primary_color ?? "#1B7FB5"}
+            maxHeight={36}
+            shape="rectangle"
+          />
         </Field>
         <Field label="Headshot URL">
-          <Input value={form.headshot_url ?? ""} onChange={(e) => set("headshot_url", e.target.value)} />
+          <ImagePreviewField
+            value={form.headshot_url ?? ""}
+            onChange={(v) => set("headshot_url", v)}
+            background="#f5f5f5"
+            maxHeight={72}
+            shape="circle"
+          />
         </Field>
         <Field label="Brokerage badge URL">
-          <Input
+          <ImagePreviewField
             value={form.brokerage_badge_url ?? ""}
-            onChange={(e) => set("brokerage_badge_url", e.target.value)}
+            onChange={(v) => set("brokerage_badge_url", v)}
+            background="#f5f5f5"
+            maxHeight={48}
+            shape="rectangle"
           />
         </Field>
       </Section>
@@ -444,11 +464,13 @@ function Field({
   label,
   required,
   className,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
   className?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -458,6 +480,65 @@ function Field({
         {required && <span className="text-destructive ml-0.5">*</span>}
       </label>
       {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function ImagePreviewField({
+  value,
+  onChange,
+  background,
+  maxHeight,
+  shape,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  /** Backdrop the preview renders on. Use the brand primary color for the
+   *  logo so the preview matches the email header. */
+  background: string;
+  /** Caps the rendered preview to the email's actual max-height for that
+   *  asset (logo 36, badge 48, headshot 72) so the agent sees true scale. */
+  maxHeight: number;
+  shape: "rectangle" | "circle";
+}) {
+  const [loadError, setLoadError] = useState(false);
+  const trimmed = value.trim();
+  return (
+    <div className="space-y-2">
+      <Input
+        value={value}
+        onChange={(e) => {
+          setLoadError(false);
+          onChange(e.target.value);
+        }}
+        placeholder="https://…"
+      />
+      {trimmed && (
+        <div
+          className="rounded-md border border-border p-3 flex items-center justify-center"
+          style={{ background }}
+        >
+          {loadError ? (
+            <p className="text-xs text-muted-foreground">
+              Couldn't load image — check the URL is publicly accessible.
+            </p>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={trimmed}
+              alt="Preview"
+              style={{
+                maxHeight: `${maxHeight}px`,
+                width: "auto",
+                display: "block",
+                borderRadius: shape === "circle" ? "9999px" : "0",
+              }}
+              onError={() => setLoadError(true)}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

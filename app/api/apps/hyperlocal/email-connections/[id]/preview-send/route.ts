@@ -8,6 +8,7 @@ import {
 import { isSuppressed } from "@/lib/hyperlocal/email/suppressions";
 import { getPreviewTemplate } from "@/lib/hyperlocal/email/preview-templates";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
+import { getAdapter, hasAdapter } from "@/lib/hyperlocal/email/providers/registry";
 import { NextRequest } from "next/server";
 import type {
   HlEmailConnection,
@@ -196,6 +197,10 @@ export async function POST(
   const previewThreeYear =
     previewYoy != null ? Number((previewYoy * 2.4).toFixed(1)) : null;
 
+  const espHandlesComplianceFooter = hasAdapter(conn.provider)
+    ? getAdapter(conn.provider).capabilities.handles_compliance_footer
+    : false;
+
   const html = renderEmailHtml({
     branding,
     sender,
@@ -208,6 +213,7 @@ export async function POST(
     staticMapUrl,
     yoyPriceChangePct: previewYoy,
     threeYearPriceChangePct: previewThreeYear,
+    espHandlesComplianceFooter,
   });
   const text = htmlToPlainText(html);
 
