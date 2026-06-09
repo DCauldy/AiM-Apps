@@ -1,6 +1,8 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getHyperlocalEmailWriterModel } from "@/lib/openrouter";
 import { rerenderEmail, snapshotBlocks } from "@/lib/hyperlocal/email/rerender";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { NextRequest } from "next/server";
@@ -107,12 +109,27 @@ export async function POST(
   if (!email) {
     return Response.json({ error: "Email not found" }, { status: 404 });
   }
-  if (email.refinements_used >= email.refinements_limit) {
+  // Pack-tier cap. We read the live pack at edit time (not the email's
+  // baked-in refinements_limit) so a mid-flight upgrade takes effect
+  // immediately. UNLIMITED tiers (Diamond) skip the gate.
+  const usage = await getHyperlocalUsage(user.id);
+  const aiEditsCap = usage.aiChatEditsPerDraft;
+  if (
+    aiEditsCap !== UNLIMITED &&
+    email.refinements_used >= (aiEditsCap as number)
+  ) {
     return Response.json(
       {
-        error: `Refinement limit reached (${email.refinements_limit}). Edit blocks manually if you need more changes.`,
+        error: `Refinement limit reached (${aiEditsCap}). Upgrade your pack for more edits per draft, or tweak the blocks manually.`,
+        code: "pack_limit_reached",
+        usage: {
+          aiChatEditsPerDraft: aiEditsCap,
+          refinementsUsed: email.refinements_used,
+          tier: usage.tier,
+          periodEnd: usage.periodEnd,
+        },
       },
-      { status: 429 }
+      { status: 403 },
     );
   }
 
@@ -270,9 +287,14 @@ RULES:
     applied_changes: { changed: changedFields },
   });
 
+  const remaining =
+    aiEditsCap === UNLIMITED
+      ? "unlimited"
+      : Math.max(0, (aiEditsCap as number) - (email.refinements_used + 1));
+
   return Response.json({
     explanation: edit.explanation,
     changed: changedFields,
-    refinements_remaining: email.refinements_limit - (email.refinements_used + 1),
+    refinements_remaining: remaining,
   });
 }

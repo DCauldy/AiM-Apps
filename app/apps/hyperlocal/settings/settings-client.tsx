@@ -7,6 +7,7 @@ import { CrmTab } from "@/components/hyperlocal/settings/CrmTab";
 import { EmailTab } from "@/components/hyperlocal/settings/EmailTab";
 import { SuppressionTab } from "@/components/hyperlocal/settings/SuppressionTab";
 import { HistoryTab } from "@/components/hyperlocal/settings/HistoryTab";
+import { UpgradeTab } from "@/components/hyperlocal/settings/UpgradeTab";
 import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
 import type {
   PlatformSenderProfile,
@@ -16,19 +17,22 @@ import type {
   HlSuppression,
 } from "@/types/hyperlocal";
 
-type Tab = "crm" | "email" | "suppression" | "history";
+type Tab = "crm" | "email" | "suppression" | "history" | "upgrade";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "crm", label: "CRMs" },
   { id: "email", label: "Email" },
   { id: "history", label: "Historical data" },
   { id: "suppression", label: "Suppression" },
+  { id: "upgrade", label: "Upgrade" },
 ];
 
 export function SettingsClient({
   crmConnections,
   emailConnections,
   suppressions,
+  activePackId,
+  hasSubscription,
 }: {
   /** Accepted for backwards compatibility — sender + branding now live on /apps/profile. */
   senderProfiles?: PlatformSenderProfile[];
@@ -36,6 +40,8 @@ export function SettingsClient({
   crmConnections: HlCrmConnection[];
   emailConnections: HlEmailConnection[];
   suppressions: HlSuppression[];
+  activePackId: string | null;
+  hasSubscription: boolean;
 }) {
   const searchParams = useSearchParams();
   const initialTab = (searchParams.get("tab") as Tab) ?? "crm";
@@ -85,6 +91,12 @@ export function SettingsClient({
       {activeTab === "history" && <HistoryTab />}
       {activeTab === "suppression" && (
         <SuppressionTab initialSuppressions={suppressions} />
+      )}
+      {activeTab === "upgrade" && (
+        <UpgradeTab
+          activePackId={activePackId}
+          hasSubscription={hasSubscription}
+        />
       )}
     </div>
   );

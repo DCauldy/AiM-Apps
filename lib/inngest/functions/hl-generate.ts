@@ -65,6 +65,10 @@ interface GenerateContext {
    *  Null when no email connection is attached (rare; generate normally
    *  blocks earlier in that case). */
   providerForRender: import("@/types/hyperlocal").EmailProvider | null;
+  /** Pack-tier MLS history cap in months. `null` = unlimited (Diamond) or
+   *  unresolved. Resolved once at load-context to avoid N pack lookups
+   *  across per-segment generation. */
+  mlsHistoryMonthsCap: number | null;
 }
 
 export const hlGenerate = inngest.createFunction(
@@ -193,6 +197,16 @@ export const hlGenerate = inngest.createFunction(
         segments = readySegments.slice(0, MAX_SEGMENTS_PER_RUN);
       }
 
+      // Resolve the pack-tier MLS history cap once for the whole run.
+      // Diamond → null (unlimited); everything else → numeric months.
+      const { getHyperlocalUsage } = await import("@/lib/hyperlocal/usage");
+      const { UNLIMITED } = await import("@/lib/hyperlocal-packs");
+      const packUsage = await getHyperlocalUsage(run.user_id).catch(() => null);
+      const mlsHistoryMonthsCap =
+        packUsage && packUsage.mlsHistoryMonths !== UNLIMITED
+          ? (packUsage.mlsHistoryMonths as number)
+          : null;
+
       return {
         runId,
         userId: run.user_id,
@@ -203,6 +217,7 @@ export const hlGenerate = inngest.createFunction(
         segments,
         cachePath: `${run.user_id}/${runId}/discovery.json`,
         providerForRender,
+        mlsHistoryMonthsCap,
       };
     });
 
@@ -278,9 +293,12 @@ async function processSegment(
   let threeYearPct: number | null = null;
   if (ctx.profileId) {
     const { getTrendsForGeo } = await import("@/lib/hyperlocal/mls/snapshots");
-    const trends = await getTrendsForGeo(supabase, ctx.profileId, segment.geo_key).catch(
-      () => null,
-    );
+    const trends = await getTrendsForGeo(
+      supabase,
+      ctx.profileId,
+      segment.geo_key,
+      ctx.mlsHistoryMonthsCap,
+    ).catch(() => null);
     yoyPct = trends?.yoy_price_change_pct ?? null;
     threeYearPct = trends?.three_year_price_change_pct ?? null;
   }

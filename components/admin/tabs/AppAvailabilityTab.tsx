@@ -9,10 +9,30 @@ interface Setting {
   description: string | null;
 }
 
-/** Only show these keys on the App Availability tab, with friendly labels */
-const APP_FLAGS: Record<string, string> = {
-  PROMPT_STUDIO: "Prompt Studio",
-  BLOG_ENGINE: "Blog Engine",
+/** Only show these keys on the App Availability tab, with friendly
+ *  labels + fallback descriptions. Keep in sync with
+ *  lib/feature-flags.ts FEATURES — every app the user can launch
+ *  should be toggleable here. */
+const APP_FLAGS: Record<string, { label: string; description: string }> = {
+  PROMPT_STUDIO: {
+    label: "Prompt Studio",
+    description: "AI-powered prompt engineering for AiM members.",
+  },
+  BLOG_ENGINE: {
+    label: "Blog Engine",
+    description:
+      "Automated BOFU blog generation with WordPress / Squarespace publishing.",
+  },
+  RADAR: {
+    label: "Radar",
+    description:
+      "AI search visibility monitoring across ChatGPT, Perplexity, and Google AI Overviews.",
+  },
+  HYPERLOCAL: {
+    label: "Hyperlocal",
+    description:
+      "Neighborhood market-report email campaigns sent through the user's own ESP.",
+  },
 };
 
 export function AppAvailabilityTab() {
@@ -55,7 +75,7 @@ export function AppAvailabilityTab() {
         prev.map((s) => (s.key === key ? { ...s, value: newValue } : s))
       );
 
-      const label = APP_FLAGS[key] ?? key;
+      const label = APP_FLAGS[key]?.label ?? key;
       addToast({ title: `${label} ${newValue === "true" ? "enabled" : "disabled"}` });
     } catch {
       addToast({ title: "Error", description: "Failed to update setting", variant: "destructive" });
@@ -68,8 +88,23 @@ export function AppAvailabilityTab() {
     return <div className="text-muted-foreground">Loading settings...</div>;
   }
 
-  // Filter to only app-level flags
-  const appSettings = settings.filter((s) => s.key in APP_FLAGS);
+  // Render one row per KNOWN app flag, not per existing DB row.
+  // Missing rows render as off — toggling them upserts a new row
+  // via PATCH (already supported by the API). Prevents new apps
+  // from being invisible in admin until someone seeds the DB.
+  const settingsByKey = new Map(settings.map((s) => [s.key, s]));
+  const rows = Object.entries(APP_FLAGS).map(([key, meta]) => {
+    const existing = settingsByKey.get(key);
+    return {
+      key,
+      value: existing?.value ?? "false",
+      // Prefer the DB row's description if set, otherwise fall back to
+      // the static one in APP_FLAGS so newly-added apps still show
+      // meaningful copy before they have a settings row.
+      description: existing?.description ?? meta.description,
+      isNew: !existing,
+    };
+  });
 
   return (
     <div className="space-y-4">
@@ -77,13 +112,20 @@ export function AppAvailabilityTab() {
         Toggle apps on or off. Changes take effect immediately for server-side checks.
       </p>
 
-      {appSettings.map((setting) => (
+      {rows.map((setting) => (
         <div
           key={setting.key}
           className="flex items-center justify-between p-4 border rounded-lg"
         >
           <div>
-            <p className="font-medium">{APP_FLAGS[setting.key]}</p>
+            <p className="font-medium">
+              {APP_FLAGS[setting.key]?.label ?? setting.key}
+              {setting.isNew && (
+                <span className="ml-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  not yet configured
+                </span>
+              )}
+            </p>
             {setting.description && (
               <p className="text-sm text-muted-foreground">{setting.description}</p>
             )}

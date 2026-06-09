@@ -7,6 +7,8 @@ import {
   computeRequiredMlsExports,
   type MlsExportRequirement,
 } from "@/lib/hyperlocal/mls/data-requirements";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
 import type {
   HlCampaign,
   HlCrmConnection,
@@ -141,11 +143,36 @@ export const hlDiscover = inngest.createFunction(
         }
 
         // Bucket by geography — filter to service area if campaign has one set
-        const buckets = identifyGeographies(
+        const rawBuckets = identifyGeographies(
           contacts,
           ctx.campaign,
           hasServiceArea ? ctx.campaign.service_area_zips : undefined
         );
+
+        // Pack-tier cap on segments per campaign. We keep the top N by
+        // contact_count (biggest neighborhoods first) so the email goes to
+        // the most people. Excess buckets are dropped silently — the run
+        // launcher already knows the cap and could surface a warning, but
+        // dropping is safer than failing the whole run mid-flight.
+        const usage = await getHyperlocalUsage(ctx.run.user_id);
+        const segmentsCap = usage.segmentsPerCampaign;
+        const buckets =
+          segmentsCap === UNLIMITED || rawBuckets.length <= (segmentsCap as number)
+            ? rawBuckets
+            : [...rawBuckets]
+                .sort((a, b) => b.contact_ids.length - a.contact_ids.length)
+                .slice(0, segmentsCap as number);
+        if (
+          segmentsCap !== UNLIMITED &&
+          rawBuckets.length > (segmentsCap as number)
+        ) {
+          console.log(
+            `[hl-discover] segments cap (${segmentsCap}) — dropped ${
+              rawBuckets.length - (segmentsCap as number)
+            } of ${rawBuckets.length} buckets for run ${runId}`,
+          );
+        }
+
         if (buckets.length === 0) {
           await supabase
             .from("hl_runs")

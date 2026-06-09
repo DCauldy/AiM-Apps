@@ -139,25 +139,22 @@ export async function getDashboardData(
   const sevenDaysAgo = new Date(now.getTime() - 7 * DAY_MS);
   const fourteenDaysAgo = new Date(now.getTime() - 14 * DAY_MS);
 
-  // Pull the connections list once — we need it for both the health rail and
-  // to scope email-event queries by connection_id.
-  const { data: emailConnections } = await supabase
-    .from("hl_email_connections")
-    .select("id, email_address, display_name, is_default, is_active, resend_dkim_status, paused")
-    .in("profile_id", profileIds);
-
-  const emailConnectionIds = (emailConnections ?? []).map((c) => c.id);
-
-  // Kick off the rest in parallel.
+  // Stage 1 — fan out every query that doesn't depend on another query's
+  // result. `emailConnections` is one of these even though it's also used to
+  // scope `hl_email_events`; we just gate that one follow-up on its ids.
   const [
+    { data: emailConnections },
     { data: activeRuns },
     { data: lastCompletedRuns },
     { data: recentCompletedRuns },
     { data: campaigns },
     { data: crmConnections },
     { count: suppressionsThisWeek },
-    eventsRes,
   ] = await Promise.all([
+    supabase
+      .from("hl_email_connections")
+      .select("id, email_address, display_name, is_default, is_active, resend_dkim_status, paused")
+      .in("profile_id", profileIds),
     supabase
       .from("hl_runs")
       .select("id, campaign_id, phase, started_at, completed_at, created_at, contacts_fetched, segments_count, emails_drafted, emails_sent, emails_failed, email_connection_id")
@@ -194,14 +191,18 @@ export async function getDashboardData(
       .select("*", { count: "exact", head: true })
       .in("profile_id", profileIds)
       .gte("added_at", sevenDaysAgo.toISOString()),
+  ]);
+
+  // Stage 2 — events query (gated on email connection ids).
+  const emailConnectionIds = (emailConnections ?? []).map((c) => c.id);
+  const eventsRes =
     emailConnectionIds.length > 0
-      ? supabase
+      ? await supabase
           .from("hl_email_events")
           .select("type, recipient_id, occurred_at, email_connection_id")
           .in("email_connection_id", emailConnectionIds)
           .gte("occurred_at", thirtyDaysAgo.toISOString())
-      : Promise.resolve({ data: [] as EventRow[] }),
-  ]);
+      : { data: [] as EventRow[] };
 
   const events: EventRow[] = (eventsRes.data ?? []) as EventRow[];
 
@@ -210,35 +211,29 @@ export async function getDashboardData(
   const activeRun = pickByPhasePriority(activeRuns ?? [], ACTIVE_PHASE_PRIORITY);
   const heroRunRow = activeRun ?? lastCompletedRuns?.[0] ?? null;
 
-  // The hero needs ancillary data (segment labels, first email subject, etc.)
-  // — fetch only for the chosen run.
-  const hero = heroRunRow
-    ? await buildHero(supabase, heroRunRow, campaigns ?? [], emailConnections ?? [], events)
-    : null;
-
-  // Aggregate event-based modules.
+  // Stage 3 — every remaining DB-touching aggregation runs in parallel.
+  // Previously these were 4 sequential awaits; nothing in here depends on
+  // anything else except the inputs we already have from stages 1 + 2.
   const recipientIds = uniqueNonNull(events.map((e) => e.recipient_id));
-  const recipients = await fetchRecipientsLite(supabase, recipientIds);
+  const completedRunIds = (recentCompletedRuns ?? []).map((r) => r.id);
 
-  const thisWeek = computeThisWeek(events, recipients, sevenDaysAgo, fourteenDaysAgo);
+  const [hero, recipients, recentCampaigns, neighborhoods] = await Promise.all([
+    heroRunRow
+      ? buildHero(supabase, heroRunRow, campaigns ?? [], emailConnections ?? [], events)
+      : Promise.resolve(null),
+    fetchRecipientsLite(supabase, recipientIds),
+    buildRecentCampaignStories(
+      supabase,
+      (recentCompletedRuns ?? []).filter((r) => r.emails_sent > 0),
+      campaigns ?? [],
+      events,
+    ),
+    computeNeighborhoods(supabase, completedRunIds, events),
+  ]);
 
-  const recentCampaigns = await buildRecentCampaignStories(
-    supabase,
-    (recentCompletedRuns ?? []).filter((r) => r.emails_sent > 0),
-    campaigns ?? [],
-    events,
-    recipients,
-  );
-
-  const hotContacts = computeHotContacts(events, recipients, sevenDaysAgo);
-
-  const neighborhoods = await computeNeighborhoods(
-    supabase,
-    (recentCompletedRuns ?? []).map((r) => r.id),
-    events,
-    recipients,
-  );
-
+  // Stage 4 — pure JS aggregations over data already in memory.
+  const thisWeek = computeThisWeek(events, sevenDaysAgo, fourteenDaysAgo);
+  const hotContacts = computeHotContacts(events, recipients);
   const health = computeHealth({
     events,
     emailConnections: emailConnections ?? [],
@@ -346,8 +341,17 @@ async function buildHero(
   const campaign = campaigns.find((c) => c.id === run.campaign_id) ?? null;
   const emailConn = emailConnections.find((c) => c.id === run.email_connection_id) ?? null;
 
-  // Pull segments + first email for headline + preview.
-  const [{ data: segments }, { data: firstEmail }, { count: recipientsCount }] = await Promise.all([
+  // Pull segments + first email for headline + preview. We also speculatively
+  // fetch the recap recipient ids — only the "recap" variant uses them, but
+  // running it in parallel costs nothing and saves a sequential round trip
+  // when the hero is a completed run.
+  const wantsRecap = run.phase === "completed";
+  const [
+    { data: segments },
+    { data: firstEmail },
+    { count: recipientsCount },
+    recapRecipients,
+  ] = await Promise.all([
     supabase
       .from("hl_segments")
       .select("geo_label, geo_key, contact_count, status")
@@ -366,6 +370,9 @@ async function buildHero(
       .from("hl_recipients")
       .select("hl_emails!inner(run_id)", { count: "exact", head: true })
       .eq("hl_emails.run_id", run.id),
+    wantsRecap
+      ? fetchRecipientsForRun(supabase, run.id)
+      : Promise.resolve([] as Array<{ id: string }>),
   ]);
 
   const visibleSegments = (segments ?? []).filter((s) => s.geo_label || s.geo_key);
@@ -399,9 +406,9 @@ async function buildHero(
   };
 
   if (variant === "recap") {
-    // Recap variant: surface this run's actual engagement.
-    const recipients = await fetchRecipientsForRun(supabase, run.id);
-    const recipientIds = new Set(recipients.map((r) => r.id));
+    // Recap variant: surface this run's actual engagement using the
+    // recipient ids we speculatively fetched above.
+    const recipientIds = new Set(recapRecipients.map((r) => r.id));
     const runEvents = events.filter((e) => e.recipient_id && recipientIds.has(e.recipient_id));
     const uniqByType = new Map<string, Set<string>>();
     for (const e of runEvents) {
@@ -432,7 +439,6 @@ async function fetchRecipientsForRun(supabase: SupabaseClient, runId: string) {
 
 function computeThisWeek(
   events: EventRow[],
-  _recipients: Map<string, RecipientLite>,
   sevenDaysAgo: Date,
   fourteenDaysAgo: Date,
 ): ThisWeekSummary {
@@ -504,7 +510,6 @@ async function buildRecentCampaignStories(
   runs: Array<{ id: string; campaign_id: string | null; completed_at: string | null; emails_sent: number }>,
   campaigns: CampaignRow[],
   events: EventRow[],
-  recipientsCache: Map<string, RecipientLite>,
 ): Promise<CampaignStory[]> {
   if (runs.length === 0) return [];
 
@@ -599,7 +604,6 @@ function humanSentLabel(iso: string): string {
 function computeHotContacts(
   events: EventRow[],
   recipients: Map<string, RecipientLite>,
-  _sevenDaysAgo: Date,
 ): HotContact[] {
   // Aggregate per contact_email so the same person across multiple sends rolls up.
   type Bucket = {
@@ -682,7 +686,6 @@ async function computeNeighborhoods(
   supabase: SupabaseClient,
   recentRunIds: string[],
   events: EventRow[],
-  recipients: Map<string, RecipientLite>,
 ): Promise<NeighborhoodRow[]> {
   if (recentRunIds.length === 0) return [];
 
@@ -720,9 +723,6 @@ async function computeNeighborhoods(
     if (e.type === "opened") bucket.opens.add(e.recipient_id);
     else if (e.type === "clicked") bucket.clicks.add(e.recipient_id);
   }
-
-  // Silence unused-var warning (recipients cache is used in sibling modules; kept here for symmetry).
-  void recipients;
 
   return Array.from(byGeo.values())
     .filter((b) => b.recipients.size >= 3) // ignore tiny neighborhoods — noisy

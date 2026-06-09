@@ -11,6 +11,12 @@ interface PackConfig {
   tier: string | null;
   size: number | null;
   frequency: number | null;
+  // Hyperlocal-specific meters (also stored in admin_pack_configs).
+  // -1 sentinel = unlimited.
+  campaigns_limit?: number | null;
+  segments_limit?: number | null;
+  mls_history_months?: number | null;
+  ai_edits_limit?: number | null;
   price_cents: number | null;
   stripe_price_id: string | null;
   label: string | null;
@@ -47,6 +53,8 @@ export function PackConfigTab() {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     prompt_studio: true,
     blog_engine: false,
+    radar: false,
+    hyperlocal: false,
   });
   const { addToast } = useToast();
 
@@ -130,6 +138,7 @@ export function PackConfigTab() {
 
   const promptPacks = packs.filter((p) => p.app === "prompt_studio");
   const blogPacks = packs.filter((p) => p.app === "blog_engine");
+  const hyperlocalPacks = packs.filter((p) => p.app === "hyperlocal");
 
   return (
     <div className="space-y-3">
@@ -162,6 +171,22 @@ export function PackConfigTab() {
           onUpdate={updateEdit}
           onSave={savePack}
           sizeField="frequency"
+        />
+      </AccordionSection>
+
+      <AccordionSection
+        title="Hyperlocal Packs"
+        count={hyperlocalPacks.length}
+        isOpen={openSections.hyperlocal}
+        onToggle={() => toggleSection("hyperlocal")}
+      >
+        <PackGrid
+          packs={hyperlocalPacks}
+          edits={edits}
+          saving={saving}
+          onUpdate={updateEdit}
+          onSave={savePack}
+          sizeField="hyperlocal"
         />
       </AccordionSection>
     </div>
@@ -218,7 +243,7 @@ function PackGrid({
   saving: string | null;
   onUpdate: (packId: string, field: keyof PackEdit, value: string | boolean) => void;
   onSave: (packId: string) => void;
-  sizeField: "size" | "frequency";
+  sizeField: "size" | "frequency" | "hyperlocal";
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -238,7 +263,9 @@ function PackGrid({
               <span className="text-xs text-muted-foreground">
                 {sizeField === "size"
                   ? `${pack.size} prompts`
-                  : `${pack.frequency}x/week`}
+                  : sizeField === "frequency"
+                    ? `${pack.frequency}x/week`
+                    : formatHyperlocalMeters(pack)}
               </span>
             </div>
 
@@ -334,4 +361,12 @@ function PackGrid({
       })}
     </div>
   );
+}
+
+/** Hyperlocal packs have 4 numeric meters instead of a single size/frequency.
+ *  Compress them into a short summary string for the per-pack header chip. */
+function formatHyperlocalMeters(pack: PackConfig): string {
+  const fmt = (n: number | null | undefined) =>
+    n === -1 ? "∞" : (n ?? "—").toString();
+  return `${fmt(pack.campaigns_limit)} runs · ${fmt(pack.segments_limit)} seg · ${fmt(pack.mls_history_months)}mo MLS · ${fmt(pack.ai_edits_limit)} edits`;
 }

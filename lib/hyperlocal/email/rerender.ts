@@ -2,6 +2,8 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { renderEmailHtml, htmlToPlainText } from "./render";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
 import { getTrendsForGeo } from "@/lib/hyperlocal/mls/snapshots";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
 import { getAdapter, hasAdapter } from "./providers/registry";
 import type { EmailProvider } from "@/types/hyperlocal";
 import type {
@@ -46,7 +48,7 @@ export async function rerenderEmail(emailId: string): Promise<{
 
   const { data: run } = await supabase
     .from("hl_runs")
-    .select("profile_id, email_connection_id")
+    .select("profile_id, email_connection_id, user_id")
     .eq("id", email.run_id)
     .single();
   if (!run?.profile_id) throw new Error("Run profile not set — cannot re-render");
@@ -116,10 +118,21 @@ export async function rerenderEmail(emailId: string): Promise<{
     token: process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "",
   }).catch(() => null);
 
+  // Pack-tier MLS history cap. Diamond is UNLIMITED → no cap; everything
+  // else clamps how far back trends can pull from.
+  const packUsage = run.user_id
+    ? await getHyperlocalUsage(run.user_id).catch(() => null)
+    : null;
+  const historyCap =
+    packUsage && packUsage.mlsHistoryMonths !== UNLIMITED
+      ? (packUsage.mlsHistoryMonths as number)
+      : null;
+
   const trends = await getTrendsForGeo(
     supabase,
     run.profile_id,
     (segment as HlSegment).geo_key,
+    historyCap,
   ).catch(() => null);
 
   const html = renderEmailHtml({

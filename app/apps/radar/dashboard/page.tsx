@@ -1,16 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/auth/get-cached-user";
 import { DashboardClient } from "@/components/radar/dashboard/DashboardClient";
 import { getRadarUsage } from "@/lib/radar/usage";
 import type { RadarConfig, RadarCheck, RadarAlert, RadarResult } from "@/types/radar";
 
 export default async function RadarDashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCachedUser();
   if (!user) redirect("/login");
+  const supabase = await createClient();
 
   const { data: config } = await supabase
     .from("radar_config")

@@ -42,7 +42,6 @@ export default async function SettingsPage() {
       profile={effectiveProfile}
       schedule={schedule}
       cmsConnections={cmsResult.data || []}
-      frequencyTier={schedule?.frequency_tier || "free"}
       hasSubscription={!!schedule?.stripe_subscription_id}
     />
   );

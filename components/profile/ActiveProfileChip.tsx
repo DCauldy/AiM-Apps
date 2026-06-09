@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronDown, Plus, Settings2 } from "lucide-react";
@@ -13,15 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import type { PlatformProfile } from "@/types/platform-profile";
-
-interface ProfileSummary {
-  id: string;
-  display_name: string;
-  brokerage: string | null;
-  primary_color: string;
-  accent_color: string;
-}
+import { useProfile } from "@/components/profile/ProfileProvider";
 
 /**
  * Always-visible profile chip for the /apps landing page.
@@ -29,61 +21,27 @@ interface ProfileSummary {
  * Shows the user's active profile with an inline dropdown to quick-switch
  * to any other profile, see manage profiles, or create a new one when
  * the user has none yet.
+ *
+ * Reads from ProfileProvider — no fetches of its own.
  */
 export function ActiveProfileChip() {
   const router = useRouter();
-  const [active, setActive] = useState<ProfileSummary | null>(null);
-  const [others, setOthers] = useState<ProfileSummary[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const {
+    loaded,
+    profiles,
+    activeProfile,
+    activeProfileId,
+    switchProfile,
+  } = useProfile();
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const others = profiles.filter((p) => p.id !== activeProfileId);
 
-    async function load() {
-      const meRes = await fetch("/api/profile").catch(() => null);
-      const profilesRes = await fetch("/api/profiles").catch(() => null);
-
-      if (!meRes?.ok || !profilesRes?.ok) {
-        if (!cancelled) setLoaded(true);
-        return;
-      }
-
-      const me = await meRes.json();
-      const profilesPayload = await profilesRes.json();
-      const activeProfiles: PlatformProfile[] = (profilesPayload.profiles ?? []).filter(
-        (p: PlatformProfile) => !p.archived_at
-      );
-
-      if (cancelled) return;
-      const activeId = me?.active_profile_id ?? null;
-      const summaries = activeProfiles.map(toSummary);
-      setActive(summaries.find((p) => p.id === activeId) ?? null);
-      setOthers(summaries.filter((p) => p.id !== activeId));
-      setLoaded(true);
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function switchProfile(id: string) {
+  async function handleSwitch(id: string) {
     if (busy) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/profiles/${id}/activate`, { method: "POST" });
-      if (res.ok) {
-        // Reload to pick up the new active context
-        router.refresh();
-        // Optimistic local update so the chip changes immediately
-        const next = others.find((p) => p.id === id);
-        if (next && active) {
-          setActive(next);
-          setOthers([active, ...others.filter((p) => p.id !== id)]);
-        }
-      }
+      await switchProfile(id);
     } finally {
       setBusy(false);
     }
@@ -99,7 +57,7 @@ export function ActiveProfileChip() {
   }
 
   // No active profile yet (also no profiles) — push toward setup
-  if (!active && others.length === 0) {
+  if (!activeProfile && others.length === 0) {
     return (
       <Link
         href="/apps/profile/new"
@@ -115,8 +73,8 @@ export function ActiveProfileChip() {
     <DropdownMenu>
       <DropdownMenuTrigger className="glass-card inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="text-muted-foreground">Operating as</span>
-        {active ? (
-          <span className="font-semibold">{active.display_name}</span>
+        {activeProfile ? (
+          <span className="font-semibold">{activeProfile.display_name}</span>
         ) : (
           <span className="font-semibold text-muted-foreground">No profile selected</span>
         )}
@@ -131,7 +89,7 @@ export function ActiveProfileChip() {
             {others.map((p) => (
               <DropdownMenuItem
                 key={p.id}
-                onClick={() => switchProfile(p.id)}
+                onClick={() => handleSwitch(p.id)}
                 className={cn(
                   "flex items-center gap-2.5 py-2 cursor-pointer",
                   busy && "opacity-50 pointer-events-none"
@@ -173,14 +131,4 @@ export function ActiveProfileChip() {
       </DropdownMenuContent>
     </DropdownMenu>
   );
-}
-
-function toSummary(p: PlatformProfile): ProfileSummary {
-  return {
-    id: p.id,
-    display_name: p.display_name,
-    brokerage: p.brokerage,
-    primary_color: p.primary_color,
-    accent_color: p.accent_color,
-  };
 }

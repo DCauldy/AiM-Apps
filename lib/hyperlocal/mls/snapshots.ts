@@ -153,6 +153,12 @@ export async function getTrendsForGeo(
   supabase: SupabaseClient,
   profileId: string,
   geoKey: string,
+  /**
+   * Pack-tier history cap in months — older snapshots are filtered out of
+   * the trend calculation. Pass `null` or `UNLIMITED` (-1) to skip the
+   * cap and allow the full lookback (Diamond tier).
+   */
+  historyMonthsCap: number | null = null,
 ): Promise<GeoTrends> {
   // Pull the last 37 months — enough for current + YoY + 3-year comparison
   // + 12-month history. ~37 rows max, tiny payload.
@@ -165,12 +171,27 @@ export async function getTrendsForGeo(
     .order("period_month", { ascending: false })
     .limit(37);
 
-  const rows = (data ?? []) as Array<{
+  let rows = (data ?? []) as Array<{
     period_year: number;
     period_month: number;
     median_sale_price: number | null;
     closed_count: number;
   }>;
+
+  // Apply pack-tier history cap. We measure months between each snapshot's
+  // period and "today" — a Pro user (6mo cap) can't see YoY (12mo), a
+  // Silver user (24mo) can see YoY but not 3-year (36mo). This is what
+  // makes the pack ladder meaningfully different at the trend layer.
+  if (historyMonthsCap !== null && historyMonthsCap > 0) {
+    const now = new Date();
+    const cutoffYear = now.getUTCFullYear();
+    const cutoffMonth = now.getUTCMonth() + 1; // 1-indexed
+    rows = rows.filter((r) => {
+      const monthsAgo =
+        (cutoffYear - r.period_year) * 12 + (cutoffMonth - r.period_month);
+      return monthsAgo <= historyMonthsCap;
+    });
+  }
 
   if (rows.length === 0) {
     return {
