@@ -92,6 +92,8 @@ export async function POST(
           published_at: new Date().toISOString(),
           synced_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          // Clear any prior failure so the UI stops surfacing it.
+          pipeline_error: null,
         })
         .eq("id", blogId);
 
@@ -110,11 +112,13 @@ export async function POST(
         postUrl: result.postUrl,
       });
     } else {
-      // Record error
+      // Record error on both the blog (for the UI to show what failed)
+      // and the connection (for the Settings page health surfaces).
       await serviceClient
         .from("bofu_blogs")
         .update({
           publish_status: "failed",
+          pipeline_error: `Publish: ${result.error}`,
           updated_at: new Date().toISOString(),
         })
         .eq("id", blogId);

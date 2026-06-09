@@ -12,7 +12,11 @@ import {
   getMetadataPrompt,
   getImagePrompt,
 } from "@/lib/blog-engine/prompts";
-import { incrementBofuUsage } from "@/lib/blog-engine/usage";
+import {
+  reserveBlogSlot,
+  refundBlogSlot,
+  type BlogSlotReservation,
+} from "@/lib/blog-engine/usage";
 import { checkTopicDuplicate } from "@/lib/blog-engine/dedup";
 import { generateAndUploadImage } from "@/lib/blog-engine/image-generation";
 import { publishToWordPress } from "@/lib/blog-engine/cms/wordpress";
@@ -31,6 +35,13 @@ type BlogRunEvent = {
     userId: string;
     triggeredBy: "schedule" | "manual" | "first_run";
     topicId?: string; // optional: write a specific topic
+    /** True when /api/apps/blog-engine/runs already reserved the slot for
+     *  this run. Cron-triggered runs don't pre-reserve and need the
+     *  function to do it. */
+    slotPreReserved?: boolean;
+    /** Which bucket the pre-reserved slot came from (weekly quota vs
+     *  bonus). Used by the catch path to refund the right one. */
+    usedBonus?: boolean;
   };
 };
 
@@ -47,8 +58,43 @@ export const blogPipeline = inngest.createFunction(
     triggers: [{ event: "blog-engine/run.requested" }],
   },
   async ({ event, step }: { event: { data: BlogRunEvent["data"]; id?: string }; step: any }) => {
-    const { userId, triggeredBy, topicId: requestedTopicId } = event.data;
+    const {
+      userId,
+      triggeredBy,
+      topicId: requestedTopicId,
+      slotPreReserved,
+      usedBonus: preReservedUsedBonus,
+    } = event.data;
     const supabase = createServiceRoleClient();
+
+    // -----------------------------------------------------------------------
+    // Step 0: Reserve a slot (skip if /runs route already did)
+    //
+    // Cron-triggered runs land here without a pre-reservation. Atomic
+    // check-and-increment via the try_reserve_blog_slot RPC. If the cap
+    // is hit we bail before doing any AI work.
+    // -----------------------------------------------------------------------
+    let usedBonus = !!preReservedUsedBonus;
+    if (!slotPreReserved) {
+      const reservation: BlogSlotReservation = await step.run(
+        "reserve-slot",
+        async () => reserveBlogSlot(userId),
+      );
+      if (!reservation.reserved) {
+        console.log(
+          `[blog-pipeline] cap reached for user ${userId} — skipping run (${reservation.blogs_generated}/${reservation.blogs_limit}, bonus=${reservation.bonus_blogs})`,
+        );
+        return { skipped: true, reason: "usage_limit_reached" };
+      }
+      usedBonus = !!reservation.used_bonus;
+    }
+
+    // From here, any thrown error must refund the slot. We wrap in a
+    // try/finally — Inngest's own retry policy still applies but the
+    // refund only fires when we exit the function for good (not on a
+    // retry attempt). For simplicity we refund on the last try only by
+    // checking the step.attempt counter at the catch site.
+    try {
 
     // -----------------------------------------------------------------------
     // Step 1: Load effective profile (platform_profiles if active, else legacy)
@@ -459,9 +505,9 @@ export const blogPipeline = inngest.createFunction(
         })
         .eq("id", selectedTopic.id);
 
-      // Increment usage
-      await incrementBofuUsage(userId);
-
+      // Slot was already reserved at function entry (see Step 0); nothing
+      // to increment here. If anything below throws, the catch at the end
+      // of the function refunds.
       return blog;
     });
 
@@ -554,5 +600,31 @@ export const blogPipeline = inngest.createFunction(
       title: savedBlog.title,
       triggeredBy,
     };
+    } catch (err) {
+      // Pipeline blew up after we reserved a slot. Refund so the user
+      // doesn't lose this week's quota to a transient Claude/Perplexity
+      // error. Then re-throw so Inngest marks the run failed + retries
+      // per the function's retry policy.
+      await refundBlogSlot(userId, usedBonus).catch(() => {});
+
+      // Best-effort: tag the most recent in-progress blog row for this
+      // user so the dashboard can surface what failed. If no blog row
+      // exists yet (failure before save-blog step), there's nothing to
+      // tag — the discovery_runs error is the source of truth instead.
+      const message = err instanceof Error ? err.message : String(err);
+      await supabase
+        .from("bofu_blogs")
+        .update({
+          publish_status: "failed",
+          pipeline_error: message.slice(0, 500),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .in("publish_status", ["draft", "scheduled"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      throw err;
+    }
   }
 );

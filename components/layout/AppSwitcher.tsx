@@ -105,10 +105,14 @@ export function AppSwitcher() {
     }
   }
 
-  // Determine which app is currently active. Cross-app pages (/apps,
-  // /apps/profile) don't match any app's route — we render a neutral
-  // "All Apps" trigger instead of misleadingly highlighting Prompt Studio.
-  const currentApp = APPS.find((app) => pathname?.startsWith(app.route));
+  // Determine which app is currently active. Match by app root prefix
+  // (/apps/{id}) rather than the deep nav target — sub-pages like
+  // /apps/blog-engine/topics or /apps/hyperlocal/runs/[id] still need
+  // to resolve to their owning app. Cross-app pages (/apps, /apps/profile)
+  // match nothing and fall through to the neutral "All Apps" trigger.
+  const currentApp = APPS.find((app) =>
+    pathname?.startsWith(`/apps/${app.id}`),
+  );
 
   const handleAppSelect = (app: AppDefinition) => {
     const isUnavailable = availability && availability[app.id] === false;
@@ -142,7 +146,7 @@ export function AppSwitcher() {
 
         <DropdownMenuContent align="start" className="w-64 glass-dropdown text-white border-0">
           {APPS.map((app) => {
-            const isActive = pathname?.startsWith(app.route);
+            const isActive = pathname?.startsWith(`/apps/${app.id}`);
             const isUnavailable = availability ? availability[app.id] === false : false;
             const isLocked = !isUnavailable && app.requiresPro && !isPro;
             const isDisabled = isUnavailable || isLocked;

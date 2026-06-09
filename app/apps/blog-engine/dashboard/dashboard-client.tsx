@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Loader2, Zap } from "lucide-react";
+import Link from "next/link";
+import { Play, Loader2, Zap, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DashboardOverview } from "@/components/blog-engine/dashboard/DashboardOverview";
 import { BlogList } from "@/components/blog-engine/dashboard/BlogList";
@@ -12,6 +13,13 @@ import type { BofuBlog, BofuUsageStatus } from "@/types/blog-engine";
 const POLL_INTERVAL_MS = 5000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000; // 3-minute safety timeout
 
+export interface BlogEngineCmsHealth {
+  activeConnections: number;
+  platform: string | null;
+  lastPublishAt: string | null;
+  lastError: string | null;
+}
+
 interface DashboardClientProps {
   usage: BofuUsageStatus;
   blogs: BofuBlog[];
@@ -20,6 +28,8 @@ interface DashboardClientProps {
   topicBankSize: number;
   nextRunAt?: string;
   cmsConnected: boolean;
+  cmsHealth: BlogEngineCmsHealth;
+  failedBlogsCount: number;
 }
 
 export function DashboardClient({
@@ -30,6 +40,8 @@ export function DashboardClient({
   topicBankSize,
   nextRunAt,
   cmsConnected,
+  cmsHealth,
+  failedBlogsCount,
 }: DashboardClientProps) {
   const router = useRouter();
   const [isRunning, setIsRunning] = useState(false);
@@ -187,6 +199,14 @@ export function DashboardClient({
           )}
         </div>
 
+        {/* Health rail — matches Hyperlocal pattern. Severity dot + summary
+            of CMS connection + recent failures + Settings link. */}
+        <HealthRail
+          cms={cmsHealth}
+          cmsConnected={cmsConnected}
+          failedBlogsCount={failedBlogsCount}
+        />
+
         {/* Error banner */}
         {runError && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-center justify-between">
@@ -274,4 +294,101 @@ export function DashboardClient({
       />
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Health rail — Hyperlocal-style slim status row. Severity escalates with:
+//   - bad:  CMS connection broken (last_error set) OR no active CMS at all
+//   - warn: blogs have failed this week (any pipeline_error in the window)
+//   - good: connection healthy + no failures
+// ---------------------------------------------------------------------------
+function HealthRail({
+  cms,
+  cmsConnected,
+  failedBlogsCount,
+}: {
+  cms: BlogEngineCmsHealth;
+  cmsConnected: boolean;
+  failedBlogsCount: number;
+}) {
+  const severity: "good" | "warn" | "bad" = !cmsConnected || cms.lastError
+    ? "bad"
+    : failedBlogsCount > 0
+      ? "warn"
+      : "good";
+
+  const dotClass =
+    severity === "good"
+      ? "bg-emerald-500"
+      : severity === "warn"
+        ? "bg-amber-500"
+        : "bg-rose-500";
+
+  const headline =
+    severity === "good"
+      ? "All systems good"
+      : severity === "warn"
+        ? "Worth a look"
+        : "Needs attention";
+
+  const parts: string[] = [];
+  if (!cmsConnected) {
+    parts.push("no CMS connection");
+  } else if (cms.lastError) {
+    parts.push(`CMS error: ${truncate(cms.lastError, 60)}`);
+  } else if (cms.lastPublishAt) {
+    parts.push(`last publish ${relativeTime(cms.lastPublishAt)}`);
+  } else {
+    parts.push("no posts published yet");
+  }
+  if (failedBlogsCount > 0) {
+    parts.push(
+      `${failedBlogsCount} failed run${failedBlogsCount === 1 ? "" : "s"}`,
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-border/60 bg-card/50 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <span className="flex items-center gap-2 text-foreground font-medium">
+        <span className={cn("h-2 w-2 rounded-full", dotClass)} />
+        {headline}
+      </span>
+      <span className="hidden sm:inline opacity-40">·</span>
+      <span>{parts.join(" · ")}</span>
+      <span className="ml-auto flex items-center gap-3">
+        {cms.platform && cmsConnected && (
+          <span className="flex items-center gap-1.5">
+            <Globe className="h-3 w-3 opacity-60" />
+            <span className="text-foreground/80 capitalize">{cms.platform}</span>
+          </span>
+        )}
+        <Link
+          href="/apps/blog-engine/settings?tab=publishing"
+          className="underline underline-offset-2 hover:text-foreground"
+        >
+          Settings
+        </Link>
+      </span>
+    </div>
+  );
+}
+
+function truncate(s: string, n: number): string {
+  return s.length <= n ? s : s.slice(0, n - 1) + "…";
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  const diffMs = Date.now() - then;
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }

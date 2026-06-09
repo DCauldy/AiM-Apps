@@ -2,9 +2,10 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, X, AlertCircle } from "lucide-react";
 import { BlogPreview } from "@/components/blog-engine/blog/BlogPreview";
 import { RefinementChat } from "@/components/blog-engine/blog/RefinementChat";
+import { useToast } from "@/components/ui/toast";
 import type { BofuBlog, BofuBlogChat } from "@/types/blog-engine";
 
 interface BlogViewClientProps {
@@ -15,6 +16,7 @@ interface BlogViewClientProps {
 
 export function BlogViewClient({ blog: initialBlog, chats, authorName }: BlogViewClientProps) {
   const router = useRouter();
+  const { addToast } = useToast();
   const [blog, setBlog] = useState(initialBlog);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -50,15 +52,38 @@ export function BlogViewClient({ blog: initialBlog, chats, authorName }: BlogVie
           cms_post_id: data.postId || prev.cms_post_id,
           published_at: now,
           synced_at: now,
+          pipeline_error: null,
         }));
         window.dispatchEvent(new Event("blog-usage-updated"));
+        addToast({
+          title: "Published",
+          description: data.postUrl
+            ? "Your post is live."
+            : "Sent to your CMS.",
+        });
+      } else {
+        const message = data.error ?? "Publish failed — try again.";
+        setBlog((prev) => ({
+          ...prev,
+          publish_status: "failed",
+          pipeline_error: `Publish: ${message}`,
+        }));
+        addToast({
+          title: "Publish failed",
+          description: message,
+          variant: "destructive",
+        });
       }
     } catch {
-      // Silently fail
+      addToast({
+        title: "Network error",
+        description: "Could not reach the publish endpoint.",
+        variant: "destructive",
+      });
     } finally {
       setPublishing(false);
     }
-  }, [blog.id]);
+  }, [blog.id, addToast]);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -98,6 +123,30 @@ export function BlogViewClient({ blog: initialBlog, chats, authorName }: BlogVie
           {blog.title}
         </h2>
       </div>
+
+      {/* Pipeline error banner — surfaces what step failed so the user
+          knows whether to retry or investigate (CMS auth, AI rate-limit, etc.) */}
+      {blog.pipeline_error && blog.publish_status === "failed" && (
+        <div className="flex items-start gap-2 mx-4 mt-3 mb-1 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2">
+          <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-destructive">
+              Last attempt failed
+            </p>
+            <p className="text-xs text-destructive/80 mt-0.5 break-words">
+              {blog.pipeline_error}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handlePublish}
+            disabled={publishing}
+            className="text-xs font-medium text-destructive underline underline-offset-2 hover:no-underline shrink-0 disabled:opacity-50"
+          >
+            {publishing ? "Retrying…" : "Retry"}
+          </button>
+        </div>
+      )}
 
       {/* Full-width preview */}
       <div className="flex-1 overflow-hidden">

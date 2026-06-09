@@ -57,6 +57,32 @@
   * {
     @apply border-border;
   }
+  /* Overscroll bounce background. Browsers paint the html element behind
+     the body during overscroll (top/bottom bounce on macOS/iOS/trackpads).
+     Without an explicit bg here, the area flashes white.
+     We use :has() to match whatever theme class is mounted *anywhere*
+     under html (the route-level themes live on inner divs, not html),
+     so the bounce background tracks the actual page color per app.
+     Order: most specific (per-app) wins via cascade. Default at top is
+     the platform dark base in case nothing has loaded yet. */
+  html {
+    background-color: hsl(216 22% 8%);
+  }
+  html:has(.apps-theme) {
+    background-color: hsl(215 30% 6%);
+  }
+  html:has(.blog-engine-theme) {
+    background-color: hsl(216 22% 8%);
+  }
+  html:has(.hyperlocal-theme) {
+    background-color: hsl(222 25% 8%);
+  }
+  html:has(.radar-theme) {
+    background-color: hsl(216 22% 8%);
+  }
+  html:has(.profile-theme) {
+    background-color: hsl(215 20% 9%);
+  }
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-space-grotesk), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

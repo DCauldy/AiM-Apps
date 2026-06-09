@@ -15,7 +15,6 @@ import {
   getMetadataPrompt,
   getImagePrompt,
 } from "@/lib/blog-engine/prompts";
-import { incrementBofuUsage } from "@/lib/blog-engine/usage";
 import { checkTopicDuplicate } from "@/lib/blog-engine/dedup";
 import { generateAndUploadImage } from "@/lib/blog-engine/image-generation";
 import { generateText } from "ai";
@@ -396,8 +395,9 @@ export async function runBlogPipeline({ userId, triggeredBy, topicId: requestedT
     })
     .eq("id", selectedTopic.id);
 
-  // Increment usage
-  await incrementBofuUsage(userId);
+  // Slot was already reserved by /api/apps/blog-engine/runs before spawning
+  // this pipeline (see reserveBlogSlot). Nothing to increment here. If the
+  // pipeline throws, the route's catch handler refunds.
 
   // Step 10: Publish to CMS (if configured)
   console.log("[Pipeline] Step 10: Publishing to CMS…");
@@ -485,11 +485,19 @@ export async function runBlogPipeline({ userId, triggeredBy, topicId: requestedT
       .update({ status: "unused" })
       .eq("id", selectedTopic.id);
 
-    // Mark placeholder blog as failed if it was created
+    // Mark placeholder blog as failed if it was created and capture the
+    // pipeline error so the UI can surface what went wrong.
     if (placeholderBlogId) {
+      const message =
+        pipelineError instanceof Error
+          ? pipelineError.message
+          : String(pipelineError);
       await supabase
         .from("bofu_blogs")
-        .update({ publish_status: "failed" })
+        .update({
+          publish_status: "failed",
+          pipeline_error: message.slice(0, 500),
+        })
         .eq("id", placeholderBlogId);
     }
 
