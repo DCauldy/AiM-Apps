@@ -1,16 +1,17 @@
 // ============================================================
-// Listing Studio app packs — purchasable upgrades on top of Pro.
+// CMA app packs — purchasable upgrades on top of Pro.
 //
-// Pro subscription includes 1 active listing/month + 10 prospect CMAs.
-// Packs raise the active-listing cap (the primary billing meter); the
-// prospect-CMA cap is a soft guardrail constant across most tiers.
+// (Internal slug "listing-studio" is preserved across the codebase to
+// avoid migration churn. User-facing copy is "CMA" everywhere.)
 //
-// One billing meter: active_listings_promoted. The "promote prospect to
-// active listing" action consumes one slot via the atomic
-// try_reserve_active_listing_slot RPC. Pipeline failures refund.
+// Billing meter: active_clients — clients currently enrolled in the
+// automated cadence. Snapshot-based, not monthly-counter based: the
+// enrollment-time atomic RPC `try_reserve_client_slot` counts live rows
+// where enrolled = TRUE and either lets the enrollment through or
+// blocks with reason "cap reached." Unenrolling immediately frees a slot.
 //
-// Soft cap: cmaSoftLimit applies across all tiers (Diamond included) to
-// prevent abuse — "run a CMA for every house in the MLS" patterns.
+// Soft guardrail: manualSendsPerMonth caps the "send now" override so
+// agents can't bypass cadence by manually firing CMAs back-to-back.
 // ============================================================
 
 import { UNLIMITED, type PackLimit } from "@/lib/hyperlocal-packs";
@@ -21,8 +22,8 @@ export type { PackLimit } from "@/lib/hyperlocal-packs";
 export interface ListingStudioPack {
   id: string;
   tier: string;
-  activeListingsPerMonth: PackLimit;
-  cmaSoftLimit: PackLimit;
+  activeClientsLimit: PackLimit;
+  manualSendsPerMonth: PackLimit;
   priceCents: number;
   stripePriceId: string;
   /** Short marketing label, used on cards + dashboards. */
@@ -31,53 +32,54 @@ export interface ListingStudioPack {
   bestValue?: boolean;
 }
 
-/** Base Listing Studio capacity included with every Pro subscription —
- *  no pack required. */
+/** Base CMA capacity included with every Pro subscription — no pack
+ *  required. Tuned to "small past-client list" — enough to validate the
+ *  product before an agent commits to a pack. */
 export const LISTING_STUDIO_BASE: Pick<
   ListingStudioPack,
-  "activeListingsPerMonth" | "cmaSoftLimit"
+  "activeClientsLimit" | "manualSendsPerMonth"
 > = {
-  activeListingsPerMonth: 1,
-  cmaSoftLimit: 10,
+  activeClientsLimit: 25,
+  manualSendsPerMonth: 50,
 };
 
 export const LISTING_STUDIO_PACKS: ListingStudioPack[] = [
   {
     id: "listing_studio_bronze",
     tier: "Bronze",
-    activeListingsPerMonth: 3,
-    cmaSoftLimit: 20,
+    activeClientsLimit: 100,
+    manualSendsPerMonth: 50,
     priceCents: 4900,
     stripePriceId: "price_TODO",
-    label: "3 listings/mo · 20 prospect CMAs",
+    label: "100 active clients · automated quarterly CMAs",
   },
   {
     id: "listing_studio_silver",
     tier: "Silver",
-    activeListingsPerMonth: 6,
-    cmaSoftLimit: 30,
+    activeClientsLimit: 250,
+    manualSendsPerMonth: 50,
     priceCents: 9900,
     stripePriceId: "price_TODO",
-    label: "6 listings/mo · 30 prospect CMAs",
+    label: "250 active clients · automated quarterly CMAs",
   },
   {
     id: "listing_studio_gold",
     tier: "Gold",
-    activeListingsPerMonth: 10,
-    cmaSoftLimit: 30,
+    activeClientsLimit: 500,
+    manualSendsPerMonth: 50,
     priceCents: 17900,
     stripePriceId: "price_TODO",
-    label: "10 listings/mo · 30 prospect CMAs",
+    label: "500 active clients · automated quarterly CMAs",
     bestValue: true,
   },
   {
     id: "listing_studio_diamond",
     tier: "Diamond",
-    activeListingsPerMonth: UNLIMITED,
-    cmaSoftLimit: 30,
+    activeClientsLimit: UNLIMITED,
+    manualSendsPerMonth: 50,
     priceCents: 29900,
     stripePriceId: "price_TODO",
-    label: "Unlimited listings · 30 prospect CMAs (fair use)",
+    label: "Unlimited active clients (fair use)",
   },
 ];
 
@@ -109,8 +111,8 @@ export function getListingStudioCapacity(packId: string | null | undefined) {
   const pack = getListingStudioPackById(packId);
   if (!pack) return LISTING_STUDIO_BASE;
   return {
-    activeListingsPerMonth: pack.activeListingsPerMonth,
-    cmaSoftLimit: pack.cmaSoftLimit,
+    activeClientsLimit: pack.activeClientsLimit,
+    manualSendsPerMonth: pack.manualSendsPerMonth,
   };
 }
 

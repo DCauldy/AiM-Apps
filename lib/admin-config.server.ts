@@ -217,12 +217,14 @@ export async function getListingStudioPacks(): Promise<ListingStudioPack[]> {
       return data.map((row) => ({
         id: row.id,
         tier: row.tier ?? "",
-        activeListingsPerMonth:
-          (row.active_listings_limit ?? 1) === -1
+        activeClientsLimit:
+          (row.active_clients_limit ?? 25) === -1
             ? UNLIMITED
-            : (row.active_listings_limit ?? 1),
-        cmaSoftLimit:
-          (row.cma_soft_limit ?? 10) === -1 ? UNLIMITED : (row.cma_soft_limit ?? 10),
+            : (row.active_clients_limit ?? 25),
+        manualSendsPerMonth:
+          (row.manual_sends_per_month ?? 50) === -1
+            ? UNLIMITED
+            : (row.manual_sends_per_month ?? 50),
         priceCents: row.price_cents ?? 0,
         stripePriceId: row.stripe_price_id ?? "price_TODO",
         label: row.label ?? "",
