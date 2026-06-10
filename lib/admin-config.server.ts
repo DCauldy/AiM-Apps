@@ -12,6 +12,10 @@ import {
   UNLIMITED,
   type HyperlocalPack,
 } from "@/lib/hyperlocal-packs";
+import {
+  LISTING_STUDIO_PACKS,
+  type ListingStudioPack,
+} from "@/lib/listing-studio-packs";
 
 // `cache()` dedupes within a single SSR render. Both the layout and the
 // page often look up the same feature flag — wrapping collapses those to
@@ -40,6 +44,7 @@ export const getFeatureFlag = cache(async function getFeatureFlag(
   if (key === "PROMPT_STUDIO") return FEATURES.PROMPT_STUDIO;
   if (key === "RADAR") return FEATURES.RADAR;
   if (key === "HYPERLOCAL") return FEATURES.HYPERLOCAL;
+  if (key === "LISTING_STUDIO") return FEATURES.LISTING_STUDIO;
   return false;
 });
 
@@ -68,6 +73,7 @@ export const getFeatureFlags = cache(async function getFeatureFlags(): Promise<
     PROMPT_STUDIO: FEATURES.PROMPT_STUDIO,
     RADAR: FEATURES.RADAR,
     HYPERLOCAL: FEATURES.HYPERLOCAL,
+    LISTING_STUDIO: FEATURES.LISTING_STUDIO,
   };
 });
 
@@ -194,4 +200,38 @@ export async function getHyperlocalPacks(): Promise<HyperlocalPack[]> {
   }
 
   return HYPERLOCAL_PACKS;
+}
+
+/** Read listing-studio packs from DB, falling back to hardcoded array */
+export async function getListingStudioPacks(): Promise<ListingStudioPack[]> {
+  try {
+    const supabase = createServiceRoleClient();
+    const { data } = await supabase
+      .from("admin_pack_configs")
+      .select("*")
+      .eq("app", "listing_studio")
+      .eq("is_active", true)
+      .order("sort_order");
+
+    if (data && data.length > 0) {
+      return data.map((row) => ({
+        id: row.id,
+        tier: row.tier ?? "",
+        activeListingsPerMonth:
+          (row.active_listings_limit ?? 1) === -1
+            ? UNLIMITED
+            : (row.active_listings_limit ?? 1),
+        cmaSoftLimit:
+          (row.cma_soft_limit ?? 10) === -1 ? UNLIMITED : (row.cma_soft_limit ?? 10),
+        priceCents: row.price_cents ?? 0,
+        stripePriceId: row.stripe_price_id ?? "price_TODO",
+        label: row.label ?? "",
+        bestValue: row.best_value ?? false,
+      }));
+    }
+  } catch {
+    // DB unavailable — fall through
+  }
+
+  return LISTING_STUDIO_PACKS;
 }

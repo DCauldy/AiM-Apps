@@ -189,6 +189,97 @@ export async function getProfileForHyperlocal(
 }
 
 // ---------------------------------------------------------------------------
+// Listing Studio
+// ---------------------------------------------------------------------------
+
+/**
+ * Identity + brand bundle Listing Studio writers + renderers consume.
+ * Pulled from the user's active platform_profiles row at generation time so
+ * brand edits propagate to the next-rendered output without any cached state.
+ */
+export interface ListingStudioAgentProfile {
+  // Identity
+  full_name: string | null;
+  title: string | null;
+  brokerage: string | null;
+  phone: string | null;
+  reply_to_email: string | null;
+  website_url: string | null;
+  sign_off: string | null;
+  bio: string | null;
+
+  // Market context (used by emails for neighborhood phrasing)
+  state: string | null;
+  metro_area: string | null;
+
+  // Compliance
+  license_number: string | null;
+  license_info: string | null;
+  regulatory_body: string | null;
+  legal_disclaimer: string | null;
+
+  // Brand visuals
+  primary_color: string;
+  secondary_color: string;
+  accent_color: string;
+  heading_font: string;
+  body_font: string;
+  header_treatment: "solid" | "gradient" | "image";
+  header_image_url: string | null;
+  logo_url: string | null;
+  headshot_url: string | null;
+  brokerage_badge_url: string | null;
+}
+
+export async function getProfileForListingStudio(
+  userId: string,
+): Promise<ListingStudioAgentProfile | null> {
+  const service = createServiceRoleClient();
+
+  const { data: meta } = await service
+    .from("profiles")
+    .select("active_profile_id")
+    .eq("id", userId)
+    .single();
+  if (!meta?.active_profile_id) return null;
+
+  const { data: profile } = await service
+    .from("platform_profiles")
+    .select("*")
+    .eq("id", meta.active_profile_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!profile) return null;
+
+  return {
+    full_name: profile.full_name ?? null,
+    title: profile.title ?? null,
+    brokerage: profile.brokerage ?? null,
+    phone: profile.phone ?? null,
+    reply_to_email: profile.reply_to_email ?? null,
+    website_url: profile.website_url ?? null,
+    sign_off: profile.sign_off ?? null,
+    bio: profile.bio ?? null,
+    state: profile.state ?? null,
+    metro_area: profile.metro_area ?? null,
+    license_number: profile.license_number ?? null,
+    license_info: profile.license_info ?? null,
+    regulatory_body: profile.regulatory_body ?? null,
+    legal_disclaimer: profile.legal_disclaimer ?? null,
+    primary_color: profile.primary_color ?? "#1B7FB5",
+    secondary_color: profile.secondary_color ?? "#17A697",
+    accent_color: profile.accent_color ?? "#31DBA5",
+    heading_font: profile.heading_font ?? "Inter",
+    body_font: profile.body_font ?? "Inter",
+    header_treatment: (profile.header_treatment as "solid" | "gradient" | "image") ?? "solid",
+    header_image_url: profile.header_image_url ?? null,
+    logo_url: profile.logo_url ?? null,
+    headshot_url: profile.headshot_url ?? null,
+    brokerage_badge_url: profile.brokerage_badge_url ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Radar
 // ---------------------------------------------------------------------------
 

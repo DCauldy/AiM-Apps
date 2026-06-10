@@ -4,6 +4,7 @@ import {
   getBlogPacks,
   getRadarPacks,
   getHyperlocalPacks,
+  getListingStudioPacks,
 } from "@/lib/admin-config.server";
 import { getSlotProductId } from "@/lib/profiles/slot-billing";
 import { NextRequest } from "next/server";
@@ -220,6 +221,56 @@ export async function POST(req: NextRequest) {
       return new Response("OK", { status: 200 });
     }
 
+    // ── Listing Studio subscription ───────────────────────────────────
+    if (pack_id?.startsWith("listing_studio_") && user_id) {
+      const listingStudioPacks = await getListingStudioPacks();
+      const lsPack = listingStudioPacks.find((p) => p.id === pack_id);
+      if (!lsPack) {
+        console.error("[stripe-webhook] unknown listing studio pack:", pack_id);
+        return new Response("OK", { status: 200 });
+      }
+
+      const subscriptionId =
+        typeof session.subscription === "string"
+          ? session.subscription
+          : (session.subscription as Stripe.Subscription | null)?.id;
+      const customerId =
+        typeof session.customer === "string"
+          ? session.customer
+          : (session.customer as Stripe.Customer | null)?.id;
+
+      // Upsert by user_id — one active Listing Studio pack at a time. If the
+      // user already had a pack (different tier), this overwrites it; the
+      // Subscribe route blocks new checkouts while a pack is active, so the
+      // overwrite path only fires via Stripe portal-driven tier changes.
+      const { error: lsError } = await serviceClient
+        .from("ls_user_packs")
+        .upsert(
+          {
+            user_id,
+            pack_id: lsPack.id,
+            tier: lsPack.tier.toLowerCase(),
+            stripe_subscription_id: subscriptionId,
+            stripe_customer_id: customerId,
+            status: "active",
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" },
+        );
+
+      if (lsError) {
+        console.error(
+          "[stripe-webhook] failed to upsert ls_user_packs:",
+          lsError.message,
+        );
+      }
+
+      console.log(
+        `[stripe-webhook] Listing Studio subscription activated: user=${user_id}, tier=${lsPack.tier}`,
+      );
+      return new Response("OK", { status: 200 });
+    }
+
     // ── Profile Slot subscription ─────────────────────────────────────
     if (session.metadata?.product === "profile_slot") {
       const slotUserId = session.metadata.supabase_user_id;
@@ -376,6 +427,31 @@ export async function POST(req: NextRequest) {
       console.log(
         `[stripe-webhook] Hyperlocal subscription updated: customer=${customerId}, tier=${hlPack.tier}, status=${subscription.status}`,
       );
+      return new Response("OK", { status: 200 });
+    }
+
+    // ── Listing Studio subscription updated ───────────────────────────
+    // Covers tier swaps via the billing portal and status transitions.
+    const listingStudioPacks = await getListingStudioPacks();
+    const lsPack = listingStudioPacks.find((p) => p.stripePriceId === priceId);
+    if (lsPack) {
+      await serviceClient
+        .from("ls_user_packs")
+        .update({
+          pack_id: lsPack.id,
+          tier: lsPack.tier.toLowerCase(),
+          status:
+            subscription.status === "active" || subscription.status === "trialing"
+              ? "active"
+              : subscription.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("stripe_customer_id", customerId);
+
+      console.log(
+        `[stripe-webhook] Listing Studio subscription updated: customer=${customerId}, tier=${lsPack.tier}, status=${subscription.status}`,
+      );
+      return new Response("OK", { status: 200 });
     }
 
     return new Response("OK", { status: 200 });
@@ -478,6 +554,33 @@ export async function POST(req: NextRequest) {
       console.log(
         `[stripe-webhook] Hyperlocal subscription cancelled: customer=${customerId}, reset to Pro baseline`,
       );
+      return new Response("OK", { status: 200 });
+    }
+
+    // ── Listing Studio subscription cancelled ─────────────────────────
+    // Mark status canceled rather than deleting the row so the UI can show
+    // "your pack ends on …" until the period actually expires. The
+    // Subscribe route treats status="canceled" as no-active-pack.
+    const { data: lsPackRow } = await serviceClient
+      .from("ls_user_packs")
+      .select("user_id")
+      .eq("stripe_customer_id", customerId)
+      .maybeSingle();
+
+    if (lsPackRow) {
+      await serviceClient
+        .from("ls_user_packs")
+        .update({
+          status: "canceled",
+          stripe_subscription_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("stripe_customer_id", customerId);
+
+      console.log(
+        `[stripe-webhook] Listing Studio subscription cancelled: customer=${customerId}, reset to baseline`,
+      );
+      return new Response("OK", { status: 200 });
     }
 
     return new Response("OK", { status: 200 });

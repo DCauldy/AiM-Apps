@@ -185,6 +185,37 @@ export function getHyperlocalOnboardingModel() {
 }
 
 // ---------------------------------------------------------------------------
+// Listing Studio — vision (photo ordering + captioning)
+// ---------------------------------------------------------------------------
+
+let listingStudioProvider: ReturnType<typeof createOpenAI> | null = null;
+function getListingStudioProvider() {
+  if (!listingStudioProvider) listingStudioProvider = createAppProvider("Listing Studio");
+  return listingStudioProvider;
+}
+
+/**
+ * Claude Sonnet (vision-capable) for photo ordering + caption generation.
+ * Accepts mixed text + image content parts in the messages array.
+ */
+export function getListingStudioVisionModel() {
+  if (!useOpenRouter) return getDirectAnthropic()("claude-sonnet-4-20250514");
+  return getListingStudioProvider()("anthropic/claude-sonnet-4");
+}
+
+/** Claude Sonnet for CMA seller narrative + internal memo + description prose. */
+export function getListingStudioWriterModel() {
+  if (!useOpenRouter) return getDirectAnthropic()("claude-sonnet-4-20250514");
+  return getListingStudioProvider()("anthropic/claude-sonnet-4");
+}
+
+/** Haiku-class for cheap, fast post-generation compliance checks. */
+export function getListingStudioComplianceModel() {
+  if (!useOpenRouter) return getDirectAnthropic()("claude-haiku-4-20250514");
+  return getListingStudioProvider()("anthropic/claude-haiku-4");
+}
+
+// ---------------------------------------------------------------------------
 // Prompt Studio model (backward-compatible migration from direct OpenAI)
 // ---------------------------------------------------------------------------
 
@@ -246,3 +277,6 @@ export function getRadarGrokModel() {
   if (!useOpenRouter) return getDirectOpenAI().chat("gpt-4o"); // fallback
   return getRadarProvider().chat("x-ai/grok-3");
 }
+
+// Listing Studio writer + compliance models live with the vision helper
+// above (single provider singleton).

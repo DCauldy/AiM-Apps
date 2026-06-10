@@ -33,6 +33,11 @@ const APP_FLAGS: Record<string, { label: string; description: string }> = {
     description:
       "Neighborhood market-report email campaigns sent through the user's own ESP.",
   },
+  LISTING_STUDIO: {
+    label: "Listing Studio",
+    description:
+      "Per-listing CMA + 6 marketing outputs (description, photo ordering/captions, DOTW + HTML emails). Nationwide via RapidAPI.",
+  },
 };
 
 export function AppAvailabilityTab() {

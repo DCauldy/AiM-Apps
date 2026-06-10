@@ -25,6 +25,9 @@ import {
   BookOpen,
   Users,
   Award,
+  Building2,
+  Camera,
+  DollarSign,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
@@ -38,6 +41,7 @@ export interface UsageStats {
   "blog-engine": { used: number; limit: number; period: string } | null;
   "radar": { used: number; limit: number; period: string } | null;
   "hyperlocal": { used: number; limit: number; period: string } | null;
+  "listing-studio": { used: number; limit: number; period: string } | null;
 }
 
 interface AppMeta {
@@ -144,6 +148,27 @@ const APPS: AppMeta[] = [
       { icon: <MapPin className="h-4 w-4" />, text: "Segments by ZIP, city, or neighborhood automatically" },
       { icon: <PenTool className="h-4 w-4" />, text: "Claude-written market reports using your MLS data" },
       { icon: <Mail className="h-4 w-4" />, text: "Sends from your Gmail, Outlook, or verified domain" },
+    ],
+  },
+  {
+    id: "listing-studio",
+    name: "Listing Studio",
+    description: "Per-listing CMA + launch kit",
+    tagline: "Win the listing. Launch it with one upload.",
+    route: "/apps/listing-studio/listings",
+    icon: <Building2 className="h-5 w-5" />,
+    previewIcon: <Building2 className="h-10 w-10" />,
+    flagKey: "LISTING_STUDIO",
+    requiresPro: true,
+    hasUpgrade: true,
+    gradient: ["#1E293B", "#D4A35C"],
+    accentColor: "#D4A35C",
+    categories: ["Valuation", "Listings", "CMA"],
+    features: [
+      { icon: <DollarSign className="h-4 w-4" />, text: "CMA with sales-comparison adjustment grid + price recommendation" },
+      { icon: <FileText className="h-4 w-4" />, text: "MLS Public Remarks tuned for AI-search visibility, compliance-checked" },
+      { icon: <Camera className="h-4 w-4" />, text: "Vision-AI photo ordering + captions in display sequence" },
+      { icon: <Mail className="h-4 w-4" />, text: "Branded just-listed HTML email + Deal of the Week sphere outreach" },
     ],
   },
   {

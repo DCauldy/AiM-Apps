@@ -7,6 +7,7 @@ import { Circuitry } from "@/components/decor/Circuitry";
 import { getTrialStatus } from "@/lib/trial";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
 import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { getListingStudioUsage } from "@/lib/listing-studio/usage";
 import { UNLIMITED } from "@/lib/hyperlocal-packs";
 import type { UsageStats } from "@/components/apps/AppsShowcase";
 
@@ -25,6 +26,7 @@ export default async function AppsPage() {
     "blog-engine": null,
     "radar": null,
     "hyperlocal": null,
+    "listing-studio": null,
   };
 
   if (user) {
@@ -72,6 +74,18 @@ export default async function AppsPage() {
         used: hlUsage.campaignsThisMonth,
         limit:
           hlUsage.campaignsLimit === UNLIMITED ? 9999 : hlUsage.campaignsLimit,
+        period: "this month",
+      };
+
+      // Listing Studio usage: active listings promoted this month vs pack
+      // limit. Diamond unlimited surfaces as 9999 for the progress bar.
+      const lsUsage = await getListingStudioUsage(user.id);
+      usageStats["listing-studio"] = {
+        used: lsUsage.activeListingsPromoted,
+        limit:
+          lsUsage.activeListingsLimit === UNLIMITED
+            ? 9999
+            : (lsUsage.activeListingsLimit as number),
         period: "this month",
       };
     }
