@@ -6,6 +6,7 @@ import {
   fetchSoldComps,
   fetchMarketTrends,
   lookupProperty,
+  fetchPropertyImages,
   type RawComp,
 } from "@/lib/listing-studio/rapidapi";
 import {
@@ -107,6 +108,24 @@ export async function runCmaPipeline(input: RunCmaInput): Promise<RunCmaResult> 
         throw new Error(
           "Couldn't resolve this address with the property data source. Re-create the listing or upload a comps CSV.",
         );
+      }
+
+      // Best-effort subject hero image — persist on property_facts so
+      // the workspace doesn't re-fetch on every render. Off-market homes
+      // get Google Street View; on-market or recently-sold get an MLS
+      // photo. Failures are silent — image is decorative.
+      if (!subject.image_url) {
+        const images = await fetchPropertyImages(zpid).catch(() => [] as string[]);
+        if (images.length > 0) {
+          subject.image_url = images[0];
+          await supabase
+            .from("ls_listings")
+            .update({
+              property_facts: { ...subject, zpid },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", listingId);
+        }
       }
       const apiComps = await fetchSoldComps({
         zpid,

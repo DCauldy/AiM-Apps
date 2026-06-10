@@ -96,6 +96,8 @@ function parseCsvToComps(csv: string): RawComp[] {
       sold_price_cents: null,
       sold_date: null,
       distance_mi: null,
+      image_url: null,
+      zpid: null,
       raw,
     };
 

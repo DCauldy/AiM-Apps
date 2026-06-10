@@ -56,6 +56,15 @@ export function NewListingClient() {
           // Carry zpid through to the DB — required for downstream comps +
           // market-trend RapidAPI calls.
           zpid: (data.facts as { zpid?: string | null }).zpid ?? undefined,
+          // Hero image (Zillow MLS photo or Street View). Falls back to
+          // Mapbox satellite in SubjectHero when null.
+          image_url:
+            (data.facts as { image_url?: string | null }).image_url ?? undefined,
+          // Coordinates power the Mapbox satellite fallback image.
+          latitude:
+            (data.facts as { latitude?: number | null }).latitude ?? undefined,
+          longitude:
+            (data.facts as { longitude?: number | null }).longitude ?? undefined,
         });
         setPrefilledFromApi(true);
       } else {

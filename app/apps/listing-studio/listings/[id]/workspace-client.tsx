@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,7 +10,6 @@ import {
   FileText,
   Camera,
   Mail,
-  Send,
   Sparkles,
   Loader2,
   Lock,
@@ -21,21 +20,28 @@ import { cn } from "@/lib/utils";
 import { DescriptionTab } from "@/components/listing-studio/description/DescriptionTab";
 import { CmaTab } from "@/components/listing-studio/cma/CmaTab";
 import { PhotosTab } from "@/components/listing-studio/photos/PhotosTab";
-import { DotwTab } from "@/components/listing-studio/emails/DotwTab";
 import { HtmlEmailTab } from "@/components/listing-studio/emails/HtmlEmailTab";
-import type { ListingRow, ListingStage } from "@/types/listing-studio";
+import type {
+  ListingRow,
+  ListingStage,
+  PropertyFacts,
+} from "@/types/listing-studio";
 
-type Tab = "overview" | "cma" | "description" | "photos" | "dotw" | "html";
+type Tab = "overview" | "cma" | "description" | "photos" | "html";
 
 // Tabs are split into two groups:
 //   - "prospect" tabs available before promotion (Overview, CMA)
 //   - "active" tabs unlocked once the listing is promoted
+//
+// DOTW (Deal of the Week email) was dropped from v1 — Hyperlocal already
+// owns "personal emails to your sphere" with actual sending, CRM
+// integration, and per-recipient personalization. Code preserved at
+// commit history if we ever want to bring it back.
 const TABS: { id: Tab; label: string; icon: React.ReactNode; activeOnly?: boolean }[] = [
   { id: "overview", label: "Overview", icon: <Building2 className="h-3.5 w-3.5" /> },
   { id: "cma", label: "CMA", icon: <DollarSign className="h-3.5 w-3.5" /> },
   { id: "description", label: "Description", icon: <FileText className="h-3.5 w-3.5" />, activeOnly: true },
   { id: "photos", label: "Photos", icon: <Camera className="h-3.5 w-3.5" />, activeOnly: true },
-  { id: "dotw", label: "DOTW Email", icon: <Send className="h-3.5 w-3.5" />, activeOnly: true },
   { id: "html", label: "HTML Email", icon: <Mail className="h-3.5 w-3.5" />, activeOnly: true },
 ];
 
@@ -48,6 +54,64 @@ export function WorkspaceClient({ listing: initialListing }: { listing: ListingR
 
   const isActive = listing.stage === "active";
   const isArchived = listing.stage === "archived";
+
+  // Backfill the subject hero image + coords (+ zpid if missing) for
+  // listings created before those fields existed. Fires whenever the
+  // hero is incomplete — doesn't require a pre-existing zpid since the
+  // lookup can recover one from the address. One-shot per mount;
+  // re-fires if listing.id changes (workspace navigated). Failures are
+  // silent.
+  useEffect(() => {
+    const facts = listing.property_facts ?? {};
+    const hasImage = !!facts.image_url;
+    const hasCoords =
+      typeof facts.latitude === "number" && typeof facts.longitude === "number";
+    const hasZpid = !!facts.zpid;
+    if (hasImage && hasCoords && hasZpid) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          "/api/apps/listing-studio/property-lookup",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ address: listing.address }),
+          },
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data?.facts) return;
+        // Merge — never overwrite a field the user already corrected
+        // (e.g. they manually fixed beds in Overview, don't clobber it).
+        const next: PropertyFacts = {
+          ...facts,
+          zpid: facts.zpid ?? data.facts.zpid ?? undefined,
+          image_url: facts.image_url ?? data.facts.image_url ?? undefined,
+          latitude: facts.latitude ?? data.facts.latitude ?? undefined,
+          longitude: facts.longitude ?? data.facts.longitude ?? undefined,
+        };
+        const patchRes = await fetch(
+          `/api/apps/listing-studio/listings/${listing.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ property_facts: next }),
+          },
+        );
+        if (patchRes.ok) {
+          const updated = await patchRes.json();
+          if (!cancelled) setListing(updated.listing);
+        }
+      } catch {
+        // Best-effort — no user-facing surface for failure here.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listing.id]);
 
   async function handlePromote() {
     setPromoting(true);
@@ -167,7 +231,9 @@ export function WorkspaceClient({ listing: initialListing }: { listing: ListingR
         </div>
 
         {/* Tab content — slices 3–6 will fill these in. */}
-        {activeTab === "overview" && <OverviewTab listing={listing} />}
+        {activeTab === "overview" && (
+          <OverviewTab listing={listing} onListingUpdated={setListing} />
+        )}
         {activeTab === "cma" && <CmaTab listing={listing} />}
         {activeTab === "description" && (
           isActive ? (
@@ -179,13 +245,6 @@ export function WorkspaceClient({ listing: initialListing }: { listing: ListingR
         {activeTab === "photos" && (
           isActive ? (
             <PhotosTab listing={listing} />
-          ) : (
-            <UnpromotedPlaceholder />
-          )
-        )}
-        {activeTab === "dotw" && (
-          isActive ? (
-            <DotwTab listing={listing} />
           ) : (
             <UnpromotedPlaceholder />
           )
@@ -208,49 +267,230 @@ export function WorkspaceClient({ listing: initialListing }: { listing: ListingR
   );
 }
 
-function OverviewTab({ listing }: { listing: ListingRow }) {
-  const facts = listing.property_facts ?? {};
+function OverviewTab({
+  listing,
+  onListingUpdated,
+}: {
+  listing: ListingRow;
+  onListingUpdated: (next: ListingRow) => void;
+}) {
+  // Local form state — only PATCHes when "Save" is clicked, so the agent
+  // can edit several fields without firing requests per keystroke.
+  const [facts, setFacts] = useState<PropertyFacts>(listing.property_facts ?? {});
+  const [notes, setNotes] = useState(listing.notes ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  const dirty =
+    JSON.stringify(facts) !== JSON.stringify(listing.property_facts ?? {}) ||
+    notes !== (listing.notes ?? "");
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(
+        `/api/apps/listing-studio/listings/${listing.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            property_facts: facts,
+            notes: notes.trim() ? notes : null,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      onListingUpdated(data.listing);
+      setSavedAt(Date.now());
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const setField = <K extends keyof PropertyFacts>(
+    k: K,
+    v: PropertyFacts[K],
+  ) => setFacts((prev) => ({ ...prev, [k]: v }));
+
+  const numOrNull = (raw: string): number | null => {
+    if (raw.trim() === "") return null;
+    const n = Number(raw.replace(/[,$]/g, ""));
+    return Number.isFinite(n) ? n : null;
+  };
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className="rounded-lg border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-3">Property facts</h2>
-        <dl className="grid grid-cols-2 gap-y-2 text-xs">
-          <Row label="Address" value={listing.address} />
-          <Row label="City" value={facts.city ?? "—"} />
-          <Row label="State / ZIP" value={`${facts.state ?? "—"} ${facts.zip ?? ""}`.trim()} />
-          <Row label="Type" value={facts.property_type ?? "—"} />
-          <Row label="Beds / Baths" value={`${facts.beds ?? "—"} / ${facts.baths ?? "—"}`} />
-          <Row label="Living area" value={facts.living_area_sqft ? `${facts.living_area_sqft.toLocaleString()} sqft` : "—"} />
-          <Row label="Lot" value={facts.lot_area_sqft ? `${facts.lot_area_sqft.toLocaleString()} sqft` : "—"} />
-          <Row label="Year built" value={facts.year_built ?? "—"} />
-          <Row label="Garage" value={facts.garage_spaces ?? "—"} />
-          <Row
-            label="Last sale"
-            value={
-              facts.last_sale_price_cents
-                ? `$${(facts.last_sale_price_cents / 100).toLocaleString()}${facts.last_sale_date ? ` · ${facts.last_sale_date}` : ""}`
-                : "—"
-            }
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-foreground mb-3">
+            Property facts
+          </h2>
+          <div className="grid grid-cols-2 gap-3">
+            <FactField label="City">
+              <FactInput
+                value={facts.city ?? ""}
+                onChange={(v) => setField("city", v || null)}
+              />
+            </FactField>
+            <FactField label="State">
+              <FactInput
+                value={facts.state ?? ""}
+                onChange={(v) => setField("state", v || null)}
+                maxLength={2}
+                className="uppercase"
+              />
+            </FactField>
+            <FactField label="ZIP">
+              <FactInput
+                value={facts.zip ?? ""}
+                onChange={(v) => setField("zip", v || null)}
+                inputMode="numeric"
+              />
+            </FactField>
+            <FactField label="Type">
+              <select
+                value={facts.property_type ?? ""}
+                onChange={(e) => setField("property_type", e.target.value || null)}
+                className="w-full h-9 px-2 rounded-md border border-border bg-background text-xs"
+              >
+                <option value="">—</option>
+                <option value="single_family">Single Family</option>
+                <option value="condo">Condo</option>
+                <option value="townhouse">Townhouse</option>
+                <option value="multi">Multi-family</option>
+                <option value="land">Land</option>
+                <option value="other">Other</option>
+              </select>
+            </FactField>
+            <FactField label="Beds">
+              <FactInput
+                value={facts.beds?.toString() ?? ""}
+                onChange={(v) => setField("beds", numOrNull(v))}
+                inputMode="numeric"
+              />
+            </FactField>
+            <FactField label="Baths">
+              <FactInput
+                value={facts.baths?.toString() ?? ""}
+                onChange={(v) => setField("baths", numOrNull(v))}
+                inputMode="decimal"
+              />
+            </FactField>
+            <FactField label="Living area (sqft)">
+              <FactInput
+                value={facts.living_area_sqft?.toString() ?? ""}
+                onChange={(v) => setField("living_area_sqft", numOrNull(v))}
+                inputMode="numeric"
+              />
+            </FactField>
+            <FactField label="Lot (sqft)">
+              <FactInput
+                value={facts.lot_area_sqft?.toString() ?? ""}
+                onChange={(v) => setField("lot_area_sqft", numOrNull(v))}
+                inputMode="numeric"
+              />
+            </FactField>
+            <FactField label="Year built">
+              <FactInput
+                value={facts.year_built?.toString() ?? ""}
+                onChange={(v) => setField("year_built", numOrNull(v))}
+                inputMode="numeric"
+              />
+            </FactField>
+            <FactField label="Garage">
+              <FactInput
+                value={facts.garage_spaces?.toString() ?? ""}
+                onChange={(v) => setField("garage_spaces", numOrNull(v))}
+                inputMode="numeric"
+              />
+            </FactField>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-5">
+          <h2 className="text-sm font-semibold text-foreground mb-3">Notes</h2>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Private notes about the seller, the property, or the campaign…"
+            className="w-full min-h-[200px] px-3 py-2 rounded-md border border-border bg-background text-xs resize-y"
           />
-        </dl>
+          <p className="text-[11px] text-muted-foreground mt-2">
+            Notes are private to you — never shown to the seller or in any
+            output.
+          </p>
+        </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold text-foreground mb-3">Notes</h2>
-        <p className="text-xs text-muted-foreground whitespace-pre-wrap">
-          {listing.notes || "No notes yet. Add private notes about the seller, the property, or the campaign here."}
-        </p>
+      <div className="flex items-center justify-end gap-3">
+        {saveError && (
+          <span className="text-xs text-destructive">{saveError}</span>
+        )}
+        {!saveError && savedAt && !dirty && (
+          <span className="text-xs text-muted-foreground">Saved</span>
+        )}
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+          style={{
+            background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
+          }}
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Save changes
+        </button>
       </div>
     </div>
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function FactField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-foreground text-right">{value}</dd>
-    </>
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+        {label}
+      </span>
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}
+
+function FactInput({
+  value,
+  onChange,
+  className,
+  ...rest
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+  inputMode?: "numeric" | "decimal" | "text";
+  maxLength?: number;
+}) {
+  return (
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={cn(
+        "w-full h-9 px-2 rounded-md border border-border bg-background text-xs",
+        className,
+      )}
+      {...rest}
+    />
   );
 }
 

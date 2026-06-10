@@ -109,6 +109,10 @@ export interface PropertyFacts {
   estimated_value_cents: number | null;
   /** Zillow Property ID — chained into the comps and trend endpoints. */
   zpid: string | null;
+  /** Geo coordinates — used by the Mapbox satellite fallback when the
+   *  provider returns no usable image. */
+  latitude: number | null;
+  longitude: number | null;
   /** Whatever else the provider sends — keep so the form can hint at the source. */
   raw: unknown;
 }
@@ -190,6 +194,8 @@ function normalizePropertyFacts(raw: unknown): PropertyFacts | null {
     last_sale_date: isoFromMs(r.dateSold ?? r.dateSoldOnZillow),
     estimated_value_cents: est !== null ? Math.round(est * 100) : null,
     zpid: strField(r.zpid),
+    latitude: numField(r.latitude),
+    longitude: numField(r.longitude),
     raw,
   };
 }
@@ -271,6 +277,13 @@ export interface RawComp {
   sold_date: string | null;        // YYYY-MM-DD
   /** Distance in miles from the subject, if provider returns it. */
   distance_mi: number | null;
+  /** Thumbnail URL — /similarSales returns this as miniCardPhotos[0].url
+   *  so we avoid the per-comp /images round-trip. NULL when the comp
+   *  source (CSV) doesn't include one. */
+  image_url: string | null;
+  /** Zillow Property ID — only present on API-sourced comps. Used to
+   *  link out to a fuller record or fetch additional photos on demand. */
+  zpid: string | null;
   raw: unknown;
 }
 
@@ -332,6 +345,18 @@ function normalizeComps(raw: unknown): RawComp[] {
     );
     const homeType =
       strField(r.homeType ?? r.property_type ?? r.propertyType) ?? null;
+
+    // miniCardPhotos: [{ url }, …] — first entry is the canonical thumbnail.
+    let image_url: string | null = null;
+    const mini = r.miniCardPhotos;
+    if (Array.isArray(mini) && mini.length > 0) {
+      const first = mini[0] as Record<string, unknown> | undefined;
+      image_url = strField(first?.url);
+    }
+    if (!image_url) {
+      image_url = strField(r.imgSrc ?? r.image_url);
+    }
+
     return {
       address: strField(addr.streetAddress ?? r.streetAddress ?? r.address),
       zip: strField(addr.zipcode ?? addr.zip ?? r.zipcode),
@@ -347,9 +372,50 @@ function normalizeComps(raw: unknown): RawComp[] {
       sold_price_cents: price !== null ? Math.round(price * 100) : null,
       sold_date: isoFromMs(r.dateSold) ?? strField(r.sold_date ?? r.last_sale_date),
       distance_mi: numField(r.distance ?? r.distance_mi),
+      image_url,
+      zpid: strField(r.zpid),
       raw: entry,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Property images (used for the subject hero in the CMA tab)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all image URLs for a property. For off-market homes the provider
+ * typically returns a single Google Street View URL; for on-market or
+ * recently-sold homes it returns 20+ MLS-derived photo URLs.
+ *
+ * Returns [] on no-match or on any error — image is decorative, never
+ * critical. Caller should not throw on null.
+ */
+export async function fetchPropertyImages(zpid: string): Promise<string[]> {
+  try {
+    const raw = await rapidFetch("/images", { zpid });
+    if (!raw) return [];
+    const obj = raw as Record<string, unknown>;
+    const arr = Array.isArray(raw)
+      ? raw
+      : Array.isArray(obj.images)
+        ? (obj.images as unknown[])
+        : Array.isArray(obj.photos)
+          ? (obj.photos as unknown[])
+          : [];
+    return arr
+      .map((entry) => {
+        if (typeof entry === "string") return entry;
+        if (entry && typeof entry === "object") {
+          const r = entry as Record<string, unknown>;
+          return strField(r.url ?? r.src ?? r.href);
+        }
+        return null;
+      })
+      .filter((u): u is string => !!u);
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------

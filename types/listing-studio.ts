@@ -7,7 +7,6 @@ export type ListingStage = "prospect" | "active" | "archived";
 export type ListingOutputType =
   | "description"
   | "captions_doc"
-  | "dotw_email"
   | "html_email";
 
 export type ListingOutputStatus = "draft" | "finalized";
@@ -38,6 +37,14 @@ export interface PropertyFacts {
    *  property-lookup prefill. Falls back to a fresh lookup at CMA time
    *  if missing (legacy listings). */
   zpid?: string | null;
+  /** Subject property hero image. Persisted on first CMA run so we don't
+   *  re-fetch on every workspace render. Off-market homes get a Google
+   *  Street View URL; recently-sold or on-market get an MLS photo. */
+  image_url?: string | null;
+  /** Property coordinates from the RapidAPI /property response. Used as
+   *  the Mapbox satellite fallback when no image_url is available. */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface ListingRow {
@@ -83,6 +90,11 @@ export interface AdjustedComp {
   sold_price_cents: number | null;
   sold_date: string | null;
   distance_mi: number | null;
+  /** Thumbnail URL — surfaced in the CMA UI's comp cards. NULL for
+   *  CSV-sourced comps without an associated image. */
+  image_url: string | null;
+  /** Zillow Property ID, when sourced from /similarSales. */
+  zpid: string | null;
   /** Per-feature adjustments applied to this comp, summing to total_adjustment_cents. */
   adjustments: Array<{
     feature: string;

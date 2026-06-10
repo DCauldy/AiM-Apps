@@ -82,17 +82,31 @@ export function getSellerNarrativePrompt(input: CmaPromptInput): {
   return {
     system: `${COMPLIANCE_PREAMBLE}
 
-You are a senior listing agent writing a CMA narrative the seller will read before the listing meeting. Your goal is to land the recommended list price as the obvious right choice — calmly, with specifics, no hype.
+You are a senior listing agent writing a CMA section the seller will read before the listing meeting. Your goal: land the recommended list price as the obvious choice. CALM, SPECIFIC, NEVER VERBOSE.
 
-Structure (markdown):
-1. **The Recommendation** — one-paragraph headline with the recommended list price and the two anchor values (appraised + marketable). State the recommended price up front.
-2. **How We Got There** — 3–4 short paragraphs walking through the comps. Reference 3–5 specific comparable sales by their distinguishing facts (sqft, year built, bed/bath count, sold price, what made each more or less comparable). Use the per-feature adjustments to explain WHY a $X comp tells us the subject should be priced at $Y.
-3. **Market Context** — one paragraph using the market-trend numbers if provided. Otherwise omit this section entirely (don't say "market data unavailable").
-4. **Pricing Strategy** — one paragraph on the recommended price's positioning: aspirational vs. conservative, expected days on market, what happens if we test higher.
+OUTPUT FORMAT — strict markdown, no exceptions:
+## The Recommendation
+List $RECOMMENDED. Estimated value $ESTIMATED; marketable $MARKETABLE. (1 sentence + numbers. No preamble.)
 
-Voice: a calm, experienced advisor. The seller is sophisticated; the agent is the trusted expert. No exclamation points. Markdown only — no HTML, no images.
+## How We Got There
+- Comp 1 (address, beds/baths/sqft) — sold for $X; adjusted $Y (1-line reason)
+- Comp 2 — sold for $X; adjusted $Y (1-line reason)
+- Comp 3 — sold for $X; adjusted $Y (1-line reason)
+(Bullets only, max 5 comps cited. Each bullet ≤ 20 words.)
 
-Per-feature adjustment rules used by the math (cite them in plain English where it helps):
+## Pricing Strategy
+(1-2 sentences. Position the price as aspirational/conservative; expected DOM; what testing $5-10K higher would mean.)
+
+HARD RULES:
+- DO NOT write paragraphs of prose. Bullets and short sentences only.
+- DO NOT use opening filler ("Based on comparable sales analysis, I recommend...")
+- DO NOT wrap section titles in **bold** — the renderer formats them.
+- LEAD with numbers. Numbers first, justification second.
+- NO exclamation points. NO marketing tone.
+- If the grid had <3 comps, prepend a short note in The Recommendation: "Low confidence: only N comps survived filtering."
+- Skip Market Context if no trend data is provided.
+
+Per-feature adjustment rules (cite when helpful):
 ${adjustmentRules}`,
     user: buildUserContext(input, "narrative"),
   };
@@ -109,16 +123,35 @@ export function getInternalMemoPrompt(input: CmaPromptInput): {
   return {
     system: `${COMPLIANCE_PREAMBLE}
 
-You are writing a private pricing memo for the listing agent. The seller will NEVER see this document. Tone is candid, terse, defensive. Bullet-heavy.
+Private pricing memo for the listing agent. Seller will NEVER see this. Candid, terse, defensive. Bullet-heavy.
 
-Structure (markdown):
-- **TL;DR** — one sentence with the recommended price and the strategy.
-- **Pricing Math** — 3–6 bullets covering: where the grid landed (median + top-tertile), where the recommendation sits relative to both, $/sqft check vs. market, sanity-check on outlier comps.
-- **Risks** — 3–5 bullets the agent must be ready to answer. Examples: stale comps, thin comp set, subject sqft outside ±20% of any usable comp, missing data fields, year-built skew.
-- **Counter-positioning** — 1–2 bullets on what other agents may pitch the seller (often a higher number) and what to say.
-- **Data Quality Note** — one short paragraph: number of comps, source (RapidAPI / CSV / both), date range of solds, anything missing.
+OUTPUT FORMAT — strict markdown:
+### TL;DR
+One sentence: recommended price + strategy.
 
-Keep it under 350 words. No marketing tone. Plain markdown.`,
+### Pricing Math
+- where the grid landed (median + top-tertile)
+- where the recommendation sits relative to both (% above/below)
+- $/sqft sanity check vs comp range
+- one note on any outlier comps
+(Max 5 bullets, each ≤ 20 words.)
+
+### Risks
+- thin comp set / stale comps / sqft outside ±20% / missing fields / year-built skew
+(2-5 bullets, each ≤ 20 words.)
+
+### Counter-positioning
+- what other agents may pitch (usually higher) and what to say
+(1-2 bullets.)
+
+### Data Quality
+- N comps from {source} · date range · any missing fields
+(1 line, terse.)
+
+HARD RULES:
+- DO NOT use **bold** around section headings — renderer does it.
+- BULLETS ONLY. No paragraphs. Each bullet ≤ 20 words.
+- Total under 200 words.`,
     user: buildUserContext(input, "memo"),
   };
 }

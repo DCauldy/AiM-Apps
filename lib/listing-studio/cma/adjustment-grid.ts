@@ -259,6 +259,8 @@ export function applyAdjustments(
     sold_price_cents: comp.sold_price_cents,
     sold_date: comp.sold_date,
     distance_mi: comp.distance_mi,
+    image_url: comp.image_url ?? null,
+    zpid: comp.zpid ?? null,
     adjustments,
     total_adjustment_cents: total,
     adjusted_value_cents: adjusted,

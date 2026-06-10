@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getFeatureFlag } from "@/lib/admin-config.server";
 import {
   lookupProperty,
+  fetchPropertyImages,
   RapidApiAuthError,
   RapidApiRateLimitError,
   RapidApiFetchError,
@@ -40,7 +41,21 @@ export async function POST(req: NextRequest) {
 
   try {
     const facts = await lookupProperty(address);
-    const response: PropertyLookupResponse = { facts };
+    // Best-effort hero image — only fire if we have a zpid. Failures are
+    // silent; the SubjectHero falls back to Mapbox satellite then to a
+    // placeholder icon. Adds ~150-300ms to the lookup; worth it to avoid
+    // a separate round-trip on the first CMA generation.
+    if (facts?.zpid) {
+      const images = await fetchPropertyImages(facts.zpid).catch(
+        () => [] as string[],
+      );
+      if (images.length > 0) {
+        (facts as { image_url?: string | null }).image_url = images[0];
+      }
+    }
+    const response: PropertyLookupResponse = {
+      facts: facts as PropertyLookupResponse["facts"],
+    };
     return Response.json(response);
   } catch (err) {
     if (err instanceof RapidApiAuthError) {
