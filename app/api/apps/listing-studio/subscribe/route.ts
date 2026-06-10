@@ -84,8 +84,8 @@ export async function POST(req: NextRequest) {
         pack_id: pack.id,
         app: "listing_studio",
       },
-      success_url: `${origin}/apps/listing-studio/settings?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/apps/listing-studio/settings`,
+      success_url: `${origin}/apps/cma/settings?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/apps/cma/settings`,
     });
 
     return Response.json({ url: session.url });

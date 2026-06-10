@@ -3,7 +3,7 @@ import { Wrench } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function ListingStudioPage() {
+export default function CmaPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="container max-w-2xl mx-auto px-4 py-16">
@@ -21,7 +21,7 @@ export default function ListingStudioPage() {
           </p>
           <div className="mt-6 flex justify-center gap-2">
             <Link
-              href="/apps/listing-studio/settings"
+              href="/apps/cma/settings"
               className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent"
             >
               Settings

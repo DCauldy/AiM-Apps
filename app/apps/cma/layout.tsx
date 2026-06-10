@@ -25,7 +25,7 @@ export default async function ListingStudioLayout({
   // Pro tier gate (same as Hyperlocal + Blog Engine).
   const subscriptionTier = user.app_metadata?.subscription_tier;
   if (subscriptionTier !== "pro") {
-    redirect("/apps/prompt-studio?upgrade=listing-studio");
+    redirect("/apps/prompt-studio?upgrade=cma");
   }
 
   return <ListingStudioLayoutClient>{children}</ListingStudioLayoutClient>;

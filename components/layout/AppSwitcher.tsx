@@ -74,9 +74,9 @@ const APPS: AppDefinition[] = [
   },
   {
     id: "listing-studio",
-    name: "Listing Studio",
-    description: "Per-listing CMA + launch kit (description, photos, emails)",
-    route: "/apps/listing-studio/listings",
+    name: "CMA",
+    description: "Automated quarterly CMAs sent to your past clients",
+    route: "/apps/cma",
     icon: <Building2 className="h-4 w-4" />,
     requiresPro: true,
     iconClassName: "bg-gradient-to-br from-[#1E293B] to-[#D4A35C]",

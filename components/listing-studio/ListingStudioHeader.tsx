@@ -21,16 +21,16 @@ type ListingStudioUsageStatus = {
 };
 
 const NAV_ITEMS = [
-  { label: "Clients", href: "/apps/listing-studio/clients" },
-  { label: "Settings", href: "/apps/listing-studio/settings" },
+  { label: "Clients", href: "/apps/cma/clients" },
+  { label: "Settings", href: "/apps/cma/settings" },
 ];
 
 function isListingStudioActive(href: string, pathname: string | null) {
-  if (href === "/apps/listing-studio/clients") {
+  if (href === "/apps/cma/clients") {
     return (
-      pathname === "/apps/listing-studio/clients" ||
-      pathname === "/apps/listing-studio" ||
-      Boolean(pathname?.startsWith("/apps/listing-studio/clients"))
+      pathname === "/apps/cma/clients" ||
+      pathname === "/apps/cma" ||
+      Boolean(pathname?.startsWith("/apps/cma/clients"))
     );
   }
   return Boolean(pathname?.startsWith(href));
@@ -68,7 +68,7 @@ export function ListingStudioHeader() {
   return (
     <>
       <ProductHeader
-        homeHref="/apps/listing-studio/clients"
+        homeHref="/apps/cma/clients"
         navItems={NAV_ITEMS}
         isActive={isListingStudioActive}
         accentClassName="text-[#D4A35C]"

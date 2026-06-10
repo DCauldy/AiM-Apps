@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
 
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: userPack.stripe_customer_id,
-      return_url: `${origin}/apps/listing-studio/settings?tab=upgrade`,
+      return_url: `${origin}/apps/cma/settings?tab=upgrade`,
     });
 
     return Response.json({ url: portalSession.url });
