@@ -5,6 +5,7 @@ import { generateText } from "ai";
 import {
   fetchSoldComps,
   fetchMarketTrends,
+  lookupProperty,
   type RawComp,
 } from "@/lib/listing-studio/rapidapi";
 import {
@@ -83,9 +84,32 @@ export async function runCmaPipeline(input: RunCmaInput): Promise<RunCmaResult> 
     // 2. Pull comps from each enabled source.
     const sources: ("rapidapi" | "csv")[] = [];
     let allRaw: RawComp[] = [];
+    // Subject's zpid drives the comps + trends endpoints. Prefilled at
+    // listing-creation time; for legacy listings (no zpid stored) we do
+    // a fresh lookup here and persist it back to the listing row.
+    let zpid = subject.zpid ?? null;
 
     if (useApi) {
+      if (!zpid) {
+        const facts = await lookupProperty(listingRow.address).catch(() => null);
+        zpid = facts?.zpid ?? null;
+        if (zpid) {
+          await supabase
+            .from("ls_listings")
+            .update({
+              property_facts: { ...subject, zpid },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", listingId);
+        }
+      }
+      if (!zpid) {
+        throw new Error(
+          "Couldn't resolve this address with the property data source. Re-create the listing or upload a comps CSV.",
+        );
+      }
       const apiComps = await fetchSoldComps({
+        zpid,
         zip: subject.zip,
         radius_mi: input.radius_mi ?? 1,
         months_back: input.months_back ?? 6,
@@ -142,7 +166,12 @@ export async function runCmaPipeline(input: RunCmaInput): Promise<RunCmaResult> 
     const recommendation = recommendPrice(grid);
 
     // 4. Market trends — best-effort; null on failure (narrative just omits the section).
-    const marketTrends = await fetchMarketTrends(subject.zip).catch(() => null);
+    //    Pass zpid when we have it so the provider can do property-aware
+    //    aggregation; falls back to ZIP-level series otherwise.
+    const marketTrends = await fetchMarketTrends({
+      zpid: zpid ?? undefined,
+      zip: subject.zip,
+    }).catch(() => null);
 
     // 5. Two Claude calls — narrative + memo. Run in parallel; they have
     //    no dependencies on each other.

@@ -53,6 +53,9 @@ export function NewListingClient() {
           last_sale_price_cents: data.facts.last_sale_price_cents ?? undefined,
           last_sale_date: data.facts.last_sale_date ?? undefined,
           estimated_value_cents: data.facts.estimated_value_cents ?? undefined,
+          // Carry zpid through to the DB — required for downstream comps +
+          // market-trend RapidAPI calls.
+          zpid: (data.facts as { zpid?: string | null }).zpid ?? undefined,
         });
         setPrefilledFromApi(true);
       } else {

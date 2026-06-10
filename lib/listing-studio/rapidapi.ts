@@ -105,8 +105,10 @@ export interface PropertyFacts {
   /** Last known sale price (cents). NULL if no record. */
   last_sale_price_cents: number | null;
   last_sale_date: string | null;
-  /** Provider's estimated value if returned. */
+  /** Provider's estimated value if returned (Zestimate). */
   estimated_value_cents: number | null;
+  /** Zillow Property ID — chained into the comps and trend endpoints. */
+  zpid: string | null;
   /** Whatever else the provider sends — keep so the form can hint at the source. */
   raw: unknown;
 }
@@ -114,10 +116,8 @@ export interface PropertyFacts {
 /**
  * Property lookup by address. NULL on no-match.
  *
- * The exact endpoint depends on which RapidAPI path the us-housing-market-data1
- * provider exposes; this wrapper normalizes whichever JSON they return into
- * PropertyFacts. If the provider's endpoint shape changes, only the normalizer
- * needs to update.
+ * Calls Zillow-style `/property` endpoint. The response includes a `zpid`
+ * (Zillow Property ID) which downstream calls (comps, trends) chain off of.
  */
 export async function lookupProperty(address: string): Promise<PropertyFacts | null> {
   const raw = await rapidFetch("/property", { address });
@@ -126,41 +126,108 @@ export async function lookupProperty(address: string): Promise<PropertyFacts | n
 
 function normalizePropertyFacts(raw: unknown): PropertyFacts | null {
   if (!raw || typeof raw !== "object") return null;
+  // Provider returns the bare property object. `resoFacts` is a sibling
+  // bag with the deeper MLS-derived fields (lot size as a string with
+  // units, garage capacity, parking features, etc.) — pull from it when
+  // top-level fields are missing.
   const r = raw as Record<string, unknown>;
+  const reso = (r.resoFacts && typeof r.resoFacts === "object"
+    ? (r.resoFacts as Record<string, unknown>)
+    : {}) as Record<string, unknown>;
 
-  // Defensive coercion — provider field names may vary by tier or version.
-  // Attempt the obvious aliases; fall back to null when missing.
-  const num = (v: unknown): number | null => {
-    if (typeof v === "number" && !Number.isNaN(v)) return v;
-    if (typeof v === "string") {
-      const parsed = Number.parseFloat(v.replace(/[,$]/g, ""));
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-    return null;
+  // Date handling — provider returns UNIX millisecond timestamps for
+  // dateSold / dateSoldOnZillow, not strings. Normalize to YYYY-MM-DD.
+  const isoFromMs = (ms: unknown): string | null => {
+    const n =
+      typeof ms === "number"
+        ? ms
+        : typeof ms === "string" && /^\d+$/.test(ms)
+          ? Number(ms)
+          : null;
+    if (n === null || !Number.isFinite(n)) return null;
+    return new Date(n).toISOString().split("T")[0];
   };
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v.trim() ? v.trim() : null;
 
-  const sale = num(r.last_sale_price ?? r.lastSalePrice ?? r.last_sold_price);
-  const est = num(r.estimated_value ?? r.zestimate ?? r.avm);
+  const sale = numField(r.lastSoldPrice ?? r.last_sold_price);
+  const est = numField(r.zestimate ?? r.estimated_value);
+
+  // Property type — Zillow returns homeType like "SINGLE_FAMILY".
+  // propertyTypeDimension ("Single Family") is human-friendly when present.
+  const typeRaw =
+    strField(r.propertyTypeDimension) ??
+    strField(r.homeType) ??
+    strField(r.property_type);
+  const property_type = typeRaw ? typeRaw.toLowerCase().replace(/[\s-]+/g, "_") : null;
+
+  // Lot size — `resoFacts.lotSize` is a string like "0.30 Acres" or
+  // "13,068 sqft". Parse to a number of square feet.
+  const lot_area_sqft =
+    numField(r.lotAreaValue) ??
+    numField(r.lotSize) ?? // fallback if top-level is a number
+    parseLotSizeString(strField(reso.lotSize));
+
+  // Garage spaces — Zillow uses several fields with inconsistent
+  // population. Walk them in order of trustworthiness.
+  const garage_spaces =
+    numField(reso.garageParkingCapacity) ??
+    numField(reso.coveredParkingCapacity) ??
+    numField(r.garageSpaces) ??
+    (reso.hasGarage === true ? 1 : null);
 
   return {
-    address: str(r.address ?? r.formatted_address),
-    city: str(r.city),
-    state: str(r.state ?? r.state_code),
-    zip: str(r.zip ?? r.zip_code ?? r.postal_code),
-    beds: num(r.beds ?? r.bedrooms),
-    baths: num(r.baths ?? r.bathrooms),
-    living_area_sqft: num(r.living_area ?? r.sqft ?? r.living_sqft),
-    lot_area_sqft: num(r.lot_size ?? r.lot_sqft ?? r.lot_area),
-    year_built: num(r.year_built ?? r.yearBuilt),
-    property_type: str(r.property_type ?? r.propertyType),
-    garage_spaces: num(r.garage ?? r.garage_spaces),
+    address: strField(r.streetAddress),
+    city: strField(r.city),
+    state: strField(r.state),
+    zip: strField(r.zipcode ?? r.zip ?? r.zip_code),
+    beds: numField(r.bedrooms),
+    baths: numField(r.bathrooms),
+    living_area_sqft: numField(r.livingArea ?? r.livingAreaValue),
+    lot_area_sqft,
+    year_built: numField(r.yearBuilt),
+    property_type,
+    garage_spaces,
     last_sale_price_cents: sale !== null ? Math.round(sale * 100) : null,
-    last_sale_date: str(r.last_sale_date ?? r.lastSaleDate ?? r.last_sold_date),
+    last_sale_date: isoFromMs(r.dateSold ?? r.dateSoldOnZillow),
     estimated_value_cents: est !== null ? Math.round(est * 100) : null,
+    zpid: strField(r.zpid),
     raw,
   };
+}
+
+// Shared parser for numbers / strings, broken out so the comp normalizer
+// can reuse without redeclaring closures in a hot loop.
+function numField(v: unknown): number | null {
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  if (typeof v === "string") {
+    const parsed = Number.parseFloat(v.replace(/[,$]/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function strField(v: unknown): string | null {
+  if (typeof v === "string" && v.trim()) return v.trim();
+  if (typeof v === "number") return String(v);
+  return null;
+}
+
+/**
+ * Parse Zillow's `resoFacts.lotSize` string into square feet.
+ * Examples:
+ *   "0.30 Acres"  → 13068
+ *   "13,068 sqft" → 13068
+ *   "0.5 ac"      → 21780
+ */
+function parseLotSizeString(s: string | null): number | null {
+  if (!s) return null;
+  const normalized = s.toLowerCase().replace(/,/g, "").trim();
+  const m = normalized.match(/^([0-9.]+)\s*(acres?|ac|sqft|sq\.?\s*ft|square feet)?/);
+  if (!m) return null;
+  const val = Number.parseFloat(m[1]);
+  if (!Number.isFinite(val)) return null;
+  const unit = m[2] ?? "";
+  if (unit.startsWith("ac")) return Math.round(val * 43_560);
+  return Math.round(val);
 }
 
 // ---------------------------------------------------------------------------
@@ -168,11 +235,13 @@ function normalizePropertyFacts(raw: unknown): PropertyFacts | null {
 // ---------------------------------------------------------------------------
 
 export interface CompsCriteria {
-  /** Center point — typically the subject property's address or ZIP. */
-  zip: string;
-  /** Search radius in miles. */
+  /** Zillow Property ID for the subject. Required — comps chain off zpid. */
+  zpid: string;
+  /** Optional fallback location for app-side filtering. */
+  zip?: string;
+  /** Search radius in miles (app-side filter after fetch). */
   radius_mi?: number;
-  /** Months back from today to look for sold dates. */
+  /** Months back from today to look for sold dates (app-side filter). */
   months_back?: number;
   /** Optional filter — narrow to the subject's property type. */
   property_type?: string;
@@ -180,6 +249,11 @@ export interface CompsCriteria {
   subject_sqft?: number;
   /** Hard cap on returned comp count. Provider may return fewer. */
   limit?: number;
+  /** Source toggle. `propertyComps` = provider's curated comps,
+   *  `similarSales` = "recently sold homes with similar features".
+   *  similarSales is closer to a true sold-only set; propertyComps may
+   *  include actives. Default similarSales. */
+  source?: "propertyComps" | "similarSales";
 }
 
 export interface RawComp {
@@ -201,61 +275,78 @@ export interface RawComp {
 }
 
 /**
- * Fetch recently sold comparable properties around a ZIP.
+ * Fetch sold comparables for a subject property via its zpid.
  *
- * Returns [] on no-match; throws on auth / rate-limit / fetch errors.
+ * Two provider endpoints supported:
+ *   - /similarSales — "recently sold homes with similar features" (default)
+ *   - /propertyComps — provider's curated comp set (may include actives)
+ *
+ * The endpoint takes only `zpid`; radius/recency/sqft filters are applied
+ * app-side in lib/listing-studio/cma/adjustment-grid.ts. Returns [] on
+ * no-match; throws on auth / rate-limit / fetch errors.
  */
 export async function fetchSoldComps(criteria: CompsCriteria): Promise<RawComp[]> {
-  const params: Record<string, string | number> = {
-    zip: criteria.zip,
-    radius: criteria.radius_mi ?? 1,
-    months: criteria.months_back ?? 6,
-    limit: criteria.limit ?? 50,
-  };
-  if (criteria.property_type) params.property_type = criteria.property_type;
-
-  const raw = await rapidFetch("/comps", params);
+  const endpoint =
+    criteria.source === "propertyComps" ? "/propertyComps" : "/similarSales";
+  const raw = await rapidFetch(endpoint, { zpid: criteria.zpid });
   return normalizeComps(raw);
 }
 
 function normalizeComps(raw: unknown): RawComp[] {
   if (!raw) return [];
-  // Provider may return { results: [...] } or [...]
+  // /similarSales returns a bare array. /propertyComps may wrap.
+  const obj = raw as Record<string, unknown>;
   const arr = Array.isArray(raw)
     ? raw
-    : Array.isArray((raw as Record<string, unknown>).results)
-      ? ((raw as Record<string, unknown>).results as unknown[])
-      : Array.isArray((raw as Record<string, unknown>).comps)
-        ? ((raw as Record<string, unknown>).comps as unknown[])
-        : [];
+    : Array.isArray(obj.comps)
+      ? (obj.comps as unknown[])
+      : Array.isArray(obj.properties)
+        ? (obj.properties as unknown[])
+        : Array.isArray(obj.results)
+          ? (obj.results as unknown[])
+          : Array.isArray(obj.similarSales)
+            ? (obj.similarSales as unknown[])
+            : [];
 
-  const num = (v: unknown): number | null => {
-    if (typeof v === "number" && !Number.isNaN(v)) return v;
-    if (typeof v === "string") {
-      const parsed = Number.parseFloat(v.replace(/[,$]/g, ""));
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-    return null;
+  const isoFromMs = (ms: unknown): string | null => {
+    const n =
+      typeof ms === "number"
+        ? ms
+        : typeof ms === "string" && /^\d+$/.test(ms)
+          ? Number(ms)
+          : null;
+    if (n === null || !Number.isFinite(n)) return null;
+    return new Date(n).toISOString().split("T")[0];
   };
-  const str = (v: unknown): string | null =>
-    typeof v === "string" && v.trim() ? v.trim() : null;
 
   return arr.map((entry): RawComp => {
     const r = (entry ?? {}) as Record<string, unknown>;
-    const price = num(r.sold_price ?? r.last_sale_price ?? r.price);
+    // `address` is a NESTED object on /similarSales — different from the
+    // /property endpoint which mirrors fields to the top level.
+    const addr = (r.address && typeof r.address === "object"
+      ? (r.address as Record<string, unknown>)
+      : {}) as Record<string, unknown>;
+
+    const price = numField(
+      r.lastSoldPrice ?? r.last_sold_price ?? r.closePrice ?? r.price,
+    );
+    const homeType =
+      strField(r.homeType ?? r.property_type ?? r.propertyType) ?? null;
     return {
-      address: str(r.address ?? r.formatted_address),
-      zip: str(r.zip ?? r.postal_code),
-      beds: num(r.beds ?? r.bedrooms),
-      baths: num(r.baths ?? r.bathrooms),
-      living_area_sqft: num(r.living_area ?? r.sqft ?? r.living_sqft),
-      lot_area_sqft: num(r.lot_size ?? r.lot_sqft),
-      year_built: num(r.year_built),
-      property_type: str(r.property_type),
-      garage_spaces: num(r.garage ?? r.garage_spaces),
+      address: strField(addr.streetAddress ?? r.streetAddress ?? r.address),
+      zip: strField(addr.zipcode ?? addr.zip ?? r.zipcode),
+      beds: numField(r.bedrooms ?? r.beds),
+      baths: numField(r.bathrooms ?? r.baths),
+      living_area_sqft: numField(r.livingArea ?? r.livingAreaValue),
+      // /similarSales doesn't include lot or year — fields stay null and
+      // the adjustment grid skips per-feature deltas it can't compute.
+      lot_area_sqft: numField(r.lotSize ?? r.lot_size ?? r.lot_sqft),
+      year_built: numField(r.yearBuilt ?? r.year_built),
+      property_type: homeType ? homeType.toLowerCase().replace(/[\s-]+/g, "_") : null,
+      garage_spaces: numField(r.garageSpaces ?? r.garage ?? r.garage_spaces),
       sold_price_cents: price !== null ? Math.round(price * 100) : null,
-      sold_date: str(r.sold_date ?? r.last_sale_date),
-      distance_mi: num(r.distance ?? r.distance_mi),
+      sold_date: isoFromMs(r.dateSold) ?? strField(r.sold_date ?? r.last_sale_date),
+      distance_mi: numField(r.distance ?? r.distance_mi),
       raw: entry,
     };
   });
@@ -277,26 +368,65 @@ export interface MarketTrends {
   raw: unknown;
 }
 
-export async function fetchMarketTrends(zip: string): Promise<MarketTrends | null> {
-  const raw = await rapidFetch("/market", { zip });
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const num = (v: unknown): number | null => {
-    if (typeof v === "number" && !Number.isNaN(v)) return v;
-    if (typeof v === "string") {
-      const parsed = Number.parseFloat(v.replace(/[,$%]/g, ""));
-      return Number.isFinite(parsed) ? parsed : null;
-    }
-    return null;
+/**
+ * Market trends — pulls from /valueHistory/zestimatePercentChange (the
+ * cleanest YoY signal the provider exposes for a ZIP / property) and
+ * /valueHistory/listingPrices (median listing price). Falls back to NULL
+ * fields when individual endpoints return empty so the CMA narrative can
+ * gracefully omit any metric we don't have.
+ *
+ * Accepts either a zpid (preferred — provider's local-area aggregation
+ * is more accurate for a known property) or a bare zip code.
+ */
+export async function fetchMarketTrends(
+  input: { zpid?: string; zip: string },
+): Promise<MarketTrends | null> {
+  const params: Record<string, string | number> = {};
+  if (input.zpid) params.zpid = input.zpid;
+  else params.location = input.zip;
+
+  // Both calls are independent — fire in parallel. Either may fail; we
+  // tolerate partial data and let the caller decide what to show.
+  const [yoyRes, listingsRes] = await Promise.allSettled([
+    rapidFetch("/valueHistory/zestimatePercentChange", params),
+    rapidFetch("/valueHistory/listingPrices", params),
+  ]);
+
+  const yoyRaw =
+    yoyRes.status === "fulfilled" ? (yoyRes.value as Record<string, unknown>) : {};
+  const listingsRaw =
+    listingsRes.status === "fulfilled"
+      ? (listingsRes.value as Record<string, unknown>)
+      : {};
+
+  // Both endpoints return { chartData: [{ points: [{x: ms, y: value}], name: ... }] }.
+  // Pull the latest y from each series. zestimatePercentChange's y is the
+  // %-change number; listingPrices's y is the median listing price.
+  const latestY = (raw: Record<string, unknown>): number | null => {
+    const chart = raw.chartData;
+    if (!Array.isArray(chart) || chart.length === 0) return null;
+    // If there are multiple series (e.g. "Sale" + "List"), prefer "Sale".
+    const pick =
+      (chart as Array<Record<string, unknown>>).find(
+        (s) => typeof s?.name === "string" && /sale/i.test(s.name as string),
+      ) ?? chart[0];
+    const points = (pick as Record<string, unknown>).points;
+    if (!Array.isArray(points) || points.length === 0) return null;
+    const newest = points[points.length - 1] as Record<string, unknown>;
+    return numField(newest?.y);
   };
-  const med = num(r.median_sold_price ?? r.median_price);
-  const psqft = num(r.median_price_per_sqft ?? r.median_sqft_price);
+
+  const yoy = latestY(yoyRaw);
+  const med = latestY(listingsRaw);
+
+  if (yoy === null && med === null) return null;
+
   return {
-    zip,
+    zip: input.zip,
     median_sold_price_cents: med !== null ? Math.round(med * 100) : null,
-    median_sqft_price_cents: psqft !== null ? Math.round(psqft * 100) : null,
-    yoy_change_pct: num(r.yoy_change ?? r.yoy_pct ?? r.year_over_year),
-    median_dom: num(r.median_dom ?? r.median_days_on_market),
-    raw,
+    median_sqft_price_cents: null, // not exposed by these endpoints
+    yoy_change_pct: yoy,
+    median_dom: null, // not exposed by these endpoints
+    raw: { zestimatePercentChange: yoyRaw, listingPrices: listingsRaw },
   };
 }

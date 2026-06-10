@@ -12,11 +12,13 @@ export const dynamic = "force-dynamic";
 
 // ============================================================
 // POST /api/apps/listing-studio/comps-lookup
-// Body: { zip, radius_mi?, months_back?, property_type?, subject_sqft? }
+// Body: { zpid, zip?, radius_mi?, months_back?, property_type?, subject_sqft?, source? }
 //
-// Proxy to RapidAPI's solds endpoint. The CMA tab uses this to preview
-// the raw comp pool before kicking off the pipeline (so the agent can
-// tune radius / months / property type without burning a CMA run).
+// Proxy to RapidAPI's /similarSales (or /propertyComps) endpoint. The CMA
+// tab uses this to preview the raw comp pool before kicking off the
+// pipeline. The provider chains comps off a Zillow Property ID — pass
+// the subject's persisted zpid (from property_facts.zpid) or look it
+// up first via /property-lookup.
 // ============================================================
 
 export async function POST(req: NextRequest) {
@@ -31,20 +33,25 @@ export async function POST(req: NextRequest) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
-  const zip = typeof body?.zip === "string" ? body.zip.trim() : "";
-  if (!zip) {
-    return Response.json({ error: "zip is required" }, { status: 400 });
+  const zpid = typeof body?.zpid === "string" ? body.zpid.trim() : "";
+  if (!zpid) {
+    return Response.json({ error: "zpid is required" }, { status: 400 });
   }
 
   try {
     const comps = await fetchSoldComps({
-      zip,
+      zpid,
+      zip: typeof body?.zip === "string" ? body.zip.trim() : undefined,
       radius_mi: typeof body.radius_mi === "number" ? body.radius_mi : 1,
       months_back: typeof body.months_back === "number" ? body.months_back : 6,
       property_type:
         typeof body.property_type === "string" ? body.property_type : undefined,
       subject_sqft:
         typeof body.subject_sqft === "number" ? body.subject_sqft : undefined,
+      source:
+        body.source === "propertyComps" || body.source === "similarSales"
+          ? body.source
+          : undefined,
     });
     return Response.json({ comps, count: comps.length });
   } catch (err) {

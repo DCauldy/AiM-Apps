@@ -33,6 +33,11 @@ export interface PropertyFacts {
   last_sale_date?: string | null;
   /** Provider's automated valuation (cents). Optional. */
   estimated_value_cents?: number | null;
+  /** Zillow Property ID — chained into RapidAPI comps + trend endpoints.
+   *  Required for /propertyComps and /similarSales; populated by the
+   *  property-lookup prefill. Falls back to a fresh lookup at CMA time
+   *  if missing (legacy listings). */
+  zpid?: string | null;
 }
 
 export interface ListingRow {
@@ -142,7 +147,9 @@ export interface ListingResponse {
 
 export interface PropertyLookupResponse {
   /** NULL when provider has no match — caller falls back to manual form. */
-  facts: (PropertyFacts & { address: string | null }) | null;
+  facts:
+    | (PropertyFacts & { address: string | null; zpid: string | null })
+    | null;
   /** Surfaces "RapidAPI key invalid" / "rate limited" etc. to the UI. */
   error?: string;
 }

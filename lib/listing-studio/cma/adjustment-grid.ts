@@ -365,13 +365,15 @@ export function recommendPrice(
 // ---------------------------------------------------------------------------
 
 export function compsCriteriaFromInput(input: {
-  zip: string;
+  zpid: string;
+  zip?: string;
   radius_mi?: number;
   months_back?: number;
   property_type?: string;
   subject_sqft?: number;
 }): CompsCriteria {
   return {
+    zpid: input.zpid,
     zip: input.zip,
     radius_mi: input.radius_mi ?? 1,
     months_back: input.months_back ?? 6,
