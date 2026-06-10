@@ -77,16 +77,17 @@ export default async function AppsPage() {
         period: "this month",
       };
 
-      // Listing Studio usage: active listings promoted this month vs pack
+      // CMA usage: enrolled past clients on the automated cadence vs pack
       // limit. Diamond unlimited surfaces as 9999 for the progress bar.
+      // (Internal slug stays "listing-studio" — user-facing name is "CMA".)
       const lsUsage = await getListingStudioUsage(user.id);
       usageStats["listing-studio"] = {
-        used: lsUsage.activeListingsPromoted,
+        used: lsUsage.activeClients,
         limit:
-          lsUsage.activeListingsLimit === UNLIMITED
+          lsUsage.activeClientsLimit === UNLIMITED
             ? 9999
-            : (lsUsage.activeListingsLimit as number),
-        period: "this month",
+            : (lsUsage.activeClientsLimit as number),
+        period: "enrolled",
       };
     }
   }

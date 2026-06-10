@@ -14,23 +14,15 @@ interface ListingStudioUpgradeModalProps {
   onClose: () => void;
   reason?: "limit" | "cta";
   periodEnd?: string;
-  currentUsage?: { activeListingsPromoted: number; activeListingsLimit: number };
+  currentUsage?: { activeClients: number; activeClientsLimit: number };
 }
 
 export function ListingStudioUpgradeModal({
   open,
   onClose,
   reason = "cta",
-  periodEnd,
   currentUsage,
 }: ListingStudioUpgradeModalProps) {
-  const resetFormatted = periodEnd
-    ? new Date(periodEnd).toLocaleDateString([], {
-        month: "long",
-        day: "numeric",
-      })
-    : null;
-
   return (
     <PlanUpgradeDialog
       open={open}
@@ -40,25 +32,23 @@ export function ListingStudioUpgradeModal({
       headerIcon={<Home className="h-5 w-5 text-white" />}
       headerTitle={
         reason === "limit"
-          ? "Monthly listing limit reached"
-          : "Promote more listings"
+          ? "Client limit reached"
+          : "Enroll more clients"
       }
       headerDescription={
         reason === "limit" ? (
           <>
-            You&apos;ve promoted all{" "}
+            You&apos;ve enrolled all{" "}
             {currentUsage
-              ? `${currentUsage.activeListingsLimit} listings`
-              : "your listings"}{" "}
-            this month.
-            {resetFormatted ? ` Your limit resets on ${resetFormatted}.` : ""}{" "}
-            Upgrade for more active listings + larger prospect CMA caps.
+              ? `${currentUsage.activeClientsLimit} clients`
+              : "your client slots"}
+            . Unenroll a client to free a slot, or upgrade for a larger cap.
           </>
         ) : (
           <>
-            Upgrade your Listing Studio pack for more active listings per
-            month, a larger prospect-CMA budget, and the full Diamond
-            unlimited-listing tier.
+            Upgrade your CMA pack to enroll more past clients in the
+            automated quarterly cadence. Diamond unlocks unlimited clients
+            (fair use).
           </>
         )
       }
@@ -71,17 +61,17 @@ export function ListingStudioUpgradeModal({
       hoverClassName="border-border hover:border-primary/50"
       planMeta={(pack: ListingStudioPack) => {
         const monthlyCost = (pack.priceCents / 100).toFixed(0);
-        const perListingCost =
-          pack.activeListingsPerMonth === UNLIMITED
+        const perClientCost =
+          pack.activeClientsLimit === UNLIMITED
             ? "—"
             : (
                 pack.priceCents /
                 100 /
-                (pack.activeListingsPerMonth as number)
+                (pack.activeClientsLimit as number)
               ).toFixed(2);
-        return `$${monthlyCost}/mo · ~$${perListingCost}/listing`;
+        return `$${monthlyCost}/mo · ~$${perClientCost}/client`;
       }}
-      infoText="All Pro subscriptions include 1 active listing/month + 10 prospect CMAs. Pack subscriptions are monthly and can be cancelled anytime from Settings."
+      infoText="All Pro subscriptions include 25 active clients on automated quarterly cadence. Pack subscriptions are monthly and can be cancelled anytime from Settings."
     />
   );
 }

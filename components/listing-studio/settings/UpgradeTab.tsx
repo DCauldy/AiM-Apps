@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ExternalLink, Zap, Check, Home } from "lucide-react";
+import { Loader2, ExternalLink, Zap, Check, Users } from "lucide-react";
 
 import { ListingStudioUpgradeModal } from "@/components/listing-studio/ListingStudioUpgradeModal";
 import { useToast } from "@/components/ui/toast";
@@ -137,8 +137,8 @@ function ActivePackPanel({
       </div>
 
       <div className="grid grid-cols-2 gap-3 mt-5 pt-5 border-t border-border">
-        <Meter label="Active listings / mo" value={formatLimit(pack.activeListingsPerMonth)} />
-        <Meter label="Prospect CMAs / mo" value={formatLimit(pack.cmaSoftLimit)} />
+        <Meter label="Active clients" value={formatLimit(pack.activeClientsLimit)} />
+        <Meter label="Manual sends / mo" value={formatLimit(pack.manualSendsPerMonth)} />
       </div>
     </div>
   );
@@ -155,8 +155,9 @@ function BasePlanPanel({ onUpgrade }: { onUpgrade: () => void }) {
             </span>
           </div>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Listing Studio is included with your AiM Pro membership at base
-            allowances. Add a pack to promote more active listings per month.
+            CMA is included with your AiM Pro membership. Pro covers up to{" "}
+            {LISTING_STUDIO_BASE.activeClientsLimit} past clients on the
+            automated quarterly cadence. Add a pack to enroll more.
           </p>
         </div>
         <button
@@ -173,12 +174,12 @@ function BasePlanPanel({ onUpgrade }: { onUpgrade: () => void }) {
 
       <div className="grid grid-cols-2 gap-3 mt-5 pt-5 border-t border-border">
         <Meter
-          label="Active listings / mo"
-          value={formatLimit(LISTING_STUDIO_BASE.activeListingsPerMonth)}
+          label="Active clients"
+          value={formatLimit(LISTING_STUDIO_BASE.activeClientsLimit)}
         />
         <Meter
-          label="Prospect CMAs / mo"
-          value={formatLimit(LISTING_STUDIO_BASE.cmaSoftLimit)}
+          label="Manual sends / mo"
+          value={formatLimit(LISTING_STUDIO_BASE.manualSendsPerMonth)}
         />
       </div>
     </div>
@@ -250,17 +251,17 @@ function PackLadder({
               </div>
               <div className="mt-3 space-y-1 text-[11px] text-muted-foreground">
                 <div>
-                  <Home className="inline h-3 w-3 mr-1" />
+                  <Users className="inline h-3 w-3 mr-1" />
                   <span className="text-foreground font-medium">
-                    {formatLimit(pack.activeListingsPerMonth)}
+                    {formatLimit(pack.activeClientsLimit)}
                   </span>{" "}
-                  listings
+                  active clients
                 </div>
                 <div>
                   <span className="text-foreground font-medium">
-                    {formatLimit(pack.cmaSoftLimit)}
+                    {formatLimit(pack.manualSendsPerMonth)}
                   </span>{" "}
-                  prospect CMAs
+                  manual sends / mo
                 </div>
               </div>
             </button>

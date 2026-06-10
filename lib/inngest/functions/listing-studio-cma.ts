@@ -1,35 +1,38 @@
 import { inngest } from "@/lib/inngest/client";
 import { runCmaPipeline } from "@/lib/listing-studio/cma/pipeline";
+import type { PropertyFacts } from "@/types/listing-studio";
 
 // ---------------------------------------------------------------------------
-// Event type
+// CMA pipeline — Inngest function (v2: cadence-driven delivery)
+//
+// Triggered by Wave 4's cma-deliver step. The deliver fn loads the
+// cma_clients row, hands the subject facts + address to this function,
+// then writes the resulting cma_run_id onto cma_client_deliveries.
+//
+// Concurrency capped to keep RapidAPI quota predictable across bursts
+// (e.g. an agent enrolling 100 clients triggers a staggered backfill).
+// Retries are off because runCmaPipeline writes a pipeline_error row on
+// failure — Inngest retrying would just stamp duplicate failure rows.
 // ---------------------------------------------------------------------------
 
 type ListingStudioCmaEvent = {
   name: "listing-studio/cma.requested";
   data: {
     userId: string;
-    listingId: string;
-    useApi: boolean;
-    useCsv: boolean;
+    /** Caller-supplied correlation id so the deliver fn can match the
+     *  result back to the row that asked for it. */
+    requestId: string;
+    address: string;
+    subject: PropertyFacts;
     radius_mi?: number;
     months_back?: number;
   };
 };
 
-// ---------------------------------------------------------------------------
-// Listing Studio CMA pipeline — Inngest function
-//
-// The heavy CMA path (RapidAPI pulls + grid math + two Claude calls).
-// Concurrency capped to keep the RapidAPI quota predictable. Retries are
-// disabled because the pipeline writes a `pipeline_error` row on its own
-// failure path — Inngest retrying would just stamp duplicate failure rows.
-// ---------------------------------------------------------------------------
-
 export const listingStudioCma = inngest.createFunction(
   {
     id: "listing-studio-cma",
-    name: "Listing Studio: CMA",
+    name: "CMA: pipeline",
     retries: 0,
     concurrency: [{ limit: 5 }],
     triggers: [{ event: "listing-studio/cma.requested" }],
@@ -41,24 +44,19 @@ export const listingStudioCma = inngest.createFunction(
     event: { data: ListingStudioCmaEvent["data"]; id?: string };
     step: any;
   }) => {
-    const { userId, listingId, useApi, useCsv, radius_mi, months_back } = event.data;
+    const { requestId, address, subject, radius_mi, months_back } = event.data;
 
     const result = await step.run("run-cma-pipeline", async () =>
-      runCmaPipeline({
-        userId,
-        listingId,
-        useApi,
-        useCsv,
-        radius_mi,
-        months_back,
-      }),
+      runCmaPipeline({ address, subject, radius_mi, months_back }),
     );
 
     return {
       success: true,
+      requestId,
       cmaRunId: result.cmaRunId,
       recommendedPriceCents: result.recommendedPriceCents,
-      listingId,
+      estimatedValueCents: result.estimatedValueCents,
+      marketableValueCents: result.marketableValueCents,
     };
   },
 );

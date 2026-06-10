@@ -7,27 +7,32 @@ import {
 import { getListingStudioPacks } from "@/lib/admin-config.server";
 
 // ============================================================
-// Listing Studio usage tracking — calendar-month windowing.
+// CMA usage tracking — snapshot meter (enrolled clients) plus a
+// monthly counter for deliveries actually sent.
 //
-// Mirrors lib/hyperlocal/usage.ts. Two meters tracked:
-//   - active_listings_promoted (primary billing meter)
-//   - cma_runs_count (soft cap across all tiers, abuse guardrail)
+// Snapshot meter:
+//   active_clients = COUNT(cma_clients WHERE enrolled = TRUE)
+//   Enrolling consumes a slot via try_reserve_client_slot RPC.
+//   Unenrolling immediately frees it. No monthly windowing — the cap
+//   bounds the live set.
 //
-// Pack = active row in ls_user_packs; missing row → user is on the
-// Pro base allowance.
+// Monthly counter (informational, surfaced on dashboard):
+//   deliveries_sent — how many CMAs went out this month
+//   manual_sends    — how many of those were force-sent (vs cadence)
 // ============================================================
 
 export interface ListingStudioUsageStatus {
-  activeListingsPromoted: number;
-  activeListingsLimit: PackLimit;
-  activeListingsRemaining: number | "unlimited";
-  cmaRunsCount: number;
-  cmaSoftLimit: PackLimit;
+  activeClients: number;
+  activeClientsLimit: PackLimit;
+  activeClientsRemaining: number | "unlimited";
+  deliveriesSent: number;
+  manualSends: number;
+  manualSendsLimit: PackLimit;
   /** Pack tier (e.g., "Bronze") or "Pro" when no pack active. */
   tier: string;
   periodStart: string; // YYYY-MM-DD
   periodEnd: string; // YYYY-MM-DD
-  /** Surface a soft warning when ≤1 active listing slot remaining. */
+  /** Surface a soft warning when ≤5 client slots remaining. */
   nudge: boolean;
 }
 
@@ -45,7 +50,7 @@ export function getMonthEnd(date: Date = new Date()): string {
   return d.toISOString().split("T")[0];
 }
 
-/** Resolve a user's current Listing Studio allowances + usage. */
+/** Resolve a user's current CMA allowances + usage. */
 export async function getListingStudioUsage(
   userId: string,
 ): Promise<ListingStudioUsageStatus> {
@@ -65,8 +70,9 @@ export async function getListingStudioUsage(
 
   // 2. Resolve pack limits — DB-driven if a pack is active, base otherwise.
   let limits = {
-    activeListingsPerMonth: LISTING_STUDIO_BASE.activeListingsPerMonth as PackLimit,
-    cmaSoftLimit: LISTING_STUDIO_BASE.cmaSoftLimit as PackLimit,
+    activeClientsLimit: LISTING_STUDIO_BASE.activeClientsLimit as PackLimit,
+    manualSendsPerMonth:
+      LISTING_STUDIO_BASE.manualSendsPerMonth as PackLimit,
   };
   let tier = "Pro";
 
@@ -75,116 +81,117 @@ export async function getListingStudioUsage(
     const pack = packs.find((p) => p.id === activePackId);
     if (pack) {
       limits = {
-        activeListingsPerMonth: pack.activeListingsPerMonth,
-        cmaSoftLimit: pack.cmaSoftLimit,
+        activeClientsLimit: pack.activeClientsLimit,
+        manualSendsPerMonth: pack.manualSendsPerMonth,
       };
       tier = pack.tier;
     }
   }
 
-  // 3. Read meter row for the current month.
+  // 3. Snapshot meter — live count of enrolled clients.
+  const { count: activeCountRaw } = await supabase
+    .from("cma_clients")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("enrolled", true);
+  const activeClients = activeCountRaw ?? 0;
+
+  // 4. Monthly counter — informational only.
   const { data: usage } = await supabase
     .from("ls_usage")
-    .select("active_listings_promoted, cma_runs_count")
+    .select("deliveries_sent, manual_sends")
     .eq("user_id", userId)
     .eq("month_start", periodStart)
     .maybeSingle();
 
-  const promoted = usage?.active_listings_promoted ?? 0;
-  const cmaCount = usage?.cma_runs_count ?? 0;
-  const limit = limits.activeListingsPerMonth;
+  const limit = limits.activeClientsLimit;
   const remaining: number | "unlimited" =
-    limit === UNLIMITED ? "unlimited" : Math.max(0, limit - promoted);
+    limit === UNLIMITED ? "unlimited" : Math.max(0, limit - activeClients);
 
   return {
-    activeListingsPromoted: promoted,
-    activeListingsLimit: limit,
-    activeListingsRemaining: remaining,
-    cmaRunsCount: cmaCount,
-    cmaSoftLimit: limits.cmaSoftLimit,
+    activeClients,
+    activeClientsLimit: limit,
+    activeClientsRemaining: remaining,
+    deliveriesSent: usage?.deliveries_sent ?? 0,
+    manualSends: usage?.manual_sends ?? 0,
+    manualSendsLimit: limits.manualSendsPerMonth,
     tier,
     periodStart,
     periodEnd,
-    nudge: remaining !== "unlimited" && remaining <= 1 && promoted > 0,
+    nudge: remaining !== "unlimited" && remaining > 0 && remaining <= 5,
   };
 }
 
-export interface ActiveListingSlotReservation {
+export interface ClientSlotReservation {
   reserved: boolean;
-  active_listings_promoted: number;
-  active_listings_limit: number;
+  active_clients: number;
+  active_clients_limit: number;
+  error?: string;
 }
 
 /**
- * Atomic check-and-reserve for "Promote prospect → active listing".
- * Mirrors try_reserve_blog_slot from Blog Engine. Pair with
- * refundActiveListingSlot() on promote-flow failure.
+ * Atomic check-and-reserve when enrolling a client into the cadence.
+ * Pairs with try_reserve_client_slot RPC — that function row-locks the
+ * candidate row, recounts live enrolled rows, and only flips
+ * enrolled=true when there's room under the cap.
+ *
+ * Idempotent on re-enrollment of an already-enrolled client.
  */
-export async function reserveActiveListingSlot(
+export async function reserveClientSlot(
   userId: string,
-): Promise<ActiveListingSlotReservation> {
+  clientId: string,
+): Promise<ClientSlotReservation> {
   const supabase = createServiceRoleClient();
-  const monthStart = getMonthStart();
 
-  // Resolve the user's current limit (passed into the RPC so cap logic
-  // stays in app code where the pack definitions live).
   const usage = await getListingStudioUsage(userId);
   const limit: number =
-    usage.activeListingsLimit === UNLIMITED
+    usage.activeClientsLimit === UNLIMITED
       ? UNLIMITED
-      : (usage.activeListingsLimit as number);
+      : (usage.activeClientsLimit as number);
 
-  const { data, error } = await supabase.rpc("try_reserve_active_listing_slot", {
+  const { data, error } = await supabase.rpc("try_reserve_client_slot", {
     p_user_id: userId,
-    p_month_start: monthStart,
+    p_client_id: clientId,
     p_limit: limit,
   });
 
   if (error) {
-    throw new Error(`reserveActiveListingSlot: ${error.message}`);
+    throw new Error(`reserveClientSlot: ${error.message}`);
   }
 
-  return data as ActiveListingSlotReservation;
+  return data as ClientSlotReservation;
 }
 
 /**
- * Decrement after a promote-flow failure. Read-modify-write — refunds
- * are infrequent and being off by 1 in a rare double-refund is fine.
+ * Unenroll a client. Frees the snapshot slot immediately; cadence
+ * scheduler stops firing for the row on the next tick.
  */
-export async function refundActiveListingSlot(userId: string): Promise<void> {
+export async function releaseClientSlot(
+  userId: string,
+  clientId: string,
+): Promise<void> {
   const supabase = createServiceRoleClient();
-  const monthStart = getMonthStart();
-
-  const { data: row } = await supabase
-    .from("ls_usage")
-    .select("active_listings_promoted")
-    .eq("user_id", userId)
-    .eq("month_start", monthStart)
-    .maybeSingle();
-
-  if (!row || (row.active_listings_promoted ?? 0) <= 0) return;
-
   await supabase
-    .from("ls_usage")
-    .update({
-      active_listings_promoted: row.active_listings_promoted - 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("user_id", userId)
-    .eq("month_start", monthStart);
+    .from("cma_clients")
+    .update({ enrolled: false, updated_at: new Date().toISOString() })
+    .eq("id", clientId)
+    .eq("user_id", userId);
 }
 
 /**
- * Bump the CMA counter (soft cap, no atomic gate). The route handler
- * checks usage.cmaRunsCount >= usage.cmaSoftLimit before kicking off
- * the pipeline — that check is best-effort. RapidAPI cost is the real
- * concern this guards against.
+ * Bump the monthly delivery counter. Called once per delivery actually
+ * sent. `isManual` distinguishes force-sends from cadence-driven sends
+ * so the agent's soft cap on manual overrides can be enforced.
  */
-export async function incrementCmaCount(userId: string): Promise<void> {
+export async function incrementDeliveryCount(
+  userId: string,
+  isManual: boolean = false,
+): Promise<void> {
   const supabase = createServiceRoleClient();
   const monthStart = getMonthStart();
-  await supabase.rpc("ls_increment_cma_count", {
+  await supabase.rpc("cma_increment_delivery_count", {
     p_user_id: userId,
     p_month_start: monthStart,
+    p_is_manual: isManual,
   });
 }

@@ -8,11 +8,12 @@ import { UNLIMITED } from "@/lib/listing-studio-packs";
 import { cn } from "@/lib/utils";
 
 type ListingStudioUsageStatus = {
-  activeListingsPromoted: number;
-  activeListingsLimit: number;
-  activeListingsRemaining: number | "unlimited";
-  cmaRunsCount: number;
-  cmaSoftLimit: number;
+  activeClients: number;
+  activeClientsLimit: number;
+  activeClientsRemaining: number | "unlimited";
+  deliveriesSent: number;
+  manualSends: number;
+  manualSendsLimit: number;
   tier: string;
   periodStart: string;
   periodEnd: string;
@@ -20,16 +21,16 @@ type ListingStudioUsageStatus = {
 };
 
 const NAV_ITEMS = [
-  { label: "Listings", href: "/apps/listing-studio/listings" },
+  { label: "Clients", href: "/apps/listing-studio/clients" },
   { label: "Settings", href: "/apps/listing-studio/settings" },
 ];
 
 function isListingStudioActive(href: string, pathname: string | null) {
-  if (href === "/apps/listing-studio/listings") {
+  if (href === "/apps/listing-studio/clients") {
     return (
-      pathname === "/apps/listing-studio/listings" ||
+      pathname === "/apps/listing-studio/clients" ||
       pathname === "/apps/listing-studio" ||
-      Boolean(pathname?.startsWith("/apps/listing-studio/listings"))
+      Boolean(pathname?.startsWith("/apps/listing-studio/clients"))
     );
   }
   return Boolean(pathname?.startsWith(href));
@@ -59,15 +60,15 @@ export function ListingStudioHeader() {
 
   // Unlimited (-1 from DB / UNLIMITED sentinel) renders as "∞" and
   // never triggers a limit/nudge state. Diamond tier sits here.
-  const isUnlimited = usage?.activeListingsLimit === UNLIMITED;
+  const isUnlimited = usage?.activeClientsLimit === UNLIMITED;
   const limitReached =
-    !!usage && !isUnlimited && usage.activeListingsRemaining === 0;
+    !!usage && !isUnlimited && usage.activeClientsRemaining === 0;
   const isNudge = !!usage && !isUnlimited && usage.nudge;
 
   return (
     <>
       <ProductHeader
-        homeHref="/apps/listing-studio/listings"
+        homeHref="/apps/listing-studio/clients"
         navItems={NAV_ITEMS}
         isActive={isListingStudioActive}
         accentClassName="text-[#D4A35C]"
@@ -98,17 +99,21 @@ export function ListingStudioHeader() {
                 </>
               ) : isNudge ? (
                 <>
-                  <span>1 left</span>
+                  <span>
+                    {usage.activeClientsRemaining === "unlimited"
+                      ? ""
+                      : `${usage.activeClientsRemaining} left`}
+                  </span>
                   <span className="text-amber-500">— Upgrade</span>
                 </>
               ) : (
                 <>
                   <span className="font-semibold text-foreground">
-                    {usage.activeListingsPromoted}
+                    {usage.activeClients}
                   </span>
                   <span>/</span>
-                  <span>{isUnlimited ? "∞" : usage.activeListingsLimit}</span>
-                  <span>listings</span>
+                  <span>{isUnlimited ? "∞" : usage.activeClientsLimit}</span>
+                  <span>clients</span>
                 </>
               )}
             </button>
@@ -126,11 +131,11 @@ export function ListingStudioHeader() {
                 )}
               >
                 <span className="font-semibold text-foreground">
-                  {usage.activeListingsPromoted}
+                  {usage.activeClients}
                 </span>
                 <span>/</span>
-                <span>{isUnlimited ? "∞" : usage.activeListingsLimit}</span>
-                <span>listings this month</span>
+                <span>{isUnlimited ? "∞" : usage.activeClientsLimit}</span>
+                <span>clients enrolled</span>
               </span>
             </div>
           )
@@ -144,10 +149,10 @@ export function ListingStudioHeader() {
         currentUsage={
           usage
             ? {
-                activeListingsPromoted: usage.activeListingsPromoted,
-                activeListingsLimit: isUnlimited
+                activeClients: usage.activeClients,
+                activeClientsLimit: isUnlimited
                   ? 9999
-                  : usage.activeListingsLimit,
+                  : usage.activeClientsLimit,
               }
             : undefined
         }
