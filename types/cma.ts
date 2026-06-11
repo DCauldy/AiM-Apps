@@ -77,6 +77,7 @@ export interface CmaEmailConnection {
   resend_domain_id?: string | null;
   resend_dkim_status?: "pending" | "verified" | "failed" | null;
   resend_webhook_id?: string | null;
+  resend_webhook_secret_encrypted?: string | null;
 
   // Generic provider credentials (everything not Resend)
   provider_api_key_encrypted?: string | null;
@@ -231,10 +232,15 @@ export interface CmaClientDelivery {
   id: string;
   client_id: string;
   cma_run_id: string | null;
+  email_connection_id: string | null;
 
   landing_page_token: string;
   email_subject: string | null;
   email_html: string | null;
+
+  /** ESP-side message id (Resend email_id, SendGrid sg_message_id).
+   *  Webhook handlers look up the row by this column. */
+  provider_message_id: string | null;
 
   delivered_at: string | null;
   send_error: string | null;
@@ -271,10 +277,20 @@ export interface CmaClientSummary {
   next_due_at: string | null;
   last_delivered_at: string | null;
   delivered_count: number;
-  /** Derived from the latest cma_client_deliveries row's open/click
-   *  state: "clicked" > "opened" > "delivered" > "cold" (never sent
-   *  or last send is stale). */
-  engagement: "clicked" | "opened" | "delivered" | "cold" | "none";
+  /** Derived from the latest cma_client_deliveries row's state.
+   *  Priority order (most actionable first):
+   *    "complained" > "bounced" > "clicked" > "opened" > "delivered"
+   *    > "cold" > "none"
+   *  bounced/complained surface as red badges on the list so agents
+   *  fix the address (or drop the client) before the next cadence. */
+  engagement:
+    | "complained"
+    | "bounced"
+    | "clicked"
+    | "opened"
+    | "delivered"
+    | "cold"
+    | "none";
 }
 
 export type CmaClientFilter =

@@ -4,6 +4,7 @@ import { encrypt } from "@/lib/hyperlocal/encryption";
 import {
   deleteResendDomain,
   getOrCreateResendDomain,
+  getOrCreateResendWebhook,
 } from "@/lib/hyperlocal/email/providers/resend";
 import { getActiveProfile } from "@/lib/profiles/server";
 
@@ -81,6 +82,30 @@ export async function POST(req: NextRequest) {
   const profile = await getActiveProfile(user.id);
   const service = createServiceRoleClient();
 
+  // Auto-provision the engagement webhook against the agent's Resend
+  // account. Best-effort — if it fails we still create the connection
+  // so the agent can send; webhook events just won't ingest until
+  // they retry. Webhook is account-scoped on Resend's side, so
+  // multiple CMA connections under one API key share the same
+  // webhook + secret.
+  const webhookEndpoint = resolveWebhookEndpoint(req);
+  let webhookResult: { webhook_id: string; signing_secret: string; reused: boolean } | null = null;
+  let webhookError: string | null = null;
+  if (
+    webhookEndpoint &&
+    !webhookEndpoint.includes("://localhost") &&
+    !webhookEndpoint.includes("://127.0.0.1")
+  ) {
+    try {
+      webhookResult = await getOrCreateResendWebhook(apiKey, webhookEndpoint);
+    } catch (e) {
+      webhookError = e instanceof Error ? e.message : "Webhook provision failed";
+    }
+  } else if (webhookEndpoint) {
+    webhookError =
+      "Skipped webhook setup — Resend can't reach localhost. Set NEXT_PUBLIC_APP_URL to a tunnel.";
+  }
+
   // Default flag flips on for the first connection under this profile,
   // gated on DKIM verification — never promote a pending row to default,
   // or the cadence scheduler picks it up and fails on the first send.
@@ -104,6 +129,13 @@ export async function POST(req: NextRequest) {
       resend_domain: domain,
       resend_domain_id: resendInfo.resend_domain_id,
       resend_dkim_status: verified ? "verified" : "pending",
+      resend_webhook_id: webhookResult?.webhook_id ?? null,
+      resend_webhook_secret_encrypted: webhookResult
+        ? encrypt(webhookResult.signing_secret)
+        : null,
+      provider_metadata: webhookError
+        ? { resend: { webhook_error: webhookError } }
+        : {},
       is_active: verified,
       is_default: (count ?? 0) === 0 && verified,
     })
@@ -131,5 +163,17 @@ export async function POST(req: NextRequest) {
     dns_records: resendInfo.records,
     status: resendInfo.status,
     reused: resendInfo.reused ?? false,
+    webhook: webhookResult ? "provisioned" : "skipped",
+    webhook_reused: webhookResult?.reused ?? false,
+    webhook_error: webhookError,
   });
+}
+
+function resolveWebhookEndpoint(req: NextRequest): string | null {
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  if (base) return `${base}/api/cma/webhooks/resend`;
+  const origin = req.nextUrl.origin;
+  return origin
+    ? `${origin.replace(/\/+$/, "")}/api/cma/webhooks/resend`
+    : null;
 }

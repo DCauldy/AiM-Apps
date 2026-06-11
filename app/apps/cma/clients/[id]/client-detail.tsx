@@ -16,6 +16,8 @@ import {
   Trash2,
   Loader2,
   Send,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -193,6 +195,11 @@ export function ClientDetail({
           </div>
         </div>
 
+        {/* Engagement banner — surfaces bounce / complaint on the most
+            recent delivery so the agent acts (fix the address, drop
+            the client) before the next cadence cycle. */}
+        <EngagementBanner deliveries={deliveries} />
+
         {/* Cadence + meta panel */}
         <CadencePanel
           client={client}
@@ -244,6 +251,58 @@ export function ClientDetail({
 // ---------------------------------------------------------------------------
 // Subcomponents
 // ---------------------------------------------------------------------------
+
+function EngagementBanner({
+  deliveries,
+}: {
+  deliveries: CmaClientDelivery[];
+}) {
+  // Walk the deliveries (newest-first) until we hit a sent one — that's
+  // the canonical "last delivery." Anything in front of it is a pending
+  // / failed row we shouldn't gate UX on.
+  const lastSent = deliveries.find((d) => d.delivered_at !== null);
+  if (!lastSent) return null;
+  if (lastSent.complained_at) {
+    return (
+      <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="h-4 w-4 mt-0.5 text-rose-400 flex-shrink-0" />
+          <div>
+            <div className="font-semibold text-rose-300">
+              Spam complaint on last delivery
+            </div>
+            <div className="text-xs text-rose-200/80 mt-0.5">
+              This client marked your last CMA as spam. We&apos;ve
+              auto-unsubscribed them per CAN-SPAM. Re-enrolling without
+              their permission would damage your sending reputation.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (lastSent.bounced_at) {
+    return (
+      <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-400 flex-shrink-0" />
+          <div>
+            <div className="font-semibold text-amber-300">
+              Last delivery bounced
+            </div>
+            <div className="text-xs text-amber-200/80 mt-0.5">
+              The address or email failed at the recipient&apos;s mail
+              server. Confirm the email is current — re-running the
+              cadence at the same address will bounce again and
+              hurt deliverability.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
 
 function SendNowButton({
   clientId,

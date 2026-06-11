@@ -18,19 +18,25 @@ const SUMMARY_FIELDS = `
 `;
 
 /**
- * Derive the engagement chip from the latest delivery's open/click state.
- * Wave 5 will populate opened_at/clicked_at via ESP webhooks; for now
- * everyone is "cold" or "none" depending on whether they've ever
- * received a CMA.
+ * Derive the engagement chip from the latest delivery's state. Wave 5
+ * webhooks populate opened_at / clicked_at / bounced_at / complained_at.
+ * Priority order: complained > bounced > clicked > opened > delivered
+ * > cold > none. Surfacing bounces/complaints in the list (vs. only
+ * the detail page) lets agents quickly find addresses that need
+ * fixing or unsub'd recipients that snuck back in via CRM resync.
  */
 function deriveEngagement(
   delivery: {
     clicked_at: string | null;
     opened_at: string | null;
     delivered_at: string | null;
+    bounced_at: string | null;
+    complained_at: string | null;
   } | null,
 ): CmaClientSummary["engagement"] {
   if (!delivery) return "none";
+  if (delivery.complained_at) return "complained";
+  if (delivery.bounced_at) return "bounced";
   if (delivery.clicked_at) return "clicked";
   if (delivery.opened_at) return "opened";
   if (delivery.delivered_at) return "delivered";
@@ -145,13 +151,17 @@ export async function GET(req: NextRequest) {
       clicked_at: string | null;
       opened_at: string | null;
       delivered_at: string | null;
+      bounced_at: string | null;
+      complained_at: string | null;
     }
   >();
 
   if (ids.length > 0) {
     const { data: deliveries } = await service
       .from("cma_client_deliveries")
-      .select("client_id, clicked_at, opened_at, delivered_at, created_at")
+      .select(
+        "client_id, clicked_at, opened_at, delivered_at, bounced_at, complained_at, created_at",
+      )
       .in("client_id", ids)
       .order("created_at", { ascending: false });
 
@@ -161,6 +171,8 @@ export async function GET(req: NextRequest) {
         clicked_at: d.clicked_at,
         opened_at: d.opened_at,
         delivered_at: d.delivered_at,
+        bounced_at: d.bounced_at,
+        complained_at: d.complained_at,
       });
     }
   }

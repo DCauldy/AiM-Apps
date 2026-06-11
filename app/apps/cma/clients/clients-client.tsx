@@ -15,6 +15,8 @@ import {
   Loader2,
   PlugZap,
   Plus,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -45,6 +47,8 @@ const FILTERS: Array<{ id: CmaClientFilter; label: string }> = [
 function EngagementChip({ value }: { value: CmaClientSummary["engagement"] }) {
   if (value === "none") return <span className="text-xs text-muted-foreground">—</span>;
   const map = {
+    complained: { Icon: ShieldAlert, label: "Spam complaint", cls: "text-rose-400 border-rose-500/50 bg-rose-500/10" },
+    bounced: { Icon: AlertTriangle, label: "Bounced", cls: "text-rose-400 border-rose-500/40 bg-rose-500/5" },
     clicked: { Icon: MousePointerClick, label: "Clicked", cls: "text-emerald-400 border-emerald-500/40 bg-emerald-500/5" },
     opened: { Icon: MailOpen, label: "Opened", cls: "text-sky-400 border-sky-500/40 bg-sky-500/5" },
     delivered: { Icon: Mail, label: "Delivered", cls: "text-muted-foreground border-border bg-card" },

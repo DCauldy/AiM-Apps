@@ -160,6 +160,10 @@ export const cmaDeliver = inngest.createFunction(
         .insert({
           client_id: client.id,
           cma_run_id: cmaResult.cmaRunId,
+          // Persist the connection used so the webhook handler can
+          // load the right per-connection signing secret without
+          // guessing among the user's connections.
+          email_connection_id: emailConn.id,
           landing_page_token: landingToken,
           trigger_source: triggerSource,
           recommended_price_cents: cmaResult.recommendedPriceCents,
@@ -241,6 +245,8 @@ export const cmaDeliver = inngest.createFunction(
             delivered_at: now,
             email_subject: rendered.subject,
             email_html: rendered.html,
+            // ESP-side message id — webhook lookups index here.
+            provider_message_id: sendResult.provider_message_id ?? null,
             send_error: null,
           })
           .eq("id", delivery.id);
