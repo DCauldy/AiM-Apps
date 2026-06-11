@@ -32,6 +32,10 @@ interface FubPerson {
   tags?: string[];
   source?: string | null;
   customFields?: Record<string, string | number | null>;
+  /** FUB's lead pipeline stage (e.g. "Lead", "Active Buyer", "Closed").
+   *  Exposed verbatim via NormalizedContact.raw_stage so the CMA app can
+   *  filter past clients by stage value. */
+  stage?: string | null;
 }
 
 interface FubPeopleResponse {
@@ -112,6 +116,7 @@ function normalize(
     search_areas: extractSearchAreas(conn, customFieldValue, tags),
     tags,
     source: p.source ?? undefined,
+    raw_stage: p.stage ?? undefined,
   };
 }
 

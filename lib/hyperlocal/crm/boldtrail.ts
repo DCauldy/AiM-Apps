@@ -26,6 +26,10 @@ interface BoldTrailContact {
   tags?: string[] | null;
   source?: string | null;
   custom_fields?: Record<string, string | number | null>;
+  /** BoldTrail (kvCORE) pipeline stage / status. Surfaced via
+   *  NormalizedContact.raw_stage for the CMA app's past-client filter. */
+  status?: string | null;
+  stage?: string | null;
 }
 
 interface BoldTrailContactsResponse {
@@ -114,6 +118,7 @@ function normalize(
     search_areas: extractSearchAreas(conn, customFieldValue, tags),
     tags,
     source: c.source ?? undefined,
+    raw_stage: c.status ?? c.stage ?? undefined,
   };
 }
 

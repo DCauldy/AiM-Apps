@@ -22,6 +22,11 @@ interface LoftyLead {
   tags?: string[] | null;
   source?: string | null;
   customFields?: Record<string, string | number | null>;
+  /** Lofty's lead stage / status field. The API exposes both `stage` and
+   *  `leadStatus` on different lead types; we read whichever is present
+   *  so CmaCrmConnection past-client filters can match on either. */
+  stage?: string | null;
+  leadStatus?: string | null;
 }
 
 interface LoftyLeadsResponse {
@@ -108,6 +113,7 @@ function normalize(
     search_areas: extractSearchAreas(conn, customFieldValue, tags),
     tags,
     source: l.source ?? undefined,
+    raw_stage: l.stage ?? l.leadStatus ?? undefined,
   };
 }
 

@@ -497,4 +497,8 @@ export interface NormalizedContact {
   search_areas: string[];
   tags: string[];
   source?: string;
+  /** Lead stage / pipeline status as the CRM reports it. Provider-native
+   *  string ("Closed", "Past Client", "Active Buyer", etc.). Used by the
+   *  CMA app to filter past clients; Hyperlocal ignores this field. */
+  raw_stage?: string;
 }

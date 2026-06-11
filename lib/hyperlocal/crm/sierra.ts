@@ -22,6 +22,10 @@ interface SierraLead {
   tags?: string[] | null;
   source?: string | null;
   customFields?: Record<string, string | number | null>;
+  /** Sierra exposes lead pipeline state as `status` (e.g. "Closed Buyer",
+   *  "Active Prospect"). Surfaced via NormalizedContact.raw_stage. */
+  status?: string | null;
+  leadStatus?: string | null;
 }
 
 interface SierraFindResponse {
@@ -110,6 +114,7 @@ function normalize(
     search_areas: extractSearchAreas(conn, customFieldValue, tags),
     tags,
     source: l.source ?? undefined,
+    raw_stage: l.status ?? l.leadStatus ?? undefined,
   };
 }
 
