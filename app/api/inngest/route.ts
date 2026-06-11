@@ -10,6 +10,8 @@ import { hlGenerate } from "@/lib/inngest/functions/hl-generate";
 import { hlSend } from "@/lib/inngest/functions/hl-send";
 import { hlSendOne } from "@/lib/inngest/functions/hl-send-one";
 import { listingStudioCma } from "@/lib/inngest/functions/listing-studio-cma";
+import { cmaCadenceTick } from "@/lib/inngest/functions/cma-cadence-tick";
+import { cmaDeliver } from "@/lib/inngest/functions/cma-deliver";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -24,5 +26,7 @@ export const { GET, POST, PUT } = serve({
     hlSend,
     hlSendOne,
     listingStudioCma,
+    cmaCadenceTick,
+    cmaDeliver,
   ],
 });

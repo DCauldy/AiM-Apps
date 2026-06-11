@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/hyperlocal-events-rollup",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/cma-tick",
+      "schedule": "0 * * * *"
     }
   ]
 }

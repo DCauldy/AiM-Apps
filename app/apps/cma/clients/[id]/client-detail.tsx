@@ -176,14 +176,20 @@ export function ClientDetail({
               </div>
             </div>
 
-            <EnrollmentControls
-              client={client}
-              busyKey={saving}
-              onEnroll={() => patch({ enrolled: true }, "enroll")}
-              onUnenroll={() => patch({ enrolled: false }, "enroll")}
-              onPause={() => patch({ paused: true }, "pause")}
-              onResume={() => patch({ paused: false }, "pause")}
-            />
+            <div className="flex flex-col gap-2 items-end">
+              <EnrollmentControls
+                client={client}
+                busyKey={saving}
+                onEnroll={() => patch({ enrolled: true }, "enroll")}
+                onUnenroll={() => patch({ enrolled: false }, "enroll")}
+                onPause={() => patch({ paused: true }, "pause")}
+                onResume={() => patch({ paused: false }, "pause")}
+              />
+              <SendNowButton
+                clientId={client.id}
+                disabled={!!client.unsubscribed_at || !client.email || !client.address}
+              />
+            </div>
           </div>
         </div>
 
@@ -238,6 +244,68 @@ export function ClientDetail({
 // ---------------------------------------------------------------------------
 // Subcomponents
 // ---------------------------------------------------------------------------
+
+function SendNowButton({
+  clientId,
+  disabled,
+}: {
+  clientId: string;
+  disabled: boolean;
+}) {
+  const { addToast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const handle = async () => {
+    if (
+      !confirm(
+        "Send a fresh CMA right now? Uses one of your monthly manual sends.",
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/apps/listing-studio/clients/${clientId}/send-now`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? `Send failed (HTTP ${res.status})`);
+      }
+      addToast({
+        title: "Delivery queued",
+        description: `${data.manual_sends_this_month}${
+          data.manual_sends_limit === -1
+            ? ""
+            : ` / ${data.manual_sends_limit}`
+        } manual sends this month`,
+      });
+    } catch (e) {
+      addToast({
+        title: "Send failed",
+        description: e instanceof Error ? e.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handle}
+      disabled={disabled || busy}
+      title={
+        disabled
+          ? "Add an address + email before sending"
+          : "Send a CMA off-cadence"
+      }
+      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent disabled:opacity-50"
+    >
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+      Send now
+    </button>
+  );
+}
 
 function EnrollmentControls({
   client,
