@@ -170,3 +170,152 @@ export interface CmaEmailConnectionsListResponse {
     | "provider_oauth_refresh_token_encrypted"
   >>;
 }
+
+// ---------------------------------------------------------------------------
+// Clients
+// ---------------------------------------------------------------------------
+
+/** Subject property facts cached on cma_clients.property_facts so the
+ *  cadence pipeline doesn't re-run RapidAPI lookups on every delivery.
+ *  Same shape PropertyFacts uses for the CMA pipeline input. */
+export interface CmaClientPropertyFacts {
+  zpid?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  beds?: number | null;
+  baths?: number | null;
+  living_area_sqft?: number | null;
+  lot_area_sqft?: number | null;
+  year_built?: number | null;
+  property_type?: string | null;
+  garage_spaces?: number | null;
+  image_url?: string | null;
+  estimated_value_cents?: number | null;
+}
+
+export interface CmaClient {
+  id: string;
+  user_id: string;
+  profile_id: string | null;
+
+  crm_connection_id: string | null;
+  crm_contact_id: string | null;
+  source: "crm" | "manual";
+
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  address_normalized: string | null;
+
+  property_facts: CmaClientPropertyFacts;
+
+  enrolled: boolean;
+  paused: boolean;
+  cadence_days: number | null;
+  next_due_at: string | null;
+  last_delivered_at: string | null;
+  delivered_count: number;
+  unsubscribed_at: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
+/** Per-cadence-cycle delivery record. 1 row per CMA actually delivered. */
+export interface CmaClientDelivery {
+  id: string;
+  client_id: string;
+  cma_run_id: string | null;
+
+  landing_page_token: string;
+  email_subject: string | null;
+  email_html: string | null;
+
+  delivered_at: string | null;
+  send_error: string | null;
+
+  opened_at: string | null;
+  opened_count: number;
+  clicked_at: string | null;
+  clicked_count: number;
+  replied_at: string | null;
+  bounced_at: string | null;
+  complained_at: string | null;
+
+  recommended_price_cents: number | null;
+  estimated_value_cents: number | null;
+  marketable_value_cents: number | null;
+
+  trigger_source: "cadence" | "manual" | "first_enrollment";
+
+  created_at: string;
+}
+
+/** What a client looks like in the agent's list view — slim projection
+ *  + a derived engagement state for the filter chip. */
+export interface CmaClientSummary {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  address: string | null;
+  enrolled: boolean;
+  paused: boolean;
+  unsubscribed_at: string | null;
+  cadence_days: number | null;
+  next_due_at: string | null;
+  last_delivered_at: string | null;
+  delivered_count: number;
+  /** Derived from the latest cma_client_deliveries row's open/click
+   *  state: "clicked" > "opened" > "delivered" > "cold" (never sent
+   *  or last send is stale). */
+  engagement: "clicked" | "opened" | "delivered" | "cold" | "none";
+}
+
+export type CmaClientFilter =
+  | "all"
+  | "pending"
+  | "enrolled"
+  | "paused"
+  | "unsubscribed";
+
+export interface CmaClientsListResponse {
+  clients: CmaClientSummary[];
+  counts: Record<CmaClientFilter, number>;
+}
+
+export interface CmaClientDetailResponse {
+  client: CmaClient;
+  deliveries: CmaClientDelivery[];
+}
+
+export interface CmaClientPatchBody {
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  property_facts?: Partial<CmaClientPropertyFacts>;
+  enrolled?: boolean;
+  paused?: boolean;
+  cadence_days?: number | null;
+}
+
+export type CmaClientBulkAction = "enroll" | "unenroll" | "pause" | "resume";
+
+export interface CmaClientBulkRequest {
+  client_ids: string[];
+  action: CmaClientBulkAction;
+  /** Optional cadence override applied alongside enroll/resume. */
+  cadence_days?: number | null;
+}
+
+export interface CmaClientBulkResponse {
+  ok: string[];
+  failed: Array<{ id: string; error: string }>;
+}
