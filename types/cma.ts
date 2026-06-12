@@ -166,6 +166,7 @@ export interface CmaCrmSyncResponse {
 export interface CmaEmailConnectionsListResponse {
   connections: Array<Omit<CmaEmailConnection,
     | "resend_api_key_encrypted"
+    | "resend_webhook_secret_encrypted"
     | "provider_api_key_encrypted"
     | "provider_oauth_access_token_encrypted"
     | "provider_oauth_refresh_token_encrypted"
@@ -334,4 +335,24 @@ export interface CmaClientBulkRequest {
 export interface CmaClientBulkResponse {
   ok: string[];
   failed: Array<{ id: string; error: string }>;
+}
+
+// ---------------------------------------------------------------------------
+// Agent settings (cma_agent_settings row)
+// ---------------------------------------------------------------------------
+
+export interface CmaAgentSettings {
+  user_id: string;
+  default_cadence_days: number;
+  default_email_connection_id: string | null;
+  reminder_lead_days: number;
+  manual_review_required: boolean;
+  updated_at: string;
+}
+
+export interface CmaAgentSettingsPatchBody {
+  default_cadence_days?: number;
+  default_email_connection_id?: string | null;
+  reminder_lead_days?: number;
+  manual_review_required?: boolean;
 }
