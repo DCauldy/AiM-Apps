@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function CmaIndexPage() {
-  redirect("/apps/cma/clients");
+  redirect("/apps/cma/dashboard");
 }

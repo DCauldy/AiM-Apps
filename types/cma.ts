@@ -356,3 +356,74 @@ export interface CmaAgentSettingsPatchBody {
   reminder_lead_days?: number;
   manual_review_required?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard
+// ---------------------------------------------------------------------------
+
+/** Slim per-row projection on the upcoming-sends panel — what the
+ *  agent needs to know at a glance about the next cadence cycle. */
+export interface CmaUpcomingDelivery {
+  client_id: string;
+  client_name: string | null;
+  address: string | null;
+  next_due_at: string;
+  cadence_days: number | null;
+}
+
+/** Slim per-row projection on the recent-deliveries panel. */
+export interface CmaRecentDelivery {
+  delivery_id: string;
+  client_id: string;
+  client_name: string | null;
+  address: string | null;
+  delivered_at: string | null;
+  send_error: string | null;
+  recommended_price_cents: number | null;
+  engagement:
+    | "complained"
+    | "bounced"
+    | "clicked"
+    | "opened"
+    | "delivered"
+    | "pending";
+}
+
+/** Aggregated open/click/bounce/complaint rates over a window. The
+ *  dashboard surfaces both this-month and last-30-days so an agent
+ *  can spot a creeping bounce rate before the ESP suspends them. */
+export interface CmaEngagementRates {
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  complained: number;
+  /** opened / delivered, 0-1. Null when delivered = 0. */
+  open_rate: number | null;
+  /** clicked / delivered, 0-1. */
+  click_rate: number | null;
+  /** bounced / sent, 0-1. */
+  bounce_rate: number | null;
+  /** complained / delivered, 0-1. */
+  complaint_rate: number | null;
+}
+
+export interface CmaDashboardResponse {
+  active_clients: number;
+  active_clients_limit: number | "unlimited";
+  pending_review: number;
+  due_within_reminder_window: number;
+  reminder_lead_days: number;
+  manual_review_required: boolean;
+  default_cadence_days: number;
+  /** Stripe-pack tier label ("Pro" / "Bronze" / ...). */
+  tier: string;
+  deliveries_this_month: number;
+  manual_sends_this_month: number;
+  manual_sends_limit: number | "unlimited";
+  upcoming: CmaUpcomingDelivery[];
+  recent: CmaRecentDelivery[];
+  rates_this_month: CmaEngagementRates;
+  rates_last_30_days: CmaEngagementRates;
+}
