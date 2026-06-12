@@ -275,12 +275,19 @@ function Header({ counts }: { counts: Record<CmaClientFilter, number> }) {
           CMA on cadence (default every 90 days).
         </p>
       </div>
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground">
           <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
           <span className="font-semibold text-foreground">{counts.enrolled}</span>
           <span>enrolled</span>
         </span>
+        <Link
+          href="/apps/cma/clients/new"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          New client
+        </Link>
       </div>
     </div>
   );
@@ -552,15 +559,13 @@ function ManualClientHint() {
         Synced from your CRM, but no past clients matched the filter yet.
         Adjust the stage/tag in settings, or add one manually:
       </div>
-      <button
-        type="button"
-        disabled
-        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium opacity-50"
-        title="Manual create lands in Wave 6"
+      <Link
+        href="/apps/cma/clients/new"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
       >
         <Plus className="h-3.5 w-3.5" />
         Add client
-      </button>
+      </Link>
     </div>
   );
 }

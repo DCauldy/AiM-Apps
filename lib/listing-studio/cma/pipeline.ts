@@ -178,13 +178,12 @@ export async function runCmaPipeline(input: RunCmaInput): Promise<RunCmaResult> 
       }),
     ]);
 
-    // 7. Persist. listing_id is NULL in v2 — the canonical link from a
-    //    run back to its delivery / client lives on
-    //    cma_client_deliveries.cma_run_id (caller writes that row).
+    // 7. Persist. The canonical link from a run back to its delivery
+    //    / client lives on cma_client_deliveries.cma_run_id (caller
+    //    writes that row).
     const { data: inserted, error } = await supabase
       .from("ls_cma_runs")
       .insert({
-        listing_id: null,
         comps_source: "rapidapi",
         comps: adjusted,
         adjustment_grid: grid,
@@ -214,7 +213,6 @@ export async function runCmaPipeline(input: RunCmaInput): Promise<RunCmaResult> 
     const message = err instanceof Error ? err.message : String(err);
     try {
       await supabase.from("ls_cma_runs").insert({
-        listing_id: null,
         comps_source: null,
         comps: null,
         adjustment_grid: null,
