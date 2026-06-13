@@ -14,6 +14,10 @@ import {
   type TourRenderRun,
   type TourRenderStep,
 } from "./tour-render.repository";
+import {
+  preflightTourRender,
+  type TourRenderPreflightResult,
+} from "./tour-render-preflight";
 
 type CreateFakeTourRenderRunInput = {
   projectId: string;
@@ -23,6 +27,7 @@ type CreateFakeTourRenderRunInput = {
 type RenderRunServiceOptions = {
   repository?: TourRenderRepository;
   triggerTask?: typeof tasks.trigger<typeof toursRenderNoopProofTask>;
+  skipPreflight?: boolean;
 };
 
 const FAKE_RENDER_OPTIONS = {
@@ -287,6 +292,21 @@ export async function createFakeTourRenderRun(
   options: RenderRunServiceOptions = {}
 ): Promise<TourRenderRun | null> {
   const repository = options.repository ?? (await createTourRenderRepository());
+  if (!options.skipPreflight) {
+    const preflight = await preflightTourRender(
+      {
+        projectId: input.projectId,
+        userId: input.userId,
+        options: FAKE_RENDER_OPTIONS,
+      },
+      { repository }
+    );
+
+    if (!preflight.ok) {
+      return null;
+    }
+  }
+
   const renderableProject = await repository.getRenderableTourProject(input);
   if (!renderableProject) {
     return null;
@@ -345,6 +365,21 @@ export async function createFakeTourRenderRun(
     userId: input.userId,
     triggerRunId: handle.id,
   })) ?? run;
+}
+
+export async function preflightFakeTourRenderRun(
+  input: CreateFakeTourRenderRunInput,
+  options: Pick<RenderRunServiceOptions, "repository"> = {}
+): Promise<TourRenderPreflightResult> {
+  const repository = options.repository ?? (await createTourRenderRepository());
+  return preflightTourRender(
+    {
+      projectId: input.projectId,
+      userId: input.userId,
+      options: FAKE_RENDER_OPTIONS,
+    },
+    { repository }
+  );
 }
 
 export async function getTourRenderRunStatus(

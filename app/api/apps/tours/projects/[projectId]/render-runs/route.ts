@@ -2,6 +2,7 @@ import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access
 import {
   createFakeTourRenderRun,
   listRecentTourRenderRuns,
+  preflightFakeTourRenderRun,
   toTourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/tour-render-runs";
 
@@ -33,15 +34,29 @@ export async function POST(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   const { projectId } = await params;
-  const access = await requireToursAccess({ projectId, requireOpenProject: true });
+  const access = await requireToursAccess({ projectId });
   if (!access.ok) {
     return toursAccessErrorResponse(access);
   }
 
-  const run = await createFakeTourRenderRun({
+  const preflight = await preflightFakeTourRenderRun({
     projectId,
     userId: access.user.id,
   });
+  if (!preflight.ok) {
+    return Response.json(
+      { error: "Tour project is not ready for rendering.", preflight },
+      { status: 422 }
+    );
+  }
+
+  const run = await createFakeTourRenderRun(
+    {
+      projectId,
+      userId: access.user.id,
+    },
+    { skipPreflight: true }
+  );
 
   if (!run) {
     return Response.json(

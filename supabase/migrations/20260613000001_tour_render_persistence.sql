@@ -93,9 +93,16 @@ create index if not exists tour_render_runs_project_created_idx
 create index if not exists tour_render_runs_user_status_idx
   on public.tour_render_runs (user_id, status, created_at desc);
 
+create index if not exists tour_render_runs_result_asset_idx
+  on public.tour_render_runs (result_asset_id)
+  where result_asset_id is not null;
+
 create unique index if not exists tour_render_runs_trigger_run_id_idx
   on public.tour_render_runs (trigger_run_id)
   where trigger_run_id is not null;
+
+create unique index if not exists tour_render_runs_id_project_idx
+  on public.tour_render_runs (id, project_id);
 
 create table if not exists public.tour_render_run_events (
   id uuid primary key default gen_random_uuid(),
@@ -122,7 +129,7 @@ create index if not exists tour_render_run_events_project_created_idx
 
 create table if not exists public.tour_render_assets (
   id uuid primary key default gen_random_uuid(),
-  created_by_run_id uuid references public.tour_render_runs(id) on delete set null,
+  created_by_run_id uuid,
   project_id uuid not null references public.tours_projects(id) on delete cascade,
   scene_id uuid,
   kind text not null,
@@ -165,11 +172,20 @@ alter table public.tour_render_assets
   references public.tour_scenes(id, project_id)
   on delete set null (scene_id);
 
+alter table public.tour_render_assets
+  add constraint tour_render_assets_created_by_run_project_fkey
+  foreign key (created_by_run_id, project_id)
+  references public.tour_render_runs(id, project_id)
+  on delete set null (created_by_run_id);
+
+create unique index if not exists tour_render_assets_id_project_idx
+  on public.tour_render_assets (id, project_id);
+
 alter table public.tour_render_runs
-  add constraint tour_render_runs_result_asset_id_fkey
-  foreign key (result_asset_id)
-  references public.tour_render_assets(id)
-  on delete set null;
+  add constraint tour_render_runs_result_asset_project_fkey
+  foreign key (result_asset_id, project_id)
+  references public.tour_render_assets(id, project_id)
+  on delete set null (result_asset_id);
 
 create index if not exists tour_render_assets_project_kind_fingerprint_idx
   on public.tour_render_assets (project_id, kind, fingerprint_hash, created_at desc);

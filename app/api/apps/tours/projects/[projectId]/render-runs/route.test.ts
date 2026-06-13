@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   ),
   createFakeTourRenderRun: vi.fn(),
   listRecentTourRenderRuns: vi.fn(),
+  preflightFakeTourRenderRun: vi.fn(),
   toTourRenderRunStatusResponse: vi.fn((value) => value),
 }));
 
@@ -34,6 +35,7 @@ vi.mock("@/lib/tours/access.server", () => ({
 vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
   createFakeTourRenderRun: mocks.createFakeTourRenderRun,
   listRecentTourRenderRuns: mocks.listRecentTourRenderRuns,
+  preflightFakeTourRenderRun: mocks.preflightFakeTourRenderRun,
   toTourRenderRunStatusResponse: mocks.toTourRenderRunStatusResponse,
 }));
 
@@ -46,6 +48,10 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
 
   it("creates a fake render run for an open project", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.preflightFakeTourRenderRun.mockResolvedValue({
+      ok: true,
+      summary: { projectId: "project-1" },
+    });
     mocks.createFakeTourRenderRun.mockResolvedValue(run);
 
     const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
@@ -56,12 +62,44 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     await expect(response.json()).resolves.toEqual({ run });
     expect(mocks.requireToursAccess).toHaveBeenCalledWith({
       projectId: "project-1",
-      requireOpenProject: true,
     });
-    expect(mocks.createFakeTourRenderRun).toHaveBeenCalledWith({
+    expect(mocks.preflightFakeTourRenderRun).toHaveBeenCalledWith({
       projectId: "project-1",
       userId: "user-1",
     });
+    expect(mocks.createFakeTourRenderRun).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+      },
+      { skipPreflight: true }
+    );
+  });
+
+  it("returns preflight issues without creating a render run", async () => {
+    const preflight = {
+      ok: false,
+      issues: [
+        {
+          code: "missing_elevenlabs_key",
+          message: "Add an ElevenLabs API key before rendering a voice-over tour.",
+          severity: "blocking",
+        },
+      ],
+    };
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.preflightFakeTourRenderRun.mockResolvedValue(preflight);
+
+    const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
+      params: Promise.resolve({ projectId: "project-1" }),
+    });
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: "Tour project is not ready for rendering.",
+      preflight,
+    });
+    expect(mocks.createFakeTourRenderRun).not.toHaveBeenCalled();
   });
 
   it("returns recent render runs for polling from product state", async () => {
@@ -94,6 +132,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Tour project was not found." });
+    expect(mocks.preflightFakeTourRenderRun).not.toHaveBeenCalled();
     expect(mocks.createFakeTourRenderRun).not.toHaveBeenCalled();
   });
 });

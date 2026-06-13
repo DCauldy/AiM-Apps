@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import type { TourProjectType } from "@/lib/tours/project-types";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
@@ -48,6 +49,17 @@ export type RenderableTourProject = {
     tourType: TourProjectType;
   };
   scenes: RenderableTourScene[];
+};
+
+export type TourRenderPreflightProject = {
+  project: RenderableTourProject["project"] & {
+    status: "open" | "archived";
+  };
+  scenes: TourRenderPreflightScene[];
+};
+
+export type TourRenderPreflightScene = Omit<RenderableTourScene, "authoritativePhoto"> & {
+  authoritativePhoto: RenderableTourScene["authoritativePhoto"] | null;
 };
 
 export type RenderableTourScene = {
@@ -117,6 +129,7 @@ type TourProjectRow = {
   property_address: string;
   listing_url: string | null;
   tour_type: TourProjectType;
+  status?: "open" | "archived";
 };
 
 type TourSceneRow = {
@@ -221,10 +234,16 @@ export type CreateTourRenderAssetInput = {
 };
 
 export type TourRenderRepository = {
+  getTourRenderPreflightProject(input: {
+    projectId: string;
+    userId: string;
+  }): Promise<TourRenderPreflightProject | null>;
   getRenderableTourProject(input: {
     projectId: string;
     userId: string;
   }): Promise<RenderableTourProject | null>;
+  canReadListingMedia(input: { storagePaths: string[] }): Promise<boolean>;
+  canWriteGeneratedMedia(input: { userId: string; projectId: string }): Promise<boolean>;
   getRenderRun(input: {
     runId: string;
     projectId: string;
@@ -284,7 +303,7 @@ export type TourRenderRepository = {
   }): Promise<TourRenderAsset | null>;
 };
 
-const PROJECT_SELECT = "id, user_id, name, property_address, listing_url, tour_type";
+const PROJECT_SELECT = "id, user_id, name, property_address, listing_url, tour_type, status";
 const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion";
 const SOURCE_PHOTO_SELECT =
   "id, project_id, scene_id, storage_path, file_name, content_type, byte_size, width, height, priority, created_at";
@@ -343,12 +362,12 @@ function mapRenderAsset(row: TourRenderAssetRow): TourRenderAsset {
   };
 }
 
-function mapRenderableTourProject(input: {
+function mapTourRenderPreflightProject(input: {
   project: TourProjectRow;
   scenes: TourSceneRow[];
   sourcePhotos: TourSceneSourcePhotoRow[];
   facts: TourSceneFactRow[];
-}): RenderableTourProject {
+}): TourRenderPreflightProject {
   const sourcePhotosBySceneId = new Map<string, TourSceneSourcePhotoRow[]>();
   for (const sourcePhoto of input.sourcePhotos) {
     const scenePhotos = sourcePhotosBySceneId.get(sourcePhoto.scene_id) ?? [];
@@ -369,25 +388,23 @@ function mapRenderableTourProject(input: {
       const [authoritativePhoto] = [...(sourcePhotosBySceneId.get(scene.id) ?? [])].sort(
         (a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at)
       );
-      if (!authoritativePhoto) {
-        return null;
-      }
-
       return {
         id: scene.id,
         title: scene.title,
         sortOrder: scene.sort_order,
         included: scene.included,
         cameraMotion: scene.camera_motion,
-        authoritativePhoto: {
-          id: authoritativePhoto.id,
-          storagePath: authoritativePhoto.storage_path,
-          fileName: authoritativePhoto.file_name,
-          contentType: authoritativePhoto.content_type,
-          byteSize: authoritativePhoto.byte_size,
-          width: authoritativePhoto.width,
-          height: authoritativePhoto.height,
-        },
+        authoritativePhoto: authoritativePhoto
+          ? {
+              id: authoritativePhoto.id,
+              storagePath: authoritativePhoto.storage_path,
+              fileName: authoritativePhoto.file_name,
+              contentType: authoritativePhoto.content_type,
+              byteSize: authoritativePhoto.byte_size,
+              width: authoritativePhoto.width,
+              height: authoritativePhoto.height,
+            }
+          : null,
         proofedFacts: [...(proofedFactsBySceneId.get(scene.id) ?? [])]
           .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at))
           .map((fact) => ({
@@ -396,9 +413,8 @@ function mapRenderableTourProject(input: {
             sortOrder: fact.sort_order,
             sourcePhotoId: fact.source_photo_id,
           })),
-      } satisfies RenderableTourScene;
-    })
-    .filter((scene): scene is RenderableTourScene => Boolean(scene));
+      } satisfies TourRenderPreflightScene;
+    });
 
   return {
     project: {
@@ -408,9 +424,67 @@ function mapRenderableTourProject(input: {
       propertyAddress: input.project.property_address,
       listingUrl: input.project.listing_url,
       tourType: input.project.tour_type,
+      status: input.project.status ?? "open",
     },
     scenes,
   };
+}
+
+async function loadTourRenderPreflightProject(
+  supabase: SupabaseClient,
+  input: { projectId: string; userId: string }
+): Promise<TourRenderPreflightProject | null> {
+  const { data: project, error: projectError } = await supabase
+    .from("tours_projects")
+    .select(PROJECT_SELECT)
+    .eq("id", input.projectId)
+    .eq("user_id", input.userId)
+    .maybeSingle<TourProjectRow>();
+
+  if (projectError || !project) {
+    return null;
+  }
+
+  const { data: scenes, error: scenesError } = await supabase
+    .from("tour_scenes")
+    .select(SCENE_SELECT)
+    .eq("project_id", input.projectId)
+    .order("sort_order", { ascending: true });
+
+  if (scenesError || !scenes) {
+    return null;
+  }
+
+  const { data: sourcePhotos, error: sourcePhotosError } = await supabase
+    .from("tour_scene_source_photos")
+    .select(SOURCE_PHOTO_SELECT)
+    .eq("project_id", input.projectId)
+    .order("priority", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (sourcePhotosError || !sourcePhotos) {
+    return null;
+  }
+
+  const { data: facts, error: factsError } = await supabase
+    .from("tour_scene_facts")
+    .select(FACT_SELECT)
+    .eq("project_id", input.projectId)
+    .eq("proof_status", "proofed")
+    .order("scene_id", { ascending: true })
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (factsError || !facts) {
+    return null;
+  }
+
+  return mapTourRenderPreflightProject({
+    project,
+    scenes: scenes as TourSceneRow[],
+    sourcePhotos: sourcePhotos as TourSceneSourcePhotoRow[],
+    facts: facts as TourSceneFactRow[],
+  });
 }
 
 export async function createTourRenderRepository(): Promise<TourRenderRepository> {
@@ -420,58 +494,63 @@ export async function createTourRenderRepository(): Promise<TourRenderRepository
 
 export function createTourRenderRepositoryFromSupabase(supabase: SupabaseClient): TourRenderRepository {
   return {
+    async getTourRenderPreflightProject(input) {
+      return loadTourRenderPreflightProject(supabase, input);
+    },
+
     async getRenderableTourProject(input) {
-      const { data: project, error: projectError } = await supabase
-        .from("tours_projects")
-        .select(PROJECT_SELECT)
-        .eq("id", input.projectId)
-        .eq("user_id", input.userId)
-        .maybeSingle<TourProjectRow>();
-
-      if (projectError || !project) {
+      const preflightProject = await loadTourRenderPreflightProject(supabase, input);
+      if (!preflightProject) {
         return null;
       }
 
-      const { data: scenes, error: scenesError } = await supabase
-        .from("tour_scenes")
-        .select(SCENE_SELECT)
-        .eq("project_id", input.projectId)
-        .order("sort_order", { ascending: true });
+      return {
+        project: {
+          id: preflightProject.project.id,
+          userId: preflightProject.project.userId,
+          name: preflightProject.project.name,
+          propertyAddress: preflightProject.project.propertyAddress,
+          listingUrl: preflightProject.project.listingUrl,
+          tourType: preflightProject.project.tourType,
+        },
+        scenes: preflightProject.scenes.filter(
+          (scene): scene is RenderableTourScene => scene.authoritativePhoto !== null
+        ),
+      };
+    },
 
-      if (scenesError || !scenes) {
-        return null;
+    async canReadListingMedia(input) {
+      for (const storagePath of input.storagePaths) {
+        const { data, error } = await supabase.storage
+          .from("tours-listing-media")
+          .createSignedUrl(storagePath, 60);
+
+        if (error || !data?.signedUrl) {
+          return false;
+        }
       }
 
-      const { data: sourcePhotos, error: sourcePhotosError } = await supabase
-        .from("tour_scene_source_photos")
-        .select(SOURCE_PHOTO_SELECT)
-        .eq("project_id", input.projectId)
-        .order("priority", { ascending: true })
-        .order("created_at", { ascending: true });
+      return true;
+    },
 
-      if (sourcePhotosError || !sourcePhotos) {
-        return null;
+    async canWriteGeneratedMedia(input) {
+      const storagePath = `${input.userId}/${input.projectId}/preflight/${randomUUID()}.json`;
+      const bucket = supabase.storage.from("tours-generated-media");
+      const { error: uploadError } = await bucket.upload(
+        storagePath,
+        new Blob([JSON.stringify({ ok: true })], { type: "application/json" }),
+        {
+          contentType: "application/json",
+          upsert: false,
+        }
+      );
+
+      if (uploadError) {
+        return false;
       }
 
-      const { data: facts, error: factsError } = await supabase
-        .from("tour_scene_facts")
-        .select(FACT_SELECT)
-        .eq("project_id", input.projectId)
-        .eq("proof_status", "proofed")
-        .order("scene_id", { ascending: true })
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: true });
-
-      if (factsError || !facts) {
-        return null;
-      }
-
-      return mapRenderableTourProject({
-        project,
-        scenes: scenes as TourSceneRow[],
-        sourcePhotos: sourcePhotos as TourSceneSourcePhotoRow[],
-        facts: facts as TourSceneFactRow[],
-      });
+      const { error: removeError } = await bucket.remove([storagePath]);
+      return !removeError;
     },
 
     async createRenderRun(input) {
