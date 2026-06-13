@@ -6,6 +6,7 @@ import {
 } from "@/lib/tours/rendering/generate-tour-project-video";
 import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/tour-voiceover";
 import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/openrouter-script-planning-provider";
+import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/tour-transitions";
 import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/tour-render.repository";
 
 export type RenderTourProjectPayload = Omit<GenerateTourProjectVideoInput, "progress">;
@@ -43,6 +44,9 @@ export const renderTourProjectTask = task({
           apiKey: process.env.OPENROUTER_API_KEY ?? "",
         }),
         voiceoverProvider: createElevenLabsVoiceoverProvider(),
+        transitionDetectionProvider: createOpenRouterTransitionDetectionProvider({
+          apiKey: process.env.OPENROUTER_API_KEY ?? "",
+        }),
       }
     );
 

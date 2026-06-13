@@ -30,6 +30,18 @@ export type TourRenderOptions = {
     wordsPerPhrase?: number;
     useNormalizedAlignment?: boolean;
   };
+  transitionDetectionModelId?: string;
+  transitionMinimumDurationSeconds?: number;
+  transitionDurationRoundingIncrementSeconds?: number;
+  sceneClipProviderModelId?: string;
+  sceneClipRenderSettings?: {
+    width?: number;
+    height?: number;
+    fps?: number;
+    crf?: number;
+    fadeSeconds?: number;
+    cropMode?: "cover" | "contain";
+  };
 };
 
 export type TourRenderPreflightIssueCode =

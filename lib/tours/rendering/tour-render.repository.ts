@@ -257,6 +257,7 @@ export type TourRenderRepository = {
     storagePaths: string[];
     expiresInSeconds?: number;
   }): Promise<SignedSourcePhotoUrl[]>;
+  downloadListingMedia(input: { storagePath: string }): Promise<Buffer | null>;
   uploadRenderAssetJson(input: {
     userId: string;
     projectId: string;
@@ -611,6 +612,18 @@ export function createTourRenderRepositoryFromSupabase(supabase: SupabaseClient)
       }
 
       return signedUrls;
+    },
+
+    async downloadListingMedia(input) {
+      const { data, error } = await supabase.storage
+        .from("tours-listing-media")
+        .download(input.storagePath);
+
+      if (error || !data) {
+        return null;
+      }
+
+      return Buffer.from(await data.arrayBuffer());
     },
 
     async uploadRenderAssetJson(input) {

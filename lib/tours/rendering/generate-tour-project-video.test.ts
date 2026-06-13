@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -9,7 +10,10 @@ import type {
   TourRenderRepository,
   TourRenderRun,
 } from "./tour-render.repository";
+import type { SceneClipRenderer } from "./tour-scene-clips";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
+import type { TransitionDetectionProvider } from "./tour-transitions";
+import type { VoiceoverProvider } from "./tour-voiceover";
 
 const baseRun: TourRenderRun = {
   id: "run-1",
@@ -85,6 +89,22 @@ const scriptPlanAsset: TourRenderAsset = {
   createdAt: "2026-06-13T12:00:00.000Z",
 };
 
+const voiceoverAudioAsset: TourRenderAsset = {
+  ...scriptPlanAsset,
+  id: "asset-audio",
+  kind: "voiceover_audio",
+  storagePath: "user-1/project-1/run-1/voiceover.mp3",
+  contentType: "audio/mpeg",
+};
+
+const voiceoverTranscriptAsset: TourRenderAsset = {
+  ...scriptPlanAsset,
+  id: "asset-transcript",
+  kind: "voiceover_transcript",
+  storagePath: "user-1/project-1/run-1/voiceover-transcript.json",
+  contentType: "application/json",
+};
+
 function runWith(overrides: Partial<TourRenderRun>): TourRenderRun {
   return {
     ...baseRun,
@@ -104,12 +124,17 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
         signedUrl: "https://signed.example/kitchen.jpg",
       },
     ]),
+    downloadListingMedia: vi.fn().mockResolvedValue(Buffer.from("jpg-bytes")),
     uploadRenderAssetJson: vi.fn().mockResolvedValue({
       storageBucket: "tours-generated-media",
       storagePath: "user-1/project-1/run-1/script-plan.json",
       contentType: "application/json",
     }),
-    uploadRenderAssetBytes: vi.fn(),
+    uploadRenderAssetBytes: vi.fn().mockResolvedValue({
+      storageBucket: "tours-generated-media",
+      storagePath: "user-1/project-1/run-1/voiceover.mp3",
+      contentType: "audio/mpeg",
+    }),
     downloadRenderAssetJson: vi.fn().mockResolvedValue({
       fullScript: "Welcome to the kitchen.",
       sceneTimings: [
@@ -200,6 +225,12 @@ describe("generateTourProjectVideo", () => {
       },
     });
     const progress = vi.fn();
+    const sceneClipRenderer: SceneClipRenderer = {
+      renderSceneClip: vi.fn(async (input) => {
+        await writeFile(input.outputVideoPath, Buffer.from("mp4-bytes"));
+        return {};
+      }),
+    };
 
     const result = await generateTourProjectVideo(
       {
@@ -209,7 +240,7 @@ describe("generateTourProjectVideo", () => {
         options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: true },
         progress,
       },
-      { repository, preflight, scriptPlanningProvider }
+      { repository, preflight, scriptPlanningProvider, sceneClipRenderer }
     );
 
     expect(result?.status).toBe("failed");
@@ -221,7 +252,7 @@ describe("generateTourProjectVideo", () => {
       },
       { repository }
     );
-    expect(repository.updateProgress).toHaveBeenCalledTimes(6);
+    expect(repository.updateProgress).toHaveBeenCalledTimes(8);
     expect(repository.updateProgress).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -238,7 +269,7 @@ describe("generateTourProjectVideo", () => {
       })
     );
     expect(repository.updateProgress).toHaveBeenNthCalledWith(
-      6,
+      8,
       expect.objectContaining({
         step: "uploading_final",
         progressPercent: 90,
@@ -260,6 +291,14 @@ describe("generateTourProjectVideo", () => {
         kind: "script_plan",
         storageBucket: "tours-generated-media",
         storagePath: "user-1/project-1/run-1/script-plan.json",
+        reusable: true,
+      })
+    );
+    expect(repository.createAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "scene_clip",
+        sceneId: "scene-1",
+        storageBucket: "tours-generated-media",
         reusable: true,
       })
     );
@@ -368,6 +407,131 @@ describe("generateTourProjectVideo", () => {
       expect.objectContaining({
         step: "failed",
         safeMessage: "Tour render failed before rendering could complete.",
+      })
+    );
+  });
+
+  it("marks the run failed with a safe message when transition detection is invalid", async () => {
+    const projectWithVoiceover: RenderableTourProject = {
+      ...baseProject,
+      project: {
+        ...baseProject.project,
+        tourType: "tour_video_voice_over",
+      },
+      scenes: [
+        baseProject.scenes[0],
+        {
+          ...baseProject.scenes[0],
+          id: "scene-2",
+          title: "Patio",
+          sortOrder: 2,
+          authoritativePhoto: {
+            ...baseProject.scenes[0].authoritativePhoto,
+            id: "photo-2",
+            storagePath: "user-1/project-1/patio.jpg",
+            fileName: "patio.jpg",
+          },
+          proofedFacts: [
+            {
+              id: "fact-2",
+              text: "Covered outdoor dining",
+              sortOrder: 1,
+              sourcePhotoId: "photo-2",
+            },
+          ],
+        },
+      ],
+    };
+    const repository = createRepository({
+      getRenderableTourProject: vi.fn().mockResolvedValue(projectWithVoiceover),
+      createSignedSourcePhotoUrls: vi.fn().mockResolvedValue([
+        {
+          storagePath: "user-1/project-1/kitchen.jpg",
+          signedUrl: "https://signed.example/kitchen.jpg",
+        },
+        {
+          storagePath: "user-1/project-1/patio.jpg",
+          signedUrl: "https://signed.example/patio.jpg",
+        },
+      ]),
+      createAsset: vi
+        .fn()
+        .mockResolvedValueOnce(scriptPlanAsset)
+        .mockResolvedValueOnce(voiceoverAudioAsset)
+        .mockResolvedValueOnce(voiceoverTranscriptAsset),
+    });
+    const scriptPlanningProvider: TourScriptPlanningProvider = {
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Welcome to the kitchen. Outside is the patio.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            scriptText: "Welcome to the kitchen.",
+            durationSeconds: 3,
+          },
+          {
+            sceneId: "scene-2",
+            scriptText: "Outside is the patio.",
+            durationSeconds: 3,
+          },
+        ],
+        model: "test-model",
+      }),
+    };
+    const voiceoverProvider: VoiceoverProvider = {
+      generateVoiceover: vi.fn(async (input) => {
+        await writeFile(input.outputAudioPath, Buffer.from("mp3-bytes"));
+        return {
+          audioFilePath: input.outputAudioPath,
+          transcript: [
+            { text: "Welcome to the kitchen.", offsets: { from: 0, to: 1500 } },
+            { text: "Outside is the patio.", offsets: { from: 1500, to: 3200 } },
+          ],
+        };
+      }),
+    };
+    const transitionDetectionProvider: TransitionDetectionProvider = {
+      detectTransitions: vi.fn().mockResolvedValue("{not-json"),
+    };
+    const preflight = vi.fn().mockResolvedValue({
+      ok: true,
+      summary: {
+        projectId: "project-1",
+        tourType: "tour_video_voice_over",
+        renderMode: "ken_burns_ffmpeg",
+        includedSceneCount: 2,
+        sourcePhotoCount: 2,
+        proofedFactCount: 2,
+        requiredProviderKeys: ["elevenlabs"],
+      },
+    });
+
+    const result = await generateTourProjectVideo(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        renderRunId: "run-1",
+        options: {
+          renderMode: "ken_burns_ffmpeg",
+          reuseExistingAssets: false,
+          elevenLabsVoiceId: "voice-1",
+        },
+      },
+      {
+        repository,
+        preflight,
+        scriptPlanningProvider,
+        voiceoverProvider,
+        transitionDetectionProvider,
+        getApiKey: vi.fn().mockResolvedValue("elevenlabs-key"),
+      }
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(repository.markFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: "failed",
+        safeMessage: "Scene transition detection returned an invalid response.",
       })
     );
   });
