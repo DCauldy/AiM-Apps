@@ -216,6 +216,25 @@ export function toTourRenderRunStatusResponse(run: TourRenderRun): TourRenderRun
   };
 }
 
+export function toTourRenderRunStatusResponseWithResultUrl(
+  run: TourRenderRun,
+  resultUrl: { downloadUrl: string; storagePath: string } | null
+): TourRenderRunStatusResponse {
+  const response = toTourRenderRunStatusResponse(run);
+  if (!response.result || !resultUrl) {
+    return response;
+  }
+
+  return {
+    ...response,
+    result: {
+      ...response.result,
+      downloadUrl: resultUrl.downloadUrl,
+      storagePath: resultUrl.storagePath,
+    },
+  };
+}
+
 function isFakeRenderRun(run: TourRenderRun): boolean {
   return run.options.fakeRenderRun === true;
 }
@@ -543,6 +562,49 @@ export async function getTourRenderRunStatus(
   }
 
   return advanceFakeRunIfNeeded(repository, run);
+}
+
+export async function getTourRenderRunResultUrl(
+  input: {
+    projectId: string;
+    userId: string;
+    runId: string;
+    resultAssetId: string | null;
+  },
+  options: RenderRunServiceOptions = {}
+): Promise<{ downloadUrl: string; storagePath: string } | null> {
+  if (!input.resultAssetId) {
+    return null;
+  }
+
+  const repository = options.repository ?? (await createTourRenderRepository());
+  const asset = await repository.getAsset({
+    assetId: input.resultAssetId,
+    projectId: input.projectId,
+  });
+
+  if (
+    !asset ||
+    asset.kind !== "final_video" ||
+    asset.storageBucket !== "tours-generated-media" ||
+    !asset.storagePath
+  ) {
+    return null;
+  }
+
+  const signed = await repository.createSignedGeneratedMediaUrl({
+    storageBucket: asset.storageBucket,
+    storagePath: asset.storagePath,
+  });
+
+  if (!signed) {
+    return null;
+  }
+
+  return {
+    downloadUrl: signed.signedUrl,
+    storagePath: signed.storagePath,
+  };
 }
 
 export async function listRecentTourRenderRuns(

@@ -22,7 +22,10 @@ const mocks = vi.hoisted(() => ({
     Response.json({ error: access.error }, { status: access.status })
   ),
   getTourRenderRunStatus: vi.fn(),
-  toTourRenderRunStatusResponse: vi.fn((value) => value),
+  getTourRenderRunResultUrl: vi.fn(),
+  toTourRenderRunStatusResponseWithResultUrl: vi.fn((value, resultUrl) =>
+    resultUrl ? { ...value, result: { assetId: value.resultAssetId, ...resultUrl } } : value
+  ),
 }));
 
 vi.mock("@/lib/tours/access.server", () => ({
@@ -31,8 +34,9 @@ vi.mock("@/lib/tours/access.server", () => ({
 }));
 
 vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
+  getTourRenderRunResultUrl: mocks.getTourRenderRunResultUrl,
   getTourRenderRunStatus: mocks.getTourRenderRunStatus,
-  toTourRenderRunStatusResponse: mocks.toTourRenderRunStatusResponse,
+  toTourRenderRunStatusResponseWithResultUrl: mocks.toTourRenderRunStatusResponseWithResultUrl,
 }));
 
 import { GET } from "./route";
@@ -45,6 +49,7 @@ describe("GET /api/apps/tours/projects/:projectId/render-runs/:runId/status", ()
   it("returns the project-scoped render run status", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
     mocks.getTourRenderRunStatus.mockResolvedValue(run);
+    mocks.getTourRenderRunResultUrl.mockResolvedValue(null);
 
     const response = await GET(new Request("http://localhost/api"), {
       params: Promise.resolve({ projectId: "project-1", runId: "run-1" }),
@@ -56,6 +61,12 @@ describe("GET /api/apps/tours/projects/:projectId/render-runs/:runId/status", ()
       projectId: "project-1",
       runId: "run-1",
       userId: "user-1",
+    });
+    expect(mocks.getTourRenderRunResultUrl).toHaveBeenCalledWith({
+      projectId: "project-1",
+      runId: "run-1",
+      userId: "user-1",
+      resultAssetId: undefined,
     });
   });
 

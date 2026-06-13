@@ -1,7 +1,8 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 import {
+  getTourRenderRunResultUrl,
   getTourRenderRunStatus,
-  toTourRenderRunStatusResponse,
+  toTourRenderRunStatusResponseWithResultUrl,
 } from "@/lib/tours/rendering/tour-render-runs";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,14 @@ export async function GET(
     return Response.json({ error: "Render run was not found." }, { status: 404 });
   }
 
+  const resultUrl = await getTourRenderRunResultUrl({
+    projectId,
+    runId,
+    userId: access.user.id,
+    resultAssetId: run.resultAssetId,
+  });
+
   return Response.json({
-    run: toTourRenderRunStatusResponse(run),
+    run: toTourRenderRunStatusResponseWithResultUrl(run, resultUrl),
   });
 }

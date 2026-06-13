@@ -6,6 +6,7 @@ import {
 } from "./tour-render-preflight";
 import {
   createTourRenderRepository,
+  type TourRenderAsset,
   type TourRenderRepository,
   type TourRenderRun,
   type TourRenderStep,
@@ -34,6 +35,11 @@ import {
   type ImageToVideoProvider,
   type SceneClipRenderer,
 } from "./tour-scene-clips";
+import {
+  renderFinalVideoStage,
+  TourFinalRenderError,
+  type FinalVideoRenderer,
+} from "./tour-final-render";
 
 export type TourRenderProgressUpdate = {
   step: TourRenderStep;
@@ -60,21 +66,10 @@ type GenerateTourProjectVideoOptions = {
   voiceoverProvider?: VoiceoverProvider;
   transitionDetectionProvider?: TransitionDetectionProvider;
   sceneClipRenderer?: SceneClipRenderer;
+  finalVideoRenderer?: FinalVideoRenderer;
   imageToVideoProvider?: ImageToVideoProvider;
   getApiKey?: typeof getUserApiKey;
 };
-
-const POST_SCRIPT_RENDER_SHELL_STEPS: TourRenderProgressUpdate[] = [
-  {
-    step: "uploading_final",
-    label: "Uploading Final Video",
-    progressPercent: 90,
-    message: "Final video upload stage reserved for the production render pipeline.",
-  },
-];
-
-const RENDER_WORKFLOW_NOT_IMPLEMENTED_MESSAGE =
-  "Final video rendering is not implemented yet.";
 
 function safeErrorMessage(_error: unknown): string {
   if (_error instanceof TourTransitionDetectionError) {
@@ -93,6 +88,27 @@ function safeErrorMessage(_error: unknown): string {
       return "Scene clip asset could not be recorded.";
     }
     return "Scene clip rendering failed.";
+  }
+  if (_error instanceof TourFinalRenderError) {
+    if (_error.code === "CONCAT_FAILED") {
+      return "Scene clips could not be joined.";
+    }
+    if (_error.code === "MUX_FAILED") {
+      return "Final video mux failed.";
+    }
+    if (_error.code === "JOINED_SCENES_UPLOAD_FAILED") {
+      return "Joined scene video upload failed.";
+    }
+    if (_error.code === "FINAL_VIDEO_UPLOAD_FAILED") {
+      return "Final video upload failed.";
+    }
+    if (_error.code === "JOINED_SCENES_ASSET_CREATE_FAILED") {
+      return "Joined scene video asset could not be recorded.";
+    }
+    if (_error.code === "FINAL_VIDEO_ASSET_CREATE_FAILED") {
+      return "Final video asset could not be recorded.";
+    }
+    return "Final video rendering failed.";
   }
 
   return "Tour render failed before rendering could complete.";
@@ -310,6 +326,7 @@ export async function generateTourProjectVideo(
     });
 
     let voiceoverAssetIds: { audioAssetId: string; transcriptAssetId: string } | null = null;
+    let voiceoverAudioAsset: TourRenderAsset | null = null;
     let transitionAssetIds:
       | { transitionsAssetId: string; durationsAssetId: string }
       | null = null;
@@ -366,6 +383,7 @@ export async function generateTourProjectVideo(
         audioAssetId: voiceoverResult.audioAsset.id,
         transcriptAssetId: voiceoverResult.transcriptAsset.id,
       };
+      voiceoverAudioAsset = voiceoverResult.audioAsset;
 
       await recordProgress(repository, input, {
         step: "detecting_transitions",
@@ -501,25 +519,90 @@ export async function generateTourProjectVideo(
       },
     });
 
-    for (const step of POST_SCRIPT_RENDER_SHELL_STEPS) {
-      await recordProgress(repository, input, {
-        ...step,
-        metadata: {
-          ...(step.metadata ?? {}),
-          preflightSummary: preflightResult.summary,
-          scriptPlanAssetId: scriptPlanResult.asset.id,
-          ...(voiceoverAssetIds ?? {}),
-          ...(transitionAssetIds ?? {}),
-          sceneClipAssetIds: sceneClipResult.clips.map((clip) => clip.asset.id),
-        },
-      });
+    await recordProgress(repository, input, {
+      step: "joining_video",
+      label: "Joining Scene Clips",
+      progressPercent: 86,
+      sceneClipCompletedCount: sceneClipResult.completedCount,
+      sceneClipTotalCount: sceneClipResult.totalCount,
+      message: "Joining ordered scene clips for the final render.",
+      metadata: {
+        preflightSummary: preflightResult.summary,
+        scriptPlanAssetId: scriptPlanResult.asset.id,
+        ...(voiceoverAssetIds ?? {}),
+        ...(transitionAssetIds ?? {}),
+        sceneClipAssetIds: sceneClipResult.clips.map((clip) => clip.asset.id),
+      },
+    });
+
+    const finalRenderResult = await renderFinalVideoStage({
+      projectId: input.projectId,
+      userId: input.userId,
+      runId: input.renderRunId,
+      repository,
+      clips: sceneClipResult.clips.map((clip) => ({
+        sceneId: clip.sceneId,
+        asset: clip.asset,
+        fingerprintHash: clip.fingerprintHash,
+      })),
+      voiceoverAsset: voiceoverAudioAsset,
+      renderer: options.finalVideoRenderer,
+      options: {
+        muxSettings: input.options?.finalMuxSettings,
+      },
+    });
+
+    await recordProgress(repository, input, {
+      step: "uploading_final",
+      label: "Uploading Final Video",
+      progressPercent: 96,
+      sceneClipCompletedCount: sceneClipResult.completedCount,
+      sceneClipTotalCount: sceneClipResult.totalCount,
+      message: "Final video was uploaded and persisted.",
+      metadata: {
+        joinedScenesAssetId: finalRenderResult.joinedScenesAsset.id,
+        finalVideoAssetId: finalRenderResult.finalVideoAsset.id,
+        joinedScenesFingerprintHash: finalRenderResult.joinedScenesFingerprintHash,
+        finalVideoFingerprintHash: finalRenderResult.finalVideoFingerprintHash,
+      },
+    });
+
+    const completed = await repository.markCompleted({
+      runId: input.renderRunId,
+      projectId: input.projectId,
+      userId: input.userId,
+      resultAssetId: finalRenderResult.finalVideoAsset.id,
+    });
+
+    if (!completed) {
+      return markShellFailed(
+        repository,
+        input,
+        "Final video was saved, but the render run could not be completed."
+      );
     }
 
-    return markShellFailed(
-      repository,
-      input,
-      RENDER_WORKFLOW_NOT_IMPLEMENTED_MESSAGE
-    );
+    await repository.appendEvent({
+      runId: input.renderRunId,
+      projectId: input.projectId,
+      step: "completed",
+      status: "completed",
+      safeMessage: "Tour render completed.",
+      metadata: {
+        finalVideoAssetId: finalRenderResult.finalVideoAsset.id,
+      },
+    });
+
+    await notifyProgress(input, {
+      step: "completed",
+      label: "Completed",
+      progressPercent: 100,
+      sceneClipCompletedCount: sceneClipResult.completedCount,
+      sceneClipTotalCount: sceneClipResult.totalCount,
+      message: "Tour render completed.",
+    });
+
+    return completed;
   } catch (error) {
     return markShellFailed(repository, input, safeErrorMessage(error));
   }

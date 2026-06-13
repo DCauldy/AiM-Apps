@@ -33,6 +33,8 @@ export type TourRenderRunStatusResponse = {
   updatedAt: string;
   result: {
     assetId: string;
+    downloadUrl?: string;
+    storagePath?: string;
   } | null;
   error: {
     message: string;

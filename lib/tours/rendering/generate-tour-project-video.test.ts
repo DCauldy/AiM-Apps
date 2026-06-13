@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { generateTourProjectVideo } from "./generate-tour-project-video";
+import type { FinalVideoRenderer } from "./tour-final-render";
 import type {
   RenderableTourProject,
   TourRenderAsset,
@@ -105,6 +106,34 @@ const voiceoverTranscriptAsset: TourRenderAsset = {
   contentType: "application/json",
 };
 
+const sceneClipAsset: TourRenderAsset = {
+  ...scriptPlanAsset,
+  id: "asset-scene-clip",
+  sceneId: "scene-1",
+  kind: "scene_clip",
+  storagePath: "user-1/project-1/run-1/scene-clip.mp4",
+  contentType: "video/mp4",
+  fingerprintHash: "scene-clip-fingerprint",
+};
+
+const joinedScenesAsset: TourRenderAsset = {
+  ...scriptPlanAsset,
+  id: "asset-joined-scenes",
+  kind: "joined_scenes",
+  storagePath: "user-1/project-1/run-1/joined-scenes.mp4",
+  contentType: "video/mp4",
+  fingerprintHash: "joined-scenes-fingerprint",
+};
+
+const finalVideoAsset: TourRenderAsset = {
+  ...scriptPlanAsset,
+  id: "asset-final-video",
+  kind: "final_video",
+  storagePath: "user-1/project-1/run-1/final-video.mp4",
+  contentType: "video/mp4",
+  fingerprintHash: "final-video-fingerprint",
+};
+
 function runWith(overrides: Partial<TourRenderRun>): TourRenderRun {
   return {
     ...baseRun,
@@ -130,11 +159,13 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
       storagePath: "user-1/project-1/run-1/script-plan.json",
       contentType: "application/json",
     }),
-    uploadRenderAssetBytes: vi.fn().mockResolvedValue({
-      storageBucket: "tours-generated-media",
-      storagePath: "user-1/project-1/run-1/voiceover.mp3",
-      contentType: "audio/mpeg",
-    }),
+    uploadRenderAssetBytes: vi.fn((input) =>
+      Promise.resolve({
+        storageBucket: "tours-generated-media",
+        storagePath: `user-1/project-1/run-1/${input.kind}.${input.extension}`,
+        contentType: input.contentType,
+      })
+    ),
     downloadRenderAssetJson: vi.fn().mockResolvedValue({
       fullScript: "Welcome to the kitchen.",
       sceneTimings: [
@@ -146,6 +177,11 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
       ],
       model: "test-model",
     }),
+    downloadRenderAssetBytes: vi.fn((input) =>
+      Promise.resolve(Buffer.from(input.storagePath.includes("voiceover") ? "mp3" : "mp4"))
+    ),
+    createSignedGeneratedMediaUrl: vi.fn(),
+    getAsset: vi.fn(),
     getRenderRun: vi.fn().mockResolvedValue(baseRun),
     listRecentRenderRuns: vi.fn(),
     createRenderRun: vi.fn(),
@@ -185,7 +221,17 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     ),
     recordHeartbeat: vi.fn(),
     appendEvent: vi.fn().mockResolvedValue(true),
-    createAsset: vi.fn().mockResolvedValue(scriptPlanAsset),
+    createAsset: vi.fn((input) => {
+      const byKind: Partial<Record<TourRenderAsset["kind"], TourRenderAsset>> = {
+        script_plan: scriptPlanAsset,
+        voiceover_audio: voiceoverAudioAsset,
+        voiceover_transcript: voiceoverTranscriptAsset,
+        scene_clip: sceneClipAsset,
+        joined_scenes: joinedScenesAsset,
+        final_video: finalVideoAsset,
+      };
+      return Promise.resolve(byKind[input.kind as TourRenderAsset["kind"]] ?? scriptPlanAsset);
+    }),
     recordRunAssetUsage: vi.fn(),
     findReusableAsset: vi.fn().mockResolvedValue(null),
     ...overrides,
@@ -197,7 +243,7 @@ describe("generateTourProjectVideo", () => {
     vi.clearAllMocks();
   });
 
-  it("re-runs preflight, records stable shell progress, and fails until final rendering exists", async () => {
+  it("re-runs preflight, records stable progress, and completes with a final video asset", async () => {
     const repository = createRepository();
     const scriptPlanningProvider: TourScriptPlanningProvider = {
       planScript: vi.fn().mockResolvedValue({
@@ -231,6 +277,16 @@ describe("generateTourProjectVideo", () => {
         return {};
       }),
     };
+    const finalVideoRenderer: FinalVideoRenderer = {
+      joinSceneClips: vi.fn(async (input) => {
+        await writeFile(input.joinedScenesPath, Buffer.from("joined-mp4"));
+        return {};
+      }),
+      muxFinalVideo: vi.fn(async (input) => {
+        await writeFile(input.finalVideoPath, Buffer.from("final-mp4"));
+        return {};
+      }),
+    };
 
     const result = await generateTourProjectVideo(
       {
@@ -240,10 +296,10 @@ describe("generateTourProjectVideo", () => {
         options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: true },
         progress,
       },
-      { repository, preflight, scriptPlanningProvider, sceneClipRenderer }
+      { repository, preflight, scriptPlanningProvider, sceneClipRenderer, finalVideoRenderer }
     );
 
-    expect(result?.status).toBe("failed");
+    expect(result?.status).toBe("completed");
     expect(preflight).toHaveBeenCalledWith(
       {
         projectId: "project-1",
@@ -252,7 +308,7 @@ describe("generateTourProjectVideo", () => {
       },
       { repository }
     );
-    expect(repository.updateProgress).toHaveBeenCalledTimes(8);
+    expect(repository.updateProgress).toHaveBeenCalledTimes(9);
     expect(repository.updateProgress).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -271,8 +327,15 @@ describe("generateTourProjectVideo", () => {
     expect(repository.updateProgress).toHaveBeenNthCalledWith(
       8,
       expect.objectContaining({
+        step: "joining_video",
+        progressPercent: 86,
+      })
+    );
+    expect(repository.updateProgress).toHaveBeenNthCalledWith(
+      9,
+      expect.objectContaining({
         step: "uploading_final",
-        progressPercent: 90,
+        progressPercent: 96,
       })
     );
     expect(scriptPlanningProvider.planScript).toHaveBeenCalledWith(
@@ -302,26 +365,37 @@ describe("generateTourProjectVideo", () => {
         reusable: true,
       })
     );
-    expect(repository.markCompleted).not.toHaveBeenCalled();
-    expect(repository.markFailed).toHaveBeenCalledWith({
+    expect(repository.createAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "joined_scenes",
+        storageBucket: "tours-generated-media",
+        storagePath: "user-1/project-1/run-1/joined_scenes.mp4",
+      })
+    );
+    expect(repository.createAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "final_video",
+        storageBucket: "tours-generated-media",
+        storagePath: "user-1/project-1/run-1/final_video.mp4",
+      })
+    );
+    expect(repository.markCompleted).toHaveBeenCalledWith({
       runId: "run-1",
       projectId: "project-1",
       userId: "user-1",
-      step: "failed",
-      label: "Failed",
-      safeMessage: "Final video rendering is not implemented yet.",
+      resultAssetId: "asset-final-video",
     });
     expect(repository.appendEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        step: "failed",
-        status: "failed",
-        safeMessage: "Final video rendering is not implemented yet.",
+        step: "completed",
+        status: "completed",
+        safeMessage: "Tour render completed.",
       })
     );
     expect(progress).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        step: "failed",
-        message: "Final video rendering is not implemented yet.",
+        step: "completed",
+        message: "Tour render completed.",
       })
     );
   });

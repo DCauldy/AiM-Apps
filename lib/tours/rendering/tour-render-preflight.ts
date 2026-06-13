@@ -42,6 +42,15 @@ export type TourRenderOptions = {
     fadeSeconds?: number;
     cropMode?: "cover" | "contain";
   };
+  finalMuxSettings?: {
+    width?: number;
+    height?: number;
+    videoCodec?: string;
+    audioCodec?: string;
+    preset?: string;
+    crf?: number;
+    audioBitrate?: string;
+  };
 };
 
 export type TourRenderPreflightIssueCode =
