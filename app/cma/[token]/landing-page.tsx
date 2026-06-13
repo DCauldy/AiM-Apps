@@ -241,21 +241,13 @@ function SubjectHero({
             className="block h-64 sm:h-full w-full object-cover"
           />
         </div>
-        <div className="relative flex flex-col bg-white border-t sm:border-t-0 sm:border-l border-slate-800">
-          <div className="px-4 py-2.5 border-b border-slate-200 flex items-center gap-2 bg-slate-50">
-            <MapPin className="h-3.5 w-3.5" style={{ color: accent }} />
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-600">
-              Location
-            </span>
-          </div>
-          <div className="flex-1 min-h-[200px]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={heroMap}
-              alt={`Map of ${address}`}
-              className="block h-full w-full object-cover"
-            />
-          </div>
+        <div className="relative border-t sm:border-t-0 sm:border-l border-slate-800 min-h-[240px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={heroMap}
+            alt={`Map of ${address}`}
+            className="block h-full w-full object-cover"
+          />
         </div>
       </div>
     ) : hasPhoto && heroImage ? (
@@ -269,15 +261,8 @@ function SubjectHero({
         />
       </div>
     ) : hasMap && heroMap ? (
-      // Map only — full bleed, white background to match the
-      // light-style tiles.
-      <div className="bg-white">
-        <div className="px-4 py-2.5 border-b border-slate-200 flex items-center gap-2 bg-slate-50">
-          <MapPin className="h-3.5 w-3.5" style={{ color: accent }} />
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-600">
-            Location
-          </span>
-        </div>
+      // Map only — full bleed.
+      <div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={heroMap}

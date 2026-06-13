@@ -9,12 +9,10 @@
 // Mapbox token is NEXT_PUBLIC_* so this can run on the client.
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-// Default to the light cartographic style for legibility — street
-// names, neighborhood labels, and cul-de-sac shape all show up
-// clearly against the gold pin. dark-v11 was too dim under any
-// gradient overlay; callers can opt into a different style via the
-// `style` option below.
-const DEFAULT_STYLE = "light-v11";
+// dark-v11 = Mapbox's dark cartographic style. Reads well against the
+// slate landing-page chrome; the gold pin pops. Callers can opt into
+// a lighter style via the `style` option below when they need one.
+const DEFAULT_STYLE = "dark-v11";
 const ZOOM = 16;
 
 /**
