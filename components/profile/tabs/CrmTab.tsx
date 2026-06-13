@@ -16,6 +16,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { CRM_PLATFORM_LABELS } from "@/types/hyperlocal";
 import type { CrmPlatform } from "@/types/hyperlocal";
 import type {
@@ -204,19 +205,27 @@ function ConnCard({
   onReload: () => Promise<void> | void;
 }) {
   const { addToast } = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState<"delete" | null>(null);
   const c = entry.connection;
 
   const handleDelete = async () => {
     const usageList = entry.used_by.map((u) => APP_LABELS[u.app]).join(", ");
-    if (
-      !confirm(
-        entry.used_by.length > 0
-          ? `Disconnect ${CRM_PLATFORM_LABELS[c.platform]} from every app (${usageList})? Existing synced clients stay; future syncs stop.`
-          : `Delete this ${CRM_PLATFORM_LABELS[c.platform]} connection?`,
-      )
-    )
-      return;
+    const ok = await confirm(
+      entry.used_by.length > 0
+        ? {
+            title: `Disconnect ${CRM_PLATFORM_LABELS[c.platform]}?`,
+            description: `This connection is wired into ${usageList}. Existing synced clients stay; future syncs stop.`,
+            confirmLabel: "Disconnect",
+            variant: "destructive",
+          }
+        : {
+            title: `Delete this ${CRM_PLATFORM_LABELS[c.platform]} connection?`,
+            confirmLabel: "Delete",
+            variant: "destructive",
+          },
+    );
+    if (!ok) return;
     setBusy("delete");
     try {
       const res = await fetch(

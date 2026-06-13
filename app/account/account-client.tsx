@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { SlotUpgradeModal } from "@/components/profile/SlotUpgradeModal";
 import { ToastProvider, useToast } from "@/components/ui/toast";
+import { ConfirmProvider } from "@/components/ui/confirm";
 import { LogOut, Shield, Sparkles, User } from "lucide-react";
 
 interface Props {
@@ -22,7 +23,9 @@ interface Props {
 export function AccountClient(props: Props) {
   return (
     <ToastProvider>
-      <AccountClientInner {...props} />
+      <ConfirmProvider>
+        <AccountClientInner {...props} />
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

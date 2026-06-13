@@ -6,6 +6,7 @@ import Image from "next/image";
 import { UserMenu } from "@/components/layout/UserMenu";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { ToastProvider } from "@/components/ui/toast";
+import { ConfirmProvider } from "@/components/ui/confirm";
 
 export default async function AdminLayout({
   children,
@@ -23,7 +24,8 @@ export default async function AdminLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-background">
+      <ConfirmProvider>
+        <div className="min-h-screen bg-background">
         <header className="border-b bg-background">
           <div className="flex h-14 items-center justify-between px-4 sm:px-6 gap-4">
             <div className="flex items-center gap-3">
@@ -61,8 +63,9 @@ export default async function AdminLayout({
             </div>
           </div>
         </header>
-        <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
-      </div>
+          <main className="max-w-6xl mx-auto px-6 py-8">{children}</main>
+        </div>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

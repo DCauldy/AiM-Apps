@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { ToastProvider } from "@/components/ui/toast";
+import { ConfirmProvider } from "@/components/ui/confirm";
 
 type AppShellProps = {
   children: ReactNode;
@@ -20,12 +21,14 @@ export function AppShell({
   return (
     <div className={`${themeClassName} font-body`}>
       <ToastProvider>
-        <div className="flex flex-col h-screen overflow-hidden w-full max-w-full bg-background text-foreground">
-          {header}
-          <main className={`flex-1 ${mainClassName} w-full max-w-full`}>
-            {children}
-          </main>
-        </div>
+        <ConfirmProvider>
+          <div className="flex flex-col h-screen overflow-hidden w-full max-w-full bg-background text-foreground">
+            {header}
+            <main className={`flex-1 ${mainClassName} w-full max-w-full`}>
+              {children}
+            </main>
+          </div>
+        </ConfirmProvider>
       </ToastProvider>
     </div>
   );

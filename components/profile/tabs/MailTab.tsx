@@ -16,6 +16,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { EMAIL_PROVIDER_LABELS } from "@/types/hyperlocal";
 import type { EmailProvider } from "@/types/hyperlocal";
 import type {
@@ -204,19 +205,27 @@ function ConnCard({
   onReload: () => Promise<void> | void;
 }) {
   const { addToast } = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState<string | null>(null);
   const c = entry.connection;
 
   const handleDelete = async () => {
     const usageList = entry.used_by.map((u) => APP_LABELS[u.app]).join(", ");
-    if (
-      !confirm(
-        entry.used_by.length > 0
-          ? `Disconnect ${EMAIL_PROVIDER_LABELS[c.provider]} from every app (${usageList})? Existing deliveries stay; future sends stop.`
-          : `Delete this ${EMAIL_PROVIDER_LABELS[c.provider]} connection?`,
-      )
-    )
-      return;
+    const ok = await confirm(
+      entry.used_by.length > 0
+        ? {
+            title: `Disconnect ${EMAIL_PROVIDER_LABELS[c.provider]}?`,
+            description: `This connection is wired into ${usageList}. Existing deliveries stay; future sends stop.`,
+            confirmLabel: "Disconnect",
+            variant: "destructive",
+          }
+        : {
+            title: `Delete this ${EMAIL_PROVIDER_LABELS[c.provider]} connection?`,
+            confirmLabel: "Delete",
+            variant: "destructive",
+          },
+    );
+    if (!ok) return;
     setBusy("delete");
     try {
       const res = await fetch(

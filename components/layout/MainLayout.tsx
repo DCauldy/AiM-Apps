@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Header } from "./Header";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import { ToastProvider } from "@/components/ui/toast";
+import { ConfirmProvider } from "@/components/ui/confirm";
 import { useConversation } from "@/app/apps/prompt-studio/layout-client";
 import { cn } from "@/lib/utils";
 
@@ -35,8 +36,9 @@ export function MainLayout({
 
   return (
     <ToastProvider>
-      <div className="flex h-screen overflow-hidden w-full max-w-full">
-        <Sidebar 
+      <ConfirmProvider>
+        <div className="flex h-screen overflow-hidden w-full max-w-full">
+          <Sidebar
           activeThreadId={activeThreadId} 
           onThreadSelect={onThreadSelect}
           isOpen={isSidebarOpen}
@@ -61,6 +63,7 @@ export function MainLayout({
           <main className="flex-1 overflow-hidden w-full max-w-full bg-background">{children}</main>
         </div>
       </div>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { BlogUpgradeModal } from "@/components/blog-engine/BlogUpgradeModal";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import { BLOG_PACKS, getUserTierLabel } from "@/lib/blog-packs";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ interface UpgradeTabProps {
 export function UpgradeTab({ frequency, hasSubscription }: UpgradeTabProps) {
   const router = useRouter();
   const { addToast } = useToast();
+  const confirm = useConfirm();
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [managing, setManaging] = useState(false);
 
@@ -59,14 +61,15 @@ export function UpgradeTab({ frequency, hasSubscription }: UpgradeTabProps) {
     }
   };
 
-  const handleReset = () => {
-    if (
-      confirm(
-        "This will clear your profile and restart the onboarding process. Are you sure?",
-      )
-    ) {
-      router.push("/apps/blog-engine/onboarding");
-    }
+  const handleReset = async () => {
+    const ok = await confirm({
+      title: "Restart onboarding?",
+      description:
+        "This will clear your profile and restart the onboarding process.",
+      confirmLabel: "Restart",
+      variant: "destructive",
+    });
+    if (ok) router.push("/apps/blog-engine/onboarding");
   };
 
   return (

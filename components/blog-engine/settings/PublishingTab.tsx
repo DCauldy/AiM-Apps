@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/components/ui/confirm";
 import type { BofuCmsConnection, CmsPlatform } from "@/types/blog-engine";
 
 const SEO_PLUGIN_LABELS: Record<string, string> = {
@@ -34,6 +35,7 @@ export function PublishingTab({
     Record<string, { success: boolean; siteName?: string; error?: string }>
   >({});
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const confirm = useConfirm();
   const [showAddForm, setShowAddForm] = useState(false);
   const [addPlatform, setAddPlatform] = useState<CmsPlatform | null>(null);
   const [addingConnection, setAddingConnection] = useState(false);
@@ -86,7 +88,13 @@ export function PublishingTab({
   };
 
   const handleRemoveConnection = async (connectionId: string) => {
-    if (!confirm("Remove this CMS connection?")) return;
+    const ok = await confirm({
+      title: "Remove this CMS connection?",
+      description: "Future publishes from this site will stop.",
+      confirmLabel: "Remove",
+      variant: "destructive",
+    });
+    if (!ok) return;
     setRemovingId(connectionId);
     try {
       const res = await fetch("/api/apps/blog-engine/cms-connections", {

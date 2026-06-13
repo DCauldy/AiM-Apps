@@ -22,6 +22,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { useConfirm } from "@/components/ui/confirm";
 import type { CmaClient, CmaClientDelivery } from "@/types/cma";
 
 const DEFAULT_CADENCE_DAYS = 90;
@@ -68,6 +69,7 @@ export function ClientDetail({
 }) {
   const router = useRouter();
   const { addToast } = useToast();
+  const confirm = useConfirm();
   const [client, setClient] = useState<CmaClient>(initialClient);
   const deliveries = initialDeliveries; // Wave 3: server-rendered snapshot is fine
   const [saving, setSaving] = useState<string | null>(null);
@@ -103,13 +105,14 @@ export function ClientDetail({
   };
 
   const handleDelete = async () => {
-    if (
-      !confirm(
-        `Delete ${clientName(client)}? This removes the row entirely — it does NOT honor as an unsubscribe.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Delete ${clientName(client)}?`,
+      description:
+        "This removes the row entirely — it does NOT honor as an unsubscribe.",
+      confirmLabel: "Delete",
+      variant: "destructive",
+    });
+    if (!ok) return;
     setSaving("delete");
     try {
       const res = await fetch(`/api/apps/listing-studio/clients/${client.id}`, {
@@ -312,14 +315,15 @@ function SendNowButton({
   disabled: boolean;
 }) {
   const { addToast } = useToast();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const handle = async () => {
-    if (
-      !confirm(
-        "Send a fresh CMA right now? Uses one of your monthly manual sends.",
-      )
-    )
-      return;
+    const ok = await confirm({
+      title: "Send a fresh CMA right now?",
+      description: "Uses one of your monthly manual sends.",
+      confirmLabel: "Send now",
+    });
+    if (!ok) return;
     setBusy(true);
     try {
       const res = await fetch(

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCachedUser } from "@/lib/auth/get-cached-user";
 import { ToastProvider } from "@/components/ui/toast";
+import { ConfirmProvider } from "@/components/ui/confirm";
 import { ProfileProvider } from "@/components/profile/ProfileProvider";
 
 export default async function AppsLayout({
@@ -16,7 +17,9 @@ export default async function AppsLayout({
 
   return (
     <ToastProvider>
-      <ProfileProvider>{children}</ProfileProvider>
+      <ConfirmProvider>
+        <ProfileProvider>{children}</ProfileProvider>
+      </ConfirmProvider>
     </ToastProvider>
   );
 }
