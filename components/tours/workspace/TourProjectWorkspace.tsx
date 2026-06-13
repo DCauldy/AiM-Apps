@@ -25,7 +25,9 @@ import {
   type ProjectDetailsForm,
 } from "./WorkspacePresentation";
 import { SceneDetailsPanel } from "./SceneDetailsPanel";
+import { TourRenderStatusPanel } from "./TourRenderStatusPanel";
 import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
+import { useTourRenderRuns } from "./useTourRenderRuns";
 import { useTourSceneMutations } from "./useTourSceneMutations";
 
 const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
@@ -124,7 +126,6 @@ export function TourProjectWorkspace({
   const [isAddSceneOpen, setIsAddSceneOpen] = useState(false);
   const [sceneToDelete, setSceneToDelete] = useState<TourScene | null>(null);
   const [sceneToReplacePhoto, setSceneToReplacePhoto] = useState<TourScene | null>(null);
-  const [workflowDialogOpen, setWorkflowDialogOpen] = useState(false);
   const [projectDetails, setProjectDetails] = useState<ProjectDetailsForm>({
     name: viewModel.project.name,
     propertyAddress: viewModel.listing.address,
@@ -139,6 +140,9 @@ export function TourProjectWorkspace({
   const authorization = viewModel.listingMediaAuthorization;
   const canUseSceneMediaTools = authorization.hasAcknowledged;
   const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
+  const renderRuns = useTourRenderRuns(viewModel.project.id);
+  const isProjectRendering =
+    renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
 
   const invalidateWorkspace = useCallback(() => {
     queryClient.invalidateQueries({
@@ -379,7 +383,9 @@ export function TourProjectWorkspace({
           />
         </header>
 
-        {!canUseSceneMediaTools ? (
+        {isProjectRendering && renderRuns.currentRun ? (
+          <TourRenderStatusPanel run={renderRuns.currentRun} />
+        ) : !canUseSceneMediaTools ? (
           <div className="mt-4 space-y-4 rounded-md border border-border bg-muted/30 p-4">
             <div className="flex gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -524,11 +530,17 @@ export function TourProjectWorkspace({
             <Button
               type="button"
               className="mt-4 h-14 w-full text-base lg:ml-auto lg:block lg:max-w-sm"
-              disabled={sceneCount === 0}
-              onClick={() => setWorkflowDialogOpen(true)}
+              disabled={sceneCount === 0 || renderRuns.isCreatingRenderRun}
+              onClick={() => renderRuns.createRenderRun()}
             >
-              Approve all and generate
+              {renderRuns.isCreatingRenderRun ? "Starting render..." : "Approve all and generate"}
             </Button>
+
+            {renderRuns.error && (
+              <div className="mt-4">
+                <ErrorMessage>{renderRuns.error.message}</ErrorMessage>
+              </div>
+            )}
           </>
         )}
       </section>
@@ -594,16 +606,6 @@ export function TourProjectWorkspace({
           }
         }}
         onConfirm={confirmSceneDelete}
-      />
-      <ConfirmDialog
-        open={workflowDialogOpen}
-        title="Generate tour?"
-        body="The approval layout is ready. The generation endpoint is not connected in this workspace yet."
-        confirmText="Close"
-        error={null}
-        isPending={false}
-        onOpenChange={setWorkflowDialogOpen}
-        onConfirm={() => setWorkflowDialogOpen(false)}
       />
     </PageFrame>
   );
