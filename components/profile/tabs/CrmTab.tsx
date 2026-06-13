@@ -11,6 +11,7 @@ import {
   PlugZap,
   ChevronDown,
   ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -325,7 +326,50 @@ function PerAppFilterPanel({
   lastError: string | null;
   onSaved: () => Promise<void> | void;
 }) {
+  const { addToast } = useToast();
   const [expanded, setExpanded] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSyncNow = async (e: React.MouseEvent) => {
+    // Stop the panel expand/collapse from firing.
+    e.stopPropagation();
+    setSyncing(true);
+    try {
+      const res = await fetch(
+        `/api/apps/listing-studio/crm-connections/${connectionId}/sync`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        addToast({
+          title: "Sync failed",
+          description: data?.error ?? `HTTP ${res.status}`,
+          variant: "destructive",
+        });
+        return;
+      }
+      const created = data?.candidates_created ?? 0;
+      const updated = data?.candidates_updated ?? 0;
+      const total = data?.candidates_total ?? 0;
+      addToast({
+        title: "Sync complete",
+        description:
+          total === 0
+            ? "No past clients matched your filter."
+            : `${created} new, ${updated} updated (${total} total).`,
+      });
+      await onSaved();
+    } catch (e) {
+      addToast({
+        title: "Sync failed",
+        description: e instanceof Error ? e.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="px-5 py-3 border-b border-border last:border-b-0">
       <button
@@ -349,11 +393,38 @@ function PerAppFilterPanel({
             </span>
           )}
         </div>
-        {expanded ? (
-          <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
-        ) : (
-          <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-        )}
+        <div className="flex items-center gap-2">
+          {app === "listing_studio" && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleSyncNow}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  void handleSyncNow(e as unknown as React.MouseEvent);
+                }
+              }}
+              aria-disabled={syncing}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md border border-border bg-background hover:bg-accent",
+                syncing && "opacity-50 pointer-events-none",
+              )}
+            >
+              {syncing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3 w-3" />
+              )}
+              {syncing ? "Syncing…" : "Sync now"}
+            </span>
+          )}
+          {expanded ? (
+            <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          )}
+        </div>
       </button>
 
       {expanded && (
