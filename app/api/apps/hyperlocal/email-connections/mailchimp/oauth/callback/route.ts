@@ -3,6 +3,7 @@ import { encrypt } from "@/lib/hyperlocal/encryption";
 import { randomBytes } from "node:crypto";
 import { jwtVerify } from "jose";
 import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
+import { getActiveProfile } from "@/lib/profiles/server";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -68,10 +69,17 @@ export async function GET(req: NextRequest) {
     return redirectToSettings(req, "mailchimp_error=state_invalid");
   }
 
+  // Resolve the active profile once so every downstream redirect can
+  // land the agent back on /apps/profile/[id]?tab=mail with the new
+  // Mailchimp card visible. null fallback (no active profile) drops
+  // to the profile-list page instead.
+  const activeProfile = await getActiveProfile(userId);
+  const activeProfileId: string | null = activeProfile?.id ?? null;
+
   const clientId = process.env.MAILCHIMP_CLIENT_ID;
   const clientSecret = process.env.MAILCHIMP_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return redirectToSettings(req, "mailchimp_error=oauth_not_configured");
+    return redirectToSettings(req, "mailchimp_error=oauth_not_configured", activeProfileId);
   }
 
   const redirectUri = resolveRedirectUri(req);
@@ -95,17 +103,19 @@ export async function GET(req: NextRequest) {
       return redirectToSettings(
         req,
         `mailchimp_error=token_exchange&detail=${encodeURIComponent(text.slice(0, 120))}`,
+        activeProfileId,
       );
     }
     const tokenJson = (await tokenRes.json()) as { access_token?: string };
     if (!tokenJson.access_token) {
-      return redirectToSettings(req, "mailchimp_error=no_access_token");
+      return redirectToSettings(req, "mailchimp_error=no_access_token", activeProfileId);
     }
     accessToken = tokenJson.access_token;
   } catch (e) {
     return redirectToSettings(
       req,
       `mailchimp_error=token_exchange&detail=${encodeURIComponent(e instanceof Error ? e.message : "")}`,
+      activeProfileId,
     );
   }
 
@@ -122,6 +132,7 @@ export async function GET(req: NextRequest) {
       return redirectToSettings(
         req,
         `mailchimp_error=metadata&detail=${encodeURIComponent(text.slice(0, 120))}`,
+        activeProfileId,
       );
     }
     const meta = (await metaRes.json()) as {
@@ -129,7 +140,7 @@ export async function GET(req: NextRequest) {
       login?: { email?: string; login_name?: string };
     };
     if (!meta.dc) {
-      return redirectToSettings(req, "mailchimp_error=missing_dc");
+      return redirectToSettings(req, "mailchimp_error=missing_dc", activeProfileId);
     }
     dc = meta.dc;
     accountEmail = meta.login?.email ?? null;
@@ -138,6 +149,7 @@ export async function GET(req: NextRequest) {
     return redirectToSettings(
       req,
       `mailchimp_error=metadata&detail=${encodeURIComponent(e instanceof Error ? e.message : "")}`,
+      activeProfileId,
     );
   }
 
@@ -153,6 +165,7 @@ export async function GET(req: NextRequest) {
       return redirectToSettings(
         req,
         `mailchimp_error=audience_list&detail=${encodeURIComponent(text.slice(0, 120))}`,
+        activeProfileId,
       );
     }
     const listJson = (await listRes.json()) as {
@@ -160,7 +173,7 @@ export async function GET(req: NextRequest) {
     };
     const audiences = listJson.lists ?? [];
     if (audiences.length === 0) {
-      return redirectToSettings(req, "mailchimp_error=no_audiences");
+      return redirectToSettings(req, "mailchimp_error=no_audiences", activeProfileId);
     }
     const first = audiences[0];
     audience = {
@@ -172,6 +185,7 @@ export async function GET(req: NextRequest) {
     return redirectToSettings(
       req,
       `mailchimp_error=audience_list&detail=${encodeURIComponent(e instanceof Error ? e.message : "")}`,
+      activeProfileId,
     );
   }
 
@@ -231,7 +245,7 @@ export async function GET(req: NextRequest) {
     .eq("id", userId)
     .maybeSingle();
   if (!profileMeta?.active_profile_id) {
-    return redirectToSettings(req, "mailchimp_error=no_active_profile");
+    return redirectToSettings(req, "mailchimp_error=no_active_profile", activeProfileId);
   }
   const profileId = profileMeta.active_profile_id;
 
@@ -285,6 +299,7 @@ export async function GET(req: NextRequest) {
     return redirectToSettings(
       req,
       `mailchimp_error=db_insert&detail=${encodeURIComponent(insertErr.message)}`,
+      activeProfileId,
     );
   }
 
@@ -303,8 +318,14 @@ export async function GET(req: NextRequest) {
   // Sending them back to localhost ensures the connections list refreshes
   // with their session intact.
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin).replace(/\/+$/, "");
-  const successUrl = `${appUrl}/apps/hyperlocal/settings?tab=email&mailchimp=connected`;
-  return NextResponse.redirect(successUrl, 302);
+  // Land on the agent's profile Mail tab so the newly-connected
+  // Mailchimp provider is visible right away with its green check.
+  // Falls back to the profile list when no active profile (shouldn't
+  // happen here since the persist step already required one).
+  const path = activeProfileId
+    ? `/apps/profile/${activeProfileId}?tab=mail&mailchimp=connected`
+    : `/apps/profile?mailchimp=connected`;
+  return NextResponse.redirect(`${appUrl}${path}`, 302);
 }
 
 function resolveRedirectUri(req: NextRequest): string {
@@ -324,12 +345,20 @@ function resolveWebhookUrl(req: NextRequest, secret: string): string | null {
   return `${origin}/api/webhooks/mailchimp?secret=${encodeURIComponent(secret)}`;
 }
 
-function redirectToSettings(req: NextRequest, queryString: string): Response {
+function redirectToSettings(
+  req: NextRequest,
+  queryString: string,
+  profileId: string | null = null,
+): Response {
   // Same logic as the success path — always bounce to NEXT_PUBLIC_APP_URL
   // (localhost in dev), not to the 127.0.0.1-host the callback runs on.
+  // Lands on the profile Mail tab when profileId is resolved; falls
+  // back to the profile list (which has the same integration grid
+  // accessible per-profile) for pre-state-verification errors where
+  // we don't yet have a user id.
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin).replace(/\/+$/, "");
-  return Response.redirect(
-    `${appUrl}/apps/hyperlocal/settings?tab=email&${queryString}`,
-    302,
-  );
+  const path = profileId
+    ? `/apps/profile/${profileId}?tab=mail&${queryString}`
+    : `/apps/profile?${queryString}`;
+  return Response.redirect(`${appUrl}${path}`, 302);
 }
