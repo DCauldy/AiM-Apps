@@ -18,6 +18,9 @@ import {
   Settings as SettingsIcon,
   PlugZap,
 } from "lucide-react";
+// Loader2 still used by RecentEngagementChip "pending" state.
+
+import { DashboardSkeleton } from "./DashboardSkeleton";
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
@@ -59,11 +62,7 @@ export function DashboardClient() {
   }, [load]);
 
   if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
   if (!data) {
     return (
