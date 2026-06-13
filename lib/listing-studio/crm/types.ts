@@ -1,14 +1,17 @@
-import type { CmaClientCandidate, CmaCrmConnection } from "@/types/cma";
+import type { CmaClientCandidate } from "@/types/cma";
+import type {
+  CmaCrmFilterConfig,
+  PlatformCrmConnection,
+} from "@/types/platform-connections";
 
 // ============================================================
 // CMA CRM connector interface.
 //
-// Mirrors the Hyperlocal CrmConnector shape but yields a different
-// output type — past-client candidates ready for cma_clients ingest,
-// not a generic NormalizedContact. Each wrapper internally delegates
-// HTTP + pagination + auth to the corresponding Hyperlocal connector
-// (synthesizing an HlCrmConnection shim from the CmaCrmConnection),
-// then filters + reshapes the results.
+// Built directly on top of the shared Hyperlocal connectors — no
+// shim layer (Wave 10 deleted lib/listing-studio/crm/shared.ts).
+// Functions take a PlatformCrmConnection (auth + identity from the
+// new shared table) plus the CMA-specific filter config (the
+// stage/tag/all rule).
 // ============================================================
 
 export interface CmaFetchOptions {
@@ -28,9 +31,13 @@ export interface CmaTestConnectionResult {
 }
 
 export interface CmaCrmConnector {
-  testConnection(c: CmaCrmConnection): Promise<CmaTestConnectionResult>;
+  testConnection(
+    conn: PlatformCrmConnection,
+    filter: CmaCrmFilterConfig,
+  ): Promise<CmaTestConnectionResult>;
   fetchPastClients(
-    c: CmaCrmConnection,
+    conn: PlatformCrmConnection,
+    filter: CmaCrmFilterConfig,
     opts?: CmaFetchOptions,
   ): Promise<CmaClientCandidate[]>;
 }

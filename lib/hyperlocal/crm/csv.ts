@@ -1,10 +1,13 @@
 import Papa from "papaparse";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type {
-  HlCrmConnection,
   NormalizedContact,
   CsvColumnMapping,
 } from "@/types/hyperlocal";
+import type {
+  HlCrmFilterConfig,
+  PlatformCrmConnection,
+} from "@/types/platform-connections";
 import type {
   CrmConnector,
   FetchContactsOptions,
@@ -35,7 +38,7 @@ function parseCsv(text: string): { columns: string[]; rows: Record<string, strin
 }
 
 function rowToContact(
-  conn: HlCrmConnection,
+  filter: HlCrmFilterConfig | undefined,
   row: Record<string, string>,
   mapping: CsvColumnMapping,
   rowIndex: number
@@ -67,8 +70,8 @@ function rowToContact(
     ? row[mapping.tags_column].split(/[,;|]/).map((t) => t.trim()).filter(Boolean)
     : [];
 
-  const searchFieldValue = conn.search_area_column
-    ? row[conn.search_area_column]
+  const searchFieldValue = filter?.search_area_column
+    ? row[filter.search_area_column]
     : undefined;
 
   return {
@@ -78,16 +81,19 @@ function rowToContact(
     email,
     phone: mapping.phone_column ? row[mapping.phone_column] : undefined,
     home_address: home,
-    search_areas: extractSearchAreas(conn, searchFieldValue, tags),
+    search_areas: extractSearchAreas(filter, searchFieldValue, tags),
     tags,
     source: mapping.source_column ? row[mapping.source_column] : "csv",
   };
 }
 
 export const csvConnector: CrmConnector = {
-  async testConnection(conn: HlCrmConnection): Promise<TestConnectionResult> {
+  async testConnection(
+    _conn: PlatformCrmConnection,
+    filter?: HlCrmFilterConfig,
+  ): Promise<TestConnectionResult> {
     try {
-      const mapping = conn.column_mapping;
+      const mapping = filter?.column_mapping;
       if (!mapping?.storage_path) {
         return { ok: false, error: "No CSV file uploaded yet" };
       }
@@ -98,7 +104,7 @@ export const csvConnector: CrmConnector = {
       const { rows } = parseCsv(text);
       const firstRow = rows[0];
       const sample = firstRow
-        ? rowToContact(conn, firstRow, mapping, 0) ?? undefined
+        ? rowToContact(filter, firstRow, mapping, 0) ?? undefined
         : undefined;
       return {
         ok: true,
@@ -114,10 +120,10 @@ export const csvConnector: CrmConnector = {
   },
 
   async fetchContacts(
-    conn: HlCrmConnection,
+    _conn: PlatformCrmConnection,
     opts: FetchContactsOptions = {}
   ): Promise<NormalizedContact[]> {
-    const mapping = conn.column_mapping;
+    const mapping = opts.filter?.column_mapping;
     if (!mapping?.storage_path) {
       throw new Error("CSV not uploaded for this connection");
     }
@@ -130,7 +136,7 @@ export const csvConnector: CrmConnector = {
     const cap = opts.limit ?? rows.length;
     const out: NormalizedContact[] = [];
     for (let i = 0; i < Math.min(rows.length, cap); i++) {
-      const n = rowToContact(conn, rows[i], mapping, i);
+      const n = rowToContact(opts.filter, rows[i], mapping, i);
       if (n) out.push(n);
     }
     return dedupeByEmail(out);

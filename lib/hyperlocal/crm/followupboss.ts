@@ -1,5 +1,9 @@
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlCrmConnection, NormalizedContact } from "@/types/hyperlocal";
+import type { NormalizedContact } from "@/types/hyperlocal";
+import type {
+  HlCrmFilterConfig,
+  PlatformCrmConnection,
+} from "@/types/platform-connections";
 import type {
   CrmConnector,
   FetchContactsOptions,
@@ -43,7 +47,7 @@ interface FubPeopleResponse {
   _metadata?: { total?: number; offset?: number; limit?: number };
 }
 
-function authHeader(conn: HlCrmConnection): string {
+function authHeader(conn: PlatformCrmConnection): string {
   if (!conn.api_key_encrypted) {
     throw new Error("FUB API key not configured for this connection");
   }
@@ -52,9 +56,9 @@ function authHeader(conn: HlCrmConnection): string {
 }
 
 async function fubGet(
-  conn: HlCrmConnection,
+  conn: PlatformCrmConnection,
   path: string,
-  params: Record<string, string | number | undefined> = {}
+  params: Record<string, string | number | undefined> = {},
 ): Promise<unknown> {
   const url = new URL(BASE_URL + path);
   for (const [k, v] of Object.entries(params)) {
@@ -87,23 +91,23 @@ async function fubGet(
   if (!res.ok) {
     const err = data as { message?: string; errorMessage?: string };
     throw new Error(
-      `FUB ${res.status}: ${err.message ?? err.errorMessage ?? res.statusText}`
+      `FUB ${res.status}: ${err.message ?? err.errorMessage ?? res.statusText}`,
     );
   }
   return data;
 }
 
 function normalize(
-  conn: HlCrmConnection,
-  p: FubPerson
+  filter: HlCrmFilterConfig | undefined,
+  p: FubPerson,
 ): NormalizedContact | null {
   const email = p.emails?.find((e) => e.value && isValidEmail(e.value))?.value;
   if (!email) return null;
 
   const tags = p.tags ?? [];
   const customFieldValue =
-    conn.search_area_column && p.customFields
-      ? (p.customFields[conn.search_area_column] as string | undefined)
+    filter?.search_area_column && p.customFields
+      ? (p.customFields[filter.search_area_column] as string | undefined)
       : undefined;
 
   return {
@@ -113,7 +117,7 @@ function normalize(
     email: email.toLowerCase(),
     phone: p.phones?.[0]?.value ?? undefined,
     home_address: pickHomeAddress(p.addresses ?? []),
-    search_areas: extractSearchAreas(conn, customFieldValue, tags),
+    search_areas: extractSearchAreas(filter, customFieldValue, tags),
     tags,
     source: p.source ?? undefined,
     raw_stage: p.stage ?? undefined,
@@ -121,7 +125,10 @@ function normalize(
 }
 
 export const followupbossConnector: CrmConnector = {
-  async testConnection(conn: HlCrmConnection): Promise<TestConnectionResult> {
+  async testConnection(
+    conn: PlatformCrmConnection,
+    filter?: HlCrmFilterConfig,
+  ): Promise<TestConnectionResult> {
     try {
       const data = (await fubGet(conn, "/people", {
         limit: 1,
@@ -129,7 +136,7 @@ export const followupbossConnector: CrmConnector = {
       const first = data.people?.[0];
       return {
         ok: true,
-        sample: first ? normalize(conn, first) ?? undefined : undefined,
+        sample: first ? normalize(filter, first) ?? undefined : undefined,
         contact_count_estimate: data._metadata?.total,
       };
     } catch (e) {
@@ -141,8 +148,8 @@ export const followupbossConnector: CrmConnector = {
   },
 
   async fetchContacts(
-    conn: HlCrmConnection,
-    opts: FetchContactsOptions = {}
+    conn: PlatformCrmConnection,
+    opts: FetchContactsOptions = {},
   ): Promise<NormalizedContact[]> {
     const pageSize = Math.min(opts.pageSize ?? 100, 100);
     const totalCap = opts.limit ?? 25_000;
@@ -158,7 +165,7 @@ export const followupbossConnector: CrmConnector = {
       const batch = data.people ?? [];
       if (batch.length === 0) break;
       for (const p of batch) {
-        const n = normalize(conn, p);
+        const n = normalize(opts.filter, p);
         if (n) all.push(n);
         if (all.length >= totalCap) break;
       }

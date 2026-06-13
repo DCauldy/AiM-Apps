@@ -5,23 +5,23 @@ import type {
   EmailMessage,
   SendResult,
 } from "@/lib/hyperlocal/email/providers/types";
-import type { CmaEmailConnection } from "@/types/cma";
-import { toHlEmailShim } from "./shim";
+import type { PlatformEmailConnection } from "@/types/platform-connections";
 
 // ============================================================
 // CMA email send facade.
 //
-// Single entry point used by:
-//   - The cma-deliver Inngest fn (Wave 4) for cadence sends
-//   - The /clients/[id]/send-now route (Wave 3/4) for manual sends
-//   - Future: client-side preview / test-send buttons
+// Wave 10 deleted the toHlEmailShim band-aid — sendCmaEmail now calls
+// the Hyperlocal adapter directly with PlatformEmailConnection (the
+// shared shape both apps consume).
 //
-// Internally dispatches to the Hyperlocal email provider adapter for
-// the connection's provider. We're constrained to transactional
-// providers for v2 (Resend, SendGrid) — campaign-mode providers
-// (Mailchimp, ActiveCampaign) own the recipient list and don't fit
-// the per-client cadence model. Calls to a campaign-mode connection
-// throw a clear error so the caller can surface it.
+// Used by:
+//   - cma-deliver Inngest fn (Wave 4) for cadence sends
+//   - /clients/[id]/send-now route (Wave 4) for manual sends
+//
+// Constrained to transactional providers (Resend, SendGrid) for v2.
+// Campaign-mode providers (Mailchimp, ActiveCampaign) own the
+// recipient list and don't fit the per-client cadence model; calls
+// through them throw a clear error.
 // ============================================================
 
 export interface CmaEmail {
@@ -49,7 +49,7 @@ export interface CmaEmail {
  * the campaign-mode shape.
  */
 export async function sendCmaEmail(
-  conn: CmaEmailConnection,
+  conn: PlatformEmailConnection,
   email: CmaEmail,
 ): Promise<SendResult> {
   const adapter = getAdapter(conn.provider);
@@ -74,5 +74,5 @@ export async function sendCmaEmail(
     tags: email.tags,
   };
 
-  return adapter.send(toHlEmailShim(conn), message);
+  return adapter.send(conn, message);
 }

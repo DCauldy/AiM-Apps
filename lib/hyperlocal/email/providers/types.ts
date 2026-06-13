@@ -1,4 +1,7 @@
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type {
+  HlEmailAppMetadata,
+  PlatformEmailConnection,
+} from "@/types/platform-connections";
 
 // ============================================================
 // Provider adapter interface — multi-ESP foundation.
@@ -173,13 +176,17 @@ export interface EmailProviderAdapter {
 
   // ---- Transactional mode ----
   send?(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
     msg: EmailMessage,
   ): Promise<SendResult>;
 
   // ---- Campaign mode ----
+  // The campaign-mode methods need per-app provider_metadata (audience
+  // id, list id, etc.) which now lives on app_email_connection_state.
+  // Callers pass it explicitly so the adapter stays app-agnostic.
   lookupContacts?(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     emails: string[],
   ): Promise<ContactLookupResult>;
 
@@ -187,23 +194,27 @@ export interface EmailProviderAdapter {
    *  campaign tag so the upcoming campaign can target them. Should be a
    *  no-op for contacts already present with the tag. */
   upsertContacts?(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     contacts: ContactUpsert[],
     tag: string,
   ): Promise<void>;
 
   createCampaign?(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     input: CampaignInput,
   ): Promise<CampaignRef>;
 
   sendCampaign?(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     ref: CampaignRef,
   ): Promise<void>;
 
   getCampaignStatus?(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     ref: CampaignRef,
   ): Promise<CampaignStatus>;
 

@@ -1,5 +1,9 @@
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlCrmConnection, NormalizedContact } from "@/types/hyperlocal";
+import type { NormalizedContact } from "@/types/hyperlocal";
+import type {
+  HlCrmFilterConfig,
+  PlatformCrmConnection,
+} from "@/types/platform-connections";
 import type {
   CrmConnector,
   FetchContactsOptions,
@@ -33,7 +37,7 @@ interface GhlContactsResponse {
   meta?: { total?: number; nextPageUrl?: string; currentPage?: number };
 }
 
-function authHeader(conn: HlCrmConnection): string {
+function authHeader(conn: PlatformCrmConnection): string {
   // GHL supports either a private integration token (stored as api_key) or
   // OAuth access tokens — both are sent as Bearer.
   const token = conn.oauth_access_token_encrypted
@@ -50,7 +54,7 @@ function authHeader(conn: HlCrmConnection): string {
 }
 
 async function ghlGet(
-  conn: HlCrmConnection,
+  conn: PlatformCrmConnection,
   path: string,
   params: Record<string, string | number | undefined> = {}
 ): Promise<unknown> {
@@ -106,14 +110,14 @@ function pickCustomField(
 }
 
 function normalize(
-  conn: HlCrmConnection,
+  filter: HlCrmFilterConfig | undefined,
   c: GhlContact
 ): NormalizedContact | null {
   if (!c.email || !isValidEmail(c.email)) return null;
   const tags = c.tags ?? [];
   const customFieldValue = pickCustomField(
     c.customFields,
-    conn.search_area_column ?? undefined
+    filter?.search_area_column ?? undefined
   );
 
   return {
@@ -128,24 +132,28 @@ function normalize(
       state: c.state ?? undefined,
       zip: c.postalCode ?? undefined,
     },
-    search_areas: extractSearchAreas(conn, customFieldValue, tags),
+    search_areas: extractSearchAreas(filter, customFieldValue, tags),
     tags,
     source: c.source ?? undefined,
   };
 }
 
-function getLocationId(conn: HlCrmConnection): string | undefined {
-  // GHL contacts/ requires a locationId. Stored either in base_url field
-  // (legacy) or — preferred — via column_mapping.location_id.
-  const fromMapping = (conn.column_mapping as { location_id?: string } | null)
+function getLocationId(
+  filter: HlCrmFilterConfig | undefined,
+): string | undefined {
+  // GHL contacts/ requires a locationId. Stored on the per-app filter
+  // config under column_mapping.location_id.
+  return (filter?.column_mapping as { location_id?: string } | null | undefined)
     ?.location_id;
-  return fromMapping;
 }
 
 export const gohighlevelConnector: CrmConnector = {
-  async testConnection(conn): Promise<TestConnectionResult> {
+  async testConnection(
+    conn: PlatformCrmConnection,
+    filter?: HlCrmFilterConfig,
+  ): Promise<TestConnectionResult> {
     try {
-      const locationId = getLocationId(conn);
+      const locationId = getLocationId(filter);
       if (!locationId) {
         return {
           ok: false,
@@ -161,7 +169,7 @@ export const gohighlevelConnector: CrmConnector = {
       return {
         ok: true,
         sample: contacts[0]
-          ? normalize(conn, contacts[0]) ?? undefined
+          ? normalize(filter, contacts[0]) ?? undefined
           : undefined,
         contact_count_estimate: (data as GhlContactsResponse).meta?.total,
       };
@@ -170,8 +178,11 @@ export const gohighlevelConnector: CrmConnector = {
     }
   },
 
-  async fetchContacts(conn, opts: FetchContactsOptions = {}) {
-    const locationId = getLocationId(conn);
+  async fetchContacts(
+    conn: PlatformCrmConnection,
+    opts: FetchContactsOptions = {},
+  ): Promise<NormalizedContact[]> {
+    const locationId = getLocationId(opts.filter);
     if (!locationId) {
       throw new Error(
         "GoHighLevel requires a Location ID under Advanced settings"
@@ -191,7 +202,7 @@ export const gohighlevelConnector: CrmConnector = {
       const batch = (data as GhlContactsResponse).contacts ?? [];
       if (batch.length === 0) break;
       for (const c of batch) {
-        const n = normalize(conn, c);
+        const n = normalize(opts.filter, c);
         if (n) all.push(n);
         if (all.length >= totalCap) break;
       }

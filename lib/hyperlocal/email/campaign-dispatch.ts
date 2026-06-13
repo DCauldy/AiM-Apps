@@ -7,7 +7,10 @@ import type {
   ContactLookupRow,
   ContactUpsert,
 } from "./providers/types";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type {
+  HlEmailAppMetadata,
+  PlatformEmailConnection,
+} from "@/types/platform-connections";
 
 // ============================================================
 // Campaign-mode dispatch.
@@ -47,7 +50,11 @@ export interface CampaignDispatchResult {
 export interface CampaignDispatchInput {
   supabase: SupabaseClient;
   runId: string;
-  connection: HlEmailConnection;
+  connection: PlatformEmailConnection;
+  /** Per-app provider metadata (Mailchimp audience id, AC list id, etc.).
+   *  Loaded from app_email_connection_state.provider_metadata before
+   *  the dispatch call. */
+  metadata: HlEmailAppMetadata;
   /** Set on retry after the user approves adding new contacts. When true we
    *  skip the awaiting_audience_confirmation park and upsert everyone in
    *  the not_found bucket. */
@@ -57,7 +64,7 @@ export interface CampaignDispatchInput {
 export async function dispatchCampaignRun(
   input: CampaignDispatchInput,
 ): Promise<CampaignDispatchResult> {
-  const { supabase, runId, connection, audienceApproved } = input;
+  const { supabase, runId, connection, metadata, audienceApproved } = input;
   const adapter = getAdapter(connection.provider);
   if (adapter.mode !== "campaign") {
     throw new Error(
@@ -127,6 +134,7 @@ export async function dispatchCampaignRun(
   // ---- Bucket via the ESP audience ----
   const lookup = await adapter.lookupContacts(
     connection,
+    metadata,
     sendableRecipients.map((r) => r.contact_email),
   );
   const byEmail = new Map<string, ContactLookupRow>();
@@ -196,7 +204,7 @@ export async function dispatchCampaignRun(
   // Upsert the new contacts (approved this round). Mailchimp PUTs them
   // with the tag attached — they're now targetable by the campaign.
   if (toUpsert.length > 0) {
-    await adapter.upsertContacts(connection, toUpsert, tag);
+    await adapter.upsertContacts(connection, metadata, toUpsert, tag);
   }
 
   // Already-subscribed contacts need the tag added too — upsertContacts
@@ -210,11 +218,11 @@ export async function dispatchCampaignRun(
       last_name: r.contact_last_name,
     }));
   if (subscribedAsUpserts.length > 0) {
-    await adapter.upsertContacts(connection, subscribedAsUpserts, tag);
+    await adapter.upsertContacts(connection, metadata, subscribedAsUpserts, tag);
   }
 
   // ---- Create + send the campaign ----
-  const ref = await adapter.createCampaign(connection, {
+  const ref = await adapter.createCampaign(connection, metadata, {
     subject: primaryEmail.subject ?? "Market update",
     preheader: primaryEmail.preheader ?? "",
     from_name: connection.display_name ?? connection.email_address,
@@ -225,7 +233,7 @@ export async function dispatchCampaignRun(
     tag,
   });
 
-  await adapter.sendCampaign(connection, ref);
+  await adapter.sendCampaign(connection, metadata, ref);
 
   // ---- Persist run state ----
   // Stamp every recipient with the campaign id as their provider_message_id

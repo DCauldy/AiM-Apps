@@ -1,25 +1,28 @@
-import type { HlCrmConnection, NormalizedContact } from "@/types/hyperlocal";
+import type { NormalizedContact } from "@/types/hyperlocal";
+import type { HlCrmFilterConfig } from "@/types/platform-connections";
 
 /**
- * Extract search areas from a contact based on the connection's configuration.
+ * Extract search areas from a contact based on Hyperlocal's filter config.
  * - If search_area_source is 'field', read from that column (split on commas)
  * - If search_area_source is 'tag-pattern', regex-match tags
  * - If 'none' or unset, returns empty
+ *
+ * Filter is optional — connectors used by cross-app callers (CMA reusing
+ * Hyperlocal connectors) pass undefined here.
  */
 export function extractSearchAreas(
-  conn: HlCrmConnection,
+  filter: HlCrmFilterConfig | undefined,
   rawFieldValue: string | undefined,
-  tags: string[]
+  tags: string[],
 ): string[] {
-  const source = conn.search_area_source ?? "none";
+  const source = filter?.search_area_source ?? "none";
   if (source === "field") {
     if (!rawFieldValue) return [];
     return splitAndTrim(rawFieldValue);
   }
-  if (source === "tag-pattern" && conn.search_area_tag_pattern) {
+  if (source === "tag-pattern" && filter?.search_area_tag_pattern) {
     try {
-      // Convert wildcard-style pattern (e.g. "looking-in-*") to regex
-      const pattern = conn.search_area_tag_pattern
+      const pattern = filter.search_area_tag_pattern
         .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
         .replace(/\*/g, "(.+)");
       const regex = new RegExp(`^${pattern}$`, "i");

@@ -2,7 +2,7 @@ import "server-only";
 
 import { createVerify } from "node:crypto";
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type { PlatformEmailConnection } from "@/types/platform-connections";
 import type {
   EmailMessage,
   EmailProviderAdapter,
@@ -41,7 +41,7 @@ export const sendgridAdapter: EmailProviderAdapter = {
   mode: "transactional",
   capabilities: SENDGRID_CAPABILITIES,
 
-  async send(conn: HlEmailConnection, msg: EmailMessage): Promise<SendResult> {
+  async send(conn: PlatformEmailConnection, msg: EmailMessage): Promise<SendResult> {
     const apiKey = requireApiKey(conn);
 
     const payload = {
@@ -185,7 +185,7 @@ export const sendgridAdapter: EmailProviderAdapter = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function requireApiKey(conn: HlEmailConnection): string {
+function requireApiKey(conn: PlatformEmailConnection): string {
   const encrypted =
     conn.provider_api_key_encrypted ?? conn.resend_api_key_encrypted;
   if (!encrypted) {

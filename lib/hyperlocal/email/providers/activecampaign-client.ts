@@ -1,7 +1,10 @@
 import "server-only";
 
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type {
+  HlEmailAppMetadata,
+  PlatformEmailConnection,
+} from "@/types/platform-connections";
 
 // ============================================================
 // ActiveCampaign REST helper.
@@ -27,11 +30,11 @@ export interface AcAuth {
   listId: string | null;
 }
 
-export function acAuthFromConnection(conn: HlEmailConnection): AcAuth {
-  const meta = (conn.provider_metadata ?? {}) as {
-    activecampaign?: { base_url?: string; list_id?: string };
-  };
-  const baseUrl = meta.activecampaign?.base_url;
+export function acAuthFromConnection(
+  conn: PlatformEmailConnection,
+  metadata: HlEmailAppMetadata,
+): AcAuth {
+  const baseUrl = metadata.activecampaign?.account_url;
   if (!baseUrl) {
     throw new Error(
       "ActiveCampaign connection missing API URL — reconnect under Settings → Email.",
@@ -41,10 +44,11 @@ export function acAuthFromConnection(conn: HlEmailConnection): AcAuth {
   if (!encryptedKey) {
     throw new Error("ActiveCampaign connection has no API key stored.");
   }
+  const rawListId = metadata.activecampaign?.list_id;
   return {
     baseUrl: baseUrl.replace(/\/+$/, ""),
     apiKey: decrypt(encryptedKey),
-    listId: meta.activecampaign?.list_id ?? null,
+    listId: rawListId != null ? String(rawListId) : null,
   };
 }
 

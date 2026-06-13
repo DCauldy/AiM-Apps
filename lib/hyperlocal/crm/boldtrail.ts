@@ -1,5 +1,9 @@
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlCrmConnection, NormalizedContact } from "@/types/hyperlocal";
+import type { NormalizedContact } from "@/types/hyperlocal";
+import type {
+  HlCrmFilterConfig,
+  PlatformCrmConnection,
+} from "@/types/platform-connections";
 import type {
   CrmConnector,
   FetchContactsOptions,
@@ -38,7 +42,7 @@ interface BoldTrailContactsResponse {
   meta?: { total?: number; page?: number; per_page?: number };
 }
 
-function authHeader(conn: HlCrmConnection): string {
+function authHeader(conn: PlatformCrmConnection): string {
   if (!conn.api_key_encrypted) {
     throw new Error("BoldTrail API token not configured");
   }
@@ -46,7 +50,7 @@ function authHeader(conn: HlCrmConnection): string {
 }
 
 async function btGet(
-  conn: HlCrmConnection,
+  conn: PlatformCrmConnection,
   path: string,
   params: Record<string, string | number | undefined> = {}
 ): Promise<unknown> {
@@ -91,14 +95,14 @@ function extractContacts(data: unknown): BoldTrailContact[] {
 }
 
 function normalize(
-  conn: HlCrmConnection,
-  c: BoldTrailContact
+  filter: HlCrmFilterConfig | undefined,
+  c: BoldTrailContact,
 ): NormalizedContact | null {
   if (!c.email || !isValidEmail(c.email)) return null;
   const tags = c.tags ?? [];
   const customFieldValue =
-    conn.search_area_column && c.custom_fields
-      ? (c.custom_fields[conn.search_area_column] as string | undefined)
+    filter?.search_area_column && c.custom_fields
+      ? (c.custom_fields[filter.search_area_column] as string | undefined)
       : undefined;
 
   return {
@@ -115,7 +119,7 @@ function normalize(
           zip: c.address.zip ?? undefined,
         }
       : undefined,
-    search_areas: extractSearchAreas(conn, customFieldValue, tags),
+    search_areas: extractSearchAreas(filter, customFieldValue, tags),
     tags,
     source: c.source ?? undefined,
     raw_stage: c.status ?? c.stage ?? undefined,
@@ -123,14 +127,17 @@ function normalize(
 }
 
 export const boldtrailConnector: CrmConnector = {
-  async testConnection(conn): Promise<TestConnectionResult> {
+  async testConnection(
+    conn: PlatformCrmConnection,
+    filter?: HlCrmFilterConfig,
+  ): Promise<TestConnectionResult> {
     try {
       const data = await btGet(conn, "/v2/public/contacts", { per_page: 1 });
       const contacts = extractContacts(data);
       return {
         ok: true,
         sample: contacts[0]
-          ? normalize(conn, contacts[0]) ?? undefined
+          ? normalize(filter, contacts[0]) ?? undefined
           : undefined,
         contact_count_estimate: (data as BoldTrailContactsResponse).meta?.total,
       };
@@ -139,7 +146,10 @@ export const boldtrailConnector: CrmConnector = {
     }
   },
 
-  async fetchContacts(conn, opts: FetchContactsOptions = {}) {
+  async fetchContacts(
+    conn: PlatformCrmConnection,
+    opts: FetchContactsOptions = {},
+  ): Promise<NormalizedContact[]> {
     const pageSize = Math.min(opts.pageSize ?? 100, 100);
     const totalCap = opts.limit ?? 25_000;
     const all: NormalizedContact[] = [];
@@ -153,7 +163,7 @@ export const boldtrailConnector: CrmConnector = {
       const batch = extractContacts(data);
       if (batch.length === 0) break;
       for (const c of batch) {
-        const n = normalize(conn, c);
+        const n = normalize(opts.filter, c);
         if (n) all.push(n);
         if (all.length >= totalCap) break;
       }

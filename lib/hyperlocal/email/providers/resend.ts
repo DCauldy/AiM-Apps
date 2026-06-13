@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import { Webhook } from "svix";
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type { PlatformEmailConnection } from "@/types/platform-connections";
 import {
   RESEND_EVENT_MAP,
   type EmailEventType,
@@ -23,7 +23,7 @@ import type {
  * a platform-wide Resend account across users — keeps reputation, billing,
  * and domain ownership entirely with the user.
  */
-function clientForConnection(conn: HlEmailConnection): Resend {
+function clientForConnection(conn: PlatformEmailConnection): Resend {
   if (!conn.resend_api_key_encrypted) {
     throw new Error(
       "This Resend connection has no API key stored. Re-add it under Settings → Email."
@@ -60,7 +60,7 @@ export const resendAdapter: EmailProviderAdapter = {
   capabilities: RESEND_CAPABILITIES,
 
   async send(
-    conn: HlEmailConnection,
+    conn: PlatformEmailConnection,
     msg: EmailMessage,
   ): Promise<SendResult> {
     return resendSend(conn, msg);
@@ -131,7 +131,7 @@ export const resendProvider: EmailProviderClient = {
 };
 
 async function resendSend(
-  conn: HlEmailConnection,
+  conn: PlatformEmailConnection,
   msg: EmailMessage,
 ): Promise<SendResult> {
     let res;

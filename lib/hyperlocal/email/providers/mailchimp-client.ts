@@ -1,12 +1,20 @@
 import "server-only";
 
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type {
+  HlEmailAppMetadata,
+  PlatformEmailConnection,
+} from "@/types/platform-connections";
 
 // ============================================================
 // Server-side Mailchimp REST helper. Picks OAuth token (Bearer-ish "OAuth"
 // scheme) when the connection was added via /oauth/callback, otherwise
 // falls back to the API-key Basic auth used by the /connect path.
+//
+// Wave 9: auth blobs live on PlatformEmailConnection (shared); the
+// per-app metadata (dc, audience_id) lives on
+// AppEmailConnectionState.provider_metadata. Callers resolve both and
+// pass them in explicitly.
 // ============================================================
 
 export interface McAuth {
@@ -15,11 +23,11 @@ export interface McAuth {
   audienceId: string | null;
 }
 
-export function mcAuthFromConnection(conn: HlEmailConnection): McAuth {
-  const meta = (conn.provider_metadata ?? {}) as {
-    mailchimp?: { dc?: string; audience_id?: string };
-  };
-  const dc = meta.mailchimp?.dc;
+export function mcAuthFromConnection(
+  conn: PlatformEmailConnection,
+  metadata: HlEmailAppMetadata,
+): McAuth {
+  const dc = metadata.mailchimp?.dc;
   if (!dc) {
     throw new Error("Mailchimp connection missing datacenter — reconnect under Settings → Email.");
   }
@@ -29,7 +37,7 @@ export function mcAuthFromConnection(conn: HlEmailConnection): McAuth {
     return {
       authHeader: `OAuth ${token}`,
       dc,
-      audienceId: meta.mailchimp?.audience_id ?? null,
+      audienceId: metadata.mailchimp?.audience_id ?? null,
     };
   }
   if (conn.provider_api_key_encrypted) {
@@ -37,7 +45,7 @@ export function mcAuthFromConnection(conn: HlEmailConnection): McAuth {
     return {
       authHeader: "Basic " + Buffer.from(`hl:${key}`).toString("base64"),
       dc,
-      audienceId: meta.mailchimp?.audience_id ?? null,
+      audienceId: metadata.mailchimp?.audience_id ?? null,
     };
   }
   throw new Error("Mailchimp connection has no credential stored.");

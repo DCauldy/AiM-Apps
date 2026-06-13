@@ -2,7 +2,10 @@ import "server-only";
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type {
+  HlEmailAppMetadata,
+  PlatformEmailConnection,
+} from "@/types/platform-connections";
 import type {
   CampaignInput,
   CampaignRef,
@@ -53,10 +56,11 @@ export const mailchimpAdapter: EmailProviderAdapter = {
   capabilities: MAILCHIMP_CAPABILITIES,
 
   async lookupContacts(
-    conn: HlEmailConnection,
+    conn: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     emails: string[],
   ): Promise<ContactLookupResult> {
-    const { apiKey, dc, audienceId } = mcCreds(conn);
+    const { apiKey, dc, audienceId } = mcCreds(conn, metadata);
     // Mailchimp's "members" endpoint accepts a fields filter + count limit.
     // We page through, mapping each found email → status. Anything we don't
     // get back is bucketed as not_found.
@@ -103,11 +107,12 @@ export const mailchimpAdapter: EmailProviderAdapter = {
   },
 
   async upsertContacts(
-    conn: HlEmailConnection,
+    conn: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     contacts: ContactUpsert[],
     tag: string,
   ): Promise<void> {
-    const { apiKey, dc, audienceId } = mcCreds(conn);
+    const { apiKey, dc, audienceId } = mcCreds(conn, metadata);
 
     // Mailchimp tags can't be set via the inline `tags` field on the member
     // upsert — that field is read-only-ish (informational, doesn't write back).
@@ -141,10 +146,11 @@ export const mailchimpAdapter: EmailProviderAdapter = {
   },
 
   async createCampaign(
-    conn: HlEmailConnection,
+    conn: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     input: CampaignInput,
   ): Promise<CampaignRef> {
-    const { apiKey, dc, audienceId } = mcCreds(conn);
+    const { apiKey, dc, audienceId } = mcCreds(conn, metadata);
 
     // Mailchimp tags ARE static segments under the hood, but campaigns
     // target them by NUMERIC segment_id (not the tag name string). After
@@ -194,10 +200,11 @@ export const mailchimpAdapter: EmailProviderAdapter = {
   },
 
   async sendCampaign(
-    conn: HlEmailConnection,
+    conn: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     ref: CampaignRef,
   ): Promise<void> {
-    const { apiKey, dc } = mcCreds(conn);
+    const { apiKey, dc } = mcCreds(conn, metadata);
     // POST /campaigns/{id}/actions/send — no body, returns 204.
     await mcFetch<unknown>(
       apiKey,
@@ -208,10 +215,11 @@ export const mailchimpAdapter: EmailProviderAdapter = {
   },
 
   async getCampaignStatus(
-    conn: HlEmailConnection,
+    conn: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     ref: CampaignRef,
   ): Promise<CampaignStatus> {
-    const { apiKey, dc } = mcCreds(conn);
+    const { apiKey, dc } = mcCreds(conn, metadata);
     const data = await mcFetch<{ status: string }>(
       apiKey,
       dc,
@@ -334,7 +342,10 @@ interface McCreds {
   audienceId: string;
 }
 
-function mcCreds(conn: HlEmailConnection): McCreds {
+function mcCreds(
+  conn: PlatformEmailConnection,
+  metadata: HlEmailAppMetadata,
+): McCreds {
   const encryptedKey = conn.provider_api_key_encrypted;
   if (!encryptedKey) {
     throw new Error(
@@ -342,11 +353,8 @@ function mcCreds(conn: HlEmailConnection): McCreds {
     );
   }
   const apiKey = decrypt(encryptedKey);
-  const meta = (conn.provider_metadata ?? {}) as {
-    mailchimp?: { dc?: string; audience_id?: string };
-  };
-  const dc = meta.mailchimp?.dc;
-  const audienceId = meta.mailchimp?.audience_id;
+  const dc = metadata.mailchimp?.dc;
+  const audienceId = metadata.mailchimp?.audience_id;
   if (!dc) throw new Error("Mailchimp connection missing datacenter (dc).");
   if (!audienceId) {
     throw new Error("Mailchimp connection missing audience_id — pick one in Settings.");

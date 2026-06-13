@@ -1,5 +1,9 @@
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlCrmConnection, NormalizedContact } from "@/types/hyperlocal";
+import type { NormalizedContact } from "@/types/hyperlocal";
+import type {
+  HlCrmFilterConfig,
+  PlatformCrmConnection,
+} from "@/types/platform-connections";
 import type {
   CrmConnector,
   FetchContactsOptions,
@@ -39,7 +43,7 @@ interface ClozePeopleResponse {
   next_cursor?: string;
 }
 
-function getKey(conn: HlCrmConnection): string {
+function getKey(conn: PlatformCrmConnection): string {
   if (!conn.api_key_encrypted) {
     throw new Error("Cloze API key not configured");
   }
@@ -47,7 +51,7 @@ function getKey(conn: HlCrmConnection): string {
 }
 
 async function clozeGet(
-  conn: HlCrmConnection,
+  conn: PlatformCrmConnection,
   path: string,
   params: Record<string, string | number | undefined> = {}
 ): Promise<unknown> {
@@ -106,7 +110,7 @@ function getPhone(p: ClozePerson): string | undefined {
 }
 
 function normalize(
-  conn: HlCrmConnection,
+  filter: HlCrmFilterConfig | undefined,
   p: ClozePerson
 ): NormalizedContact | null {
   const email = getEmail(p);
@@ -117,8 +121,8 @@ function normalize(
   const addr = p.addresses?.[0];
   const tags = p.labels ?? p.tags ?? [];
   const customFieldValue =
-    conn.search_area_column && p.customFields
-      ? (p.customFields[conn.search_area_column] as string | undefined)
+    filter?.search_area_column && p.customFields
+      ? (p.customFields[filter.search_area_column] as string | undefined)
       : undefined;
 
   return {
@@ -135,27 +139,33 @@ function normalize(
           zip: addr.zip ?? addr.postal_code ?? undefined,
         }
       : undefined,
-    search_areas: extractSearchAreas(conn, customFieldValue, tags),
+    search_areas: extractSearchAreas(filter, customFieldValue, tags),
     tags,
     source: p.source ?? undefined,
   };
 }
 
 export const clozeConnector: CrmConnector = {
-  async testConnection(conn): Promise<TestConnectionResult> {
+  async testConnection(
+    conn: PlatformCrmConnection,
+    filter?: HlCrmFilterConfig,
+  ): Promise<TestConnectionResult> {
     try {
       const data = await clozeGet(conn, "/v1/people/feed", { count: 1 });
       const people = extractPeople(data);
       return {
         ok: true,
-        sample: people[0] ? normalize(conn, people[0]) ?? undefined : undefined,
+        sample: people[0] ? normalize(filter, people[0]) ?? undefined : undefined,
       };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   },
 
-  async fetchContacts(conn, opts: FetchContactsOptions = {}) {
+  async fetchContacts(
+    conn: PlatformCrmConnection,
+    opts: FetchContactsOptions = {},
+  ): Promise<NormalizedContact[]> {
     const pageSize = Math.min(opts.pageSize ?? 100, 100);
     const totalCap = opts.limit ?? 25_000;
     const all: NormalizedContact[] = [];
@@ -169,7 +179,7 @@ export const clozeConnector: CrmConnector = {
       const batch = extractPeople(data);
       if (batch.length === 0) break;
       for (const p of batch) {
-        const n = normalize(conn, p);
+        const n = normalize(opts.filter, p);
         if (n) all.push(n);
         if (all.length >= totalCap) break;
       }

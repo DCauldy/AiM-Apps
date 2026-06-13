@@ -1,5 +1,9 @@
 import { decrypt } from "@/lib/hyperlocal/encryption";
-import type { HlCrmConnection, NormalizedContact } from "@/types/hyperlocal";
+import type { NormalizedContact } from "@/types/hyperlocal";
+import type {
+  HlCrmFilterConfig,
+  PlatformCrmConnection,
+} from "@/types/platform-connections";
 import type {
   CrmConnector,
   FetchContactsOptions,
@@ -37,7 +41,7 @@ interface LoftyLeadsResponse {
   page?: number;
 }
 
-function authHeader(conn: HlCrmConnection): string {
+function authHeader(conn: PlatformCrmConnection): string {
   if (!conn.api_key_encrypted) {
     throw new Error("Lofty API key not configured for this connection");
   }
@@ -45,9 +49,9 @@ function authHeader(conn: HlCrmConnection): string {
 }
 
 async function loftyGet(
-  conn: HlCrmConnection,
+  conn: PlatformCrmConnection,
   path: string,
-  params: Record<string, string | number | undefined> = {}
+  params: Record<string, string | number | undefined> = {},
 ): Promise<unknown> {
   const base = conn.base_url ?? DEFAULT_BASE;
   const url = new URL(base + path);
@@ -88,14 +92,14 @@ async function loftyGet(
 }
 
 function normalize(
-  conn: HlCrmConnection,
-  l: LoftyLead
+  filter: HlCrmFilterConfig | undefined,
+  l: LoftyLead,
 ): NormalizedContact | null {
   if (!l.email || !isValidEmail(l.email)) return null;
   const tags = l.tags ?? [];
   const customFieldValue =
-    conn.search_area_column && l.customFields
-      ? (l.customFields[conn.search_area_column] as string | undefined)
+    filter?.search_area_column && l.customFields
+      ? (l.customFields[filter.search_area_column] as string | undefined)
       : undefined;
 
   return {
@@ -110,7 +114,7 @@ function normalize(
       state: l.state ?? undefined,
       zip: l.zip ?? undefined,
     },
-    search_areas: extractSearchAreas(conn, customFieldValue, tags),
+    search_areas: extractSearchAreas(filter, customFieldValue, tags),
     tags,
     source: l.source ?? undefined,
     raw_stage: l.stage ?? l.leadStatus ?? undefined,
@@ -123,13 +127,16 @@ function extractLeads(data: unknown): LoftyLead[] {
 }
 
 export const loftyConnector: CrmConnector = {
-  async testConnection(conn) {
+  async testConnection(
+    conn: PlatformCrmConnection,
+    filter?: HlCrmFilterConfig,
+  ): Promise<TestConnectionResult> {
     try {
       const data = await loftyGet(conn, "/leads", { pageSize: 1 });
       const leads = extractLeads(data);
       return {
         ok: true,
-        sample: leads[0] ? normalize(conn, leads[0]) ?? undefined : undefined,
+        sample: leads[0] ? normalize(filter, leads[0]) ?? undefined : undefined,
         contact_count_estimate: (data as LoftyLeadsResponse).total,
       };
     } catch (e) {
@@ -140,7 +147,10 @@ export const loftyConnector: CrmConnector = {
     }
   },
 
-  async fetchContacts(conn, opts = {}) {
+  async fetchContacts(
+    conn: PlatformCrmConnection,
+    opts: FetchContactsOptions = {},
+  ): Promise<NormalizedContact[]> {
     const pageSize = Math.min(opts.pageSize ?? 100, 200);
     const totalCap = opts.limit ?? 25_000;
     const all: NormalizedContact[] = [];
@@ -151,7 +161,7 @@ export const loftyConnector: CrmConnector = {
       const batch = extractLeads(data);
       if (batch.length === 0) break;
       for (const l of batch) {
-        const n = normalize(conn, l);
+        const n = normalize(opts.filter, l);
         if (n) all.push(n);
         if (all.length >= totalCap) break;
       }

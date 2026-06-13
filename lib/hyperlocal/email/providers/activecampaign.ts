@@ -17,7 +17,10 @@ import type {
   NormalizedEspEvent,
   ProviderCapabilities,
 } from "./types";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import type {
+  HlEmailAppMetadata,
+  PlatformEmailConnection,
+} from "@/types/platform-connections";
 
 // ============================================================
 // ActiveCampaign campaign-mode adapter — full Phase 2 pipeline.
@@ -59,10 +62,11 @@ export const activecampaignAdapter: EmailProviderAdapter = {
   // ---- Campaign pipeline ----
 
   async lookupContacts(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     emails: string[],
   ): Promise<ContactLookupResult> {
-    const auth = acAuthFromConnection(connection);
+    const auth = acAuthFromConnection(connection, metadata);
     if (!auth.listId) {
       throw new Error(
         "AC connection has no list selected — pick one in Settings → Email → ActiveCampaign.",
@@ -116,11 +120,12 @@ export const activecampaignAdapter: EmailProviderAdapter = {
   },
 
   async upsertContacts(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     contacts: ContactUpsert[],
     tag: string,
   ): Promise<void> {
-    const auth = acAuthFromConnection(connection);
+    const auth = acAuthFromConnection(connection, metadata);
     if (!auth.listId) {
       throw new Error("AC connection has no list selected.");
     }
@@ -170,10 +175,11 @@ export const activecampaignAdapter: EmailProviderAdapter = {
   },
 
   async createCampaign(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     input: CampaignInput,
   ): Promise<CampaignRef> {
-    const auth = acAuthFromConnection(connection);
+    const auth = acAuthFromConnection(connection, metadata);
     if (!auth.listId) {
       throw new Error("AC connection has no list selected.");
     }
@@ -310,10 +316,11 @@ export const activecampaignAdapter: EmailProviderAdapter = {
   },
 
   async sendCampaign(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     ref: CampaignRef,
   ): Promise<void> {
-    const auth = acAuthFromConnection(connection);
+    const auth = acAuthFromConnection(connection, metadata);
     // v1 campaign_send action=send — fires the actual send (not test).
     // Subject to AC's 8-campaign trust gate on new accounts.
     const res = await acV1(auth, "campaign_send", {
@@ -326,10 +333,11 @@ export const activecampaignAdapter: EmailProviderAdapter = {
   },
 
   async getCampaignStatus(
-    connection: HlEmailConnection,
+    connection: PlatformEmailConnection,
+    metadata: HlEmailAppMetadata,
     ref: CampaignRef,
   ): Promise<CampaignStatus> {
-    const auth = acAuthFromConnection(connection);
+    const auth = acAuthFromConnection(connection, metadata);
     const data = await acV3<{
       campaign?: { status?: string | number };
     }>(auth, "GET", `/campaigns/${encodeURIComponent(ref.campaign_id)}`);
