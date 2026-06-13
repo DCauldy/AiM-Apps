@@ -1,20 +1,14 @@
 import { NextRequest } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
 import { getActiveProfile } from "@/lib/profiles/server";
+import {
+  createAppCrmConnection,
+  listAppCrmConnections,
+} from "@/lib/platform/connections";
+import type { CmaCrmFilterConfig } from "@/types/platform-connections";
 import type { CmaCrmPlatform, PastClientSource } from "@/types/cma";
 
 export const dynamic = "force-dynamic";
-
-// Encrypted-credential columns are never returned to the client. The
-// public projection here mirrors the GET-time shape in
-// types/cma.ts (CmaCrmConnectionsListResponse).
-const PUBLIC_FIELDS = `
-  id, profile_id, platform, label, base_url,
-  past_client_source, past_client_value,
-  is_active, last_synced_at, last_error,
-  created_at, updated_at
-`;
 
 const ALLOWED_PLATFORMS: ReadonlySet<CmaCrmPlatform> = new Set([
   "followupboss",
@@ -28,6 +22,14 @@ const ALLOWED_SOURCES: ReadonlySet<PastClientSource> = new Set([
   "all",
 ]);
 
+/**
+ * GET /api/apps/listing-studio/crm-connections
+ *
+ * Returns the joined AppCrmConnection<"listing_studio">[] shape from
+ * the shared platform_crm_connections + app_crm_connection_state
+ * tables (Wave 9). Auth blobs are stripped server-side by the
+ * helper.
+ */
 export async function GET() {
   const supabase = await createClient();
   const {
@@ -35,22 +37,25 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Scope to the active profile when the user has one. RLS already
-  // restricts to user_id; profile filter is a UX concern (agents see
-  // only the connections for the brand they're currently working in).
+  // Profile-scoped — each branded persona owns its own integrations.
   const profile = await getActiveProfile(user.id);
-  let query = supabase
-    .from("cma_crm_connections")
-    .select(PUBLIC_FIELDS)
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-  if (profile) query = query.eq("profile_id", profile.id);
 
-  const { data, error } = await query;
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connections: data ?? [] });
+  const service = createServiceRoleClient();
+  const connections = await listAppCrmConnections(
+    service,
+    user.id,
+    profile?.id ?? null,
+    "listing_studio",
+  );
+  return Response.json({ connections });
 }
 
+/**
+ * POST /api/apps/listing-studio/crm-connections
+ *
+ * Create a new shared CRM connection + paired CMA app-state row.
+ * Filter fields (past_client_source/value) live on app_state.filter_config.
+ */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const {
@@ -105,29 +110,38 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // profile_id is NOT NULL on platform_crm_connections — refuse the
+  // create rather than silently lose the scoping when there's no
+  // active profile.
   const profile = await getActiveProfile(user.id);
+  if (!profile) {
+    return Response.json(
+      { error: "An active profile is required to add a CRM connection." },
+      { status: 400 },
+    );
+  }
 
-  const insert: Record<string, unknown> = {
-    user_id: user.id,
-    profile_id: profile?.id ?? null,
-    platform,
-    label: label ?? null,
-    base_url: base_url ?? null,
-    past_client_source: past_client_source ?? null,
+  const filterConfig: CmaCrmFilterConfig = {
+    past_client_source: (past_client_source as PastClientSource | undefined) ?? null,
     past_client_value: past_client_value?.trim() || null,
   };
 
-  if (api_key && api_key.trim().length > 0) {
-    insert.api_key_encrypted = encrypt(api_key.trim());
-  }
-
   const service = createServiceRoleClient();
-  const { data, error } = await service
-    .from("cma_crm_connections")
-    .insert(insert)
-    .select(PUBLIC_FIELDS)
-    .single();
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connection: data });
+  try {
+    const connection = await createAppCrmConnection(service, "listing_studio", {
+      userId: user.id,
+      profileId: profile.id,
+      platform: platform as CmaCrmPlatform,
+      label: label ?? null,
+      apiKey: api_key ?? null,
+      baseUrl: base_url ?? null,
+      filterConfig,
+    });
+    return Response.json({ connection });
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Failed to create connection" },
+      { status: 500 },
+    );
+  }
 }

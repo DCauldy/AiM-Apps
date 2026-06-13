@@ -1,18 +1,26 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import {
+  getAppEmailConnection,
+  getAppEmailConnectionStateInternal,
+  getPlatformEmailConnection,
+} from "@/lib/platform/connections";
+import {
   mcAuthFromConnection,
   mcRequest,
 } from "@/lib/hyperlocal/email/providers/mailchimp-client";
 import { getPreviewTemplate } from "@/lib/hyperlocal/email/preview-templates";
-import { renderEmailHtml, htmlToPlainText } from "@/lib/hyperlocal/email/render";
+import {
+  renderEmailHtml,
+  htmlToPlainText,
+} from "@/lib/hyperlocal/email/render";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
 import { isSuppressed } from "@/lib/hyperlocal/email/suppressions";
 import { NextRequest } from "next/server";
 import type {
-  HlEmailConnection,
   PlatformBrandingProfile,
   PlatformSenderProfile,
 } from "@/types/hyperlocal";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
@@ -24,17 +32,6 @@ export const dynamic = "force-dynamic";
 // design we have to go through their actual delivery infrastructure so
 // the agent sees the real-world result: Mailchimp's footer, their
 // unsub link, mail relayed from their IPs.
-//
-// Flow:
-//   1. Render HTML with espHandlesComplianceFooter=true (Mailchimp will
-//      append its own footer + unsubscribe).
-//   2. POST /campaigns — draft against the connected audience, no
-//      segment targeting (test sends bypass recipient resolution).
-//   3. PUT  /campaigns/{id}/content — attach the HTML + plaintext.
-//   4. POST /campaigns/{id}/actions/test — Mailchimp delivers a single
-//      copy to test_emails[], stamped "[TEST]" on the subject.
-//   5. DELETE /campaigns/{id} (best-effort) — keep the agent's Mailchimp
-//      UI clean. Failure to delete is non-fatal; the draft just lingers.
 // ============================================================
 
 const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -62,7 +59,10 @@ export async function POST(
 
   if (!VALID_EMAIL.test(toEmail)) {
     return Response.json(
-      { error: "No valid recipient — provide a to_email or set one on your account." },
+      {
+        error:
+          "No valid recipient — provide a to_email or set one on your account.",
+      },
       { status: 400 },
     );
   }
@@ -76,43 +76,61 @@ export async function POST(
     .maybeSingle();
   if (!meta?.active_profile_id) {
     return Response.json(
-      { error: "No active profile — open /apps/profile and set one before previewing." },
+      {
+        error:
+          "No active profile — open /apps/profile and set one before previewing.",
+      },
       { status: 400 },
     );
   }
 
-  const [{ data: connection }, { data: profile }] = await Promise.all([
-    service
-      .from("hl_email_connections")
-      .select("*")
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .eq("provider", "mailchimp")
-      .maybeSingle(),
+  const [appConn, platformConn, state, profileRow] = await Promise.all([
+    getAppEmailConnection(service, user.id, "hyperlocal", id),
+    getPlatformEmailConnection(service, user.id, id),
+    getAppEmailConnectionStateInternal(service, "hyperlocal", id),
     service
       .from("platform_profiles")
       .select("*")
       .eq("id", meta.active_profile_id)
       .maybeSingle(),
   ]);
+  const profile = profileRow.data;
 
-  if (!connection) {
-    return Response.json({ error: "Mailchimp connection not found" }, { status: 404 });
+  if (!appConn || !platformConn || platformConn.provider !== "mailchimp") {
+    return Response.json(
+      { error: "Mailchimp connection not found" },
+      { status: 404 },
+    );
   }
   if (!profile) {
-    return Response.json({ error: "Active profile not found" }, { status: 404 });
+    return Response.json(
+      { error: "Active profile not found" },
+      { status: 404 },
+    );
+  }
+  if (!state || state.app !== "hyperlocal") {
+    return Response.json(
+      { error: "Hyperlocal state row missing for this connection" },
+      { status: 404 },
+    );
   }
 
-  const conn = connection as HlEmailConnection;
-  if (!conn.is_active) {
+  if (!platformConn.is_active) {
     return Response.json(
-      { error: "This connection is inactive — reconnect under Settings → Email." },
+      {
+        error:
+          "This connection is inactive — reconnect under Settings → Email.",
+      },
       { status: 400 },
     );
   }
-  if (conn.paused) {
+  if (appConn.state.paused) {
     return Response.json(
-      { error: conn.paused_reason ?? "Connection is paused — resume before previewing." },
+      {
+        error:
+          appConn.state.paused_reason ??
+          "Connection is paused — resume before previewing.",
+      },
       { status: 400 },
     );
   }
@@ -135,9 +153,10 @@ export async function POST(
     );
   }
 
+  const metadata = state.provider_metadata as HlEmailAppMetadata;
   let auth;
   try {
-    auth = mcAuthFromConnection(conn);
+    auth = mcAuthFromConnection(platformConn, metadata);
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "Mailchimp auth failed" },
@@ -146,7 +165,10 @@ export async function POST(
   }
   if (!auth.audienceId) {
     return Response.json(
-      { error: "No audience selected — pick one in Settings → Email → Mailchimp." },
+      {
+        error:
+          "No audience selected — pick one in Settings → Email → Mailchimp.",
+      },
       { status: 400 },
     );
   }
@@ -213,8 +235,6 @@ export async function POST(
     sellerHtml: template.sellerHtml,
     buyerHtml: template.buyerHtml,
     preheader: template.preheader,
-    // Mailchimp injects its own footer + unsubscribe; the renderer
-    // skips ours when this flag is true so unsubscribeUrl is unused.
     unsubscribeUrl: "",
     staticMapUrl,
     yoyPriceChangePct: previewYoy,
@@ -240,26 +260,23 @@ export async function POST(
         from_email?: string;
         subject?: string;
       };
-    }>(
-      auth,
-      "GET",
-      `/lists/${auth.audienceId}?fields=campaign_defaults`,
-    );
+    }>(auth, "GET", `/lists/${auth.audienceId}?fields=campaign_defaults`);
     listDefaults = listInfo.campaign_defaults ?? {};
   } catch {
-    // Non-fatal — fall through to the connection-level values. If those
-    // are also bad, Mailchimp's 400 will be surfaced with the full body.
+    // Non-fatal — fall through to the connection-level values.
   }
 
   const fromName =
     listDefaults.from_name?.trim() ||
-    conn.display_name?.trim() ||
+    platformConn.display_name?.trim() ||
     sender.full_name.trim() ||
     "Sender";
   const replyTo =
     listDefaults.from_email?.trim() ||
     (sender.reply_to_email?.includes("@") ? sender.reply_to_email : null) ||
-    (conn.email_address.includes(":") ? null : conn.email_address);
+    (platformConn.email_address.includes(":")
+      ? null
+      : platformConn.email_address);
 
   if (!replyTo) {
     return Response.json(
@@ -275,28 +292,35 @@ export async function POST(
   // ---- Mailchimp campaign create → set content → test-send → cleanup ----
   let campaignId: string | null = null;
   try {
-    const campaign = await mcRequest<{ id: string }>(auth, "POST", "/campaigns", {
-      type: "regular",
-      recipients: {
-        list_id: auth.audienceId,
-        // No segment_opts — test sends bypass recipient targeting entirely.
+    const campaign = await mcRequest<{ id: string }>(
+      auth,
+      "POST",
+      "/campaigns",
+      {
+        type: "regular",
+        recipients: {
+          list_id: auth.audienceId,
+        },
+        settings: {
+          subject_line: "[PREVIEW] " + template.subject,
+          preview_text: template.preheader,
+          title: `Hyperlocal Test — ${new Date().toISOString()}`,
+          from_name: fromName,
+          reply_to: replyTo,
+        },
       },
-      settings: {
-        subject_line: "[PREVIEW] " + template.subject,
-        preview_text: template.preheader,
-        title: `Hyperlocal Test — ${new Date().toISOString()}`,
-        from_name: fromName,
-        reply_to: replyTo,
-        // Skip to_name merge tags for test sends — the test recipient may
-        // not exist as a list member, which would null-out *|FNAME|*.
-      },
-    });
+    );
     campaignId = campaign.id;
 
-    await mcRequest<unknown>(auth, "PUT", `/campaigns/${campaignId}/content`, {
-      html,
-      plain_text: text,
-    });
+    await mcRequest<unknown>(
+      auth,
+      "PUT",
+      `/campaigns/${campaignId}/content`,
+      {
+        html,
+        plain_text: text,
+      },
+    );
 
     await mcRequest<unknown>(
       auth,
@@ -308,19 +332,19 @@ export async function POST(
       },
     );
   } catch (e) {
-    // If the campaign was created but content/test failed, still try to
-    // clean it up so we don't leave drafts behind.
     if (campaignId) {
-      await mcRequest(auth, "DELETE", `/campaigns/${campaignId}`).catch(() => {});
+      await mcRequest(auth, "DELETE", `/campaigns/${campaignId}`).catch(
+        () => {},
+      );
     }
     return Response.json(
-      { error: e instanceof Error ? e.message : "Mailchimp test send failed" },
+      {
+        error: e instanceof Error ? e.message : "Mailchimp test send failed",
+      },
       { status: 500 },
     );
   }
 
-  // Best-effort cleanup — Mailchimp UI stays tidy if this works, but the
-  // test send already happened so we never block on a failed delete.
   await mcRequest(auth, "DELETE", `/campaigns/${campaignId}`).catch(() => {});
 
   return Response.json({

@@ -1,10 +1,14 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import {
+  getAppEmailConnectionStateInternal,
+  getPlatformEmailConnection,
+} from "@/lib/platform/connections";
+import {
   mcAuthFromConnection,
   mcRequest,
 } from "@/lib/hyperlocal/email/providers/mailchimp-client";
-import type { HlEmailConnection } from "@/types/hyperlocal";
 import { NextRequest } from "next/server";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
@@ -27,20 +31,29 @@ export async function GET(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const service = createServiceRoleClient();
-  const { data: conn } = await service
-    .from("hl_email_connections")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .eq("provider", "mailchimp")
-    .maybeSingle();
-  if (!conn) {
-    return Response.json({ error: "Mailchimp connection not found" }, { status: 404 });
+  const conn = await getPlatformEmailConnection(service, user.id, id);
+  if (!conn || conn.provider !== "mailchimp") {
+    return Response.json(
+      { error: "Mailchimp connection not found" },
+      { status: 404 },
+    );
   }
+  const state = await getAppEmailConnectionStateInternal(
+    service,
+    "hyperlocal",
+    id,
+  );
+  if (!state || state.app !== "hyperlocal") {
+    return Response.json(
+      { error: "Hyperlocal state row missing for this connection" },
+      { status: 404 },
+    );
+  }
+  const metadata = state.provider_metadata as HlEmailAppMetadata;
 
   let audiences;
   try {
-    const auth = mcAuthFromConnection(conn as HlEmailConnection);
+    const auth = mcAuthFromConnection(conn, metadata);
     const data = await mcRequest<{
       lists: Array<{
         id: string;
@@ -66,12 +79,8 @@ export async function GET(
     );
   }
 
-  const meta = (conn.provider_metadata ?? {}) as {
-    mailchimp?: { audience_id?: string };
-  };
-
   return Response.json({
     audiences,
-    selected_audience_id: meta.mailchimp?.audience_id ?? null,
+    selected_audience_id: metadata.mailchimp?.audience_id ?? null,
   });
 }

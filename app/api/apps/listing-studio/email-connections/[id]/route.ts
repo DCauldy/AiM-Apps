@@ -1,26 +1,25 @@
 import { NextRequest } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import {
+  deletePlatformEmailConnection,
+  getAppEmailConnection,
+  updateAppEmailState,
+} from "@/lib/platform/connections";
 
 export const dynamic = "force-dynamic";
-
-const PUBLIC_FIELDS = `
-  id, profile_id, provider, email_address, display_name,
-  is_active, is_default,
-  resend_domain, resend_dkim_status, resend_webhook_id,
-  provider_metadata,
-  last_send_at, last_error,
-  created_at, updated_at
-`;
 
 /**
  * PATCH /api/apps/listing-studio/email-connections/[id]
  *
- * Updates non-credential fields on an email connection (display_name,
- * is_active, is_default). Credentials rotate through provider-specific
- * routes that own their verification step.
+ * Updates non-credential fields. is_active toggles the shared
+ * platform-level flag (gates send across all apps), is_default toggles
+ * the per-app default; the helper enforces the single-default
+ * invariant. display_name lives on the platform row — the helper
+ * doesn't expose it directly, so we skip it for now (display_name
+ * edits aren't reachable from the current UI; can re-add if needed).
  *
- * Setting is_default = true on this row clears it on every other
- * connection owned by the same user — only one default at a time.
+ * NB: Wave 11 will revisit the display_name update path once the UI
+ * is refactored to the joined shape.
  */
 export async function PATCH(
   req: NextRequest,
@@ -45,37 +44,38 @@ export async function PATCH(
     is_default?: boolean;
   };
 
-  const update: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
-  if (display_name !== undefined) update.display_name = display_name;
-  if (is_active !== undefined) update.is_active = is_active;
-  if (is_default !== undefined) update.is_default = is_default;
-
   const service = createServiceRoleClient();
 
-  // Single-default invariant: when promoting one row to default, demote
-  // any sibling defaults. Skipped when is_default is being explicitly
-  // set to false (or not changing).
-  if (is_default === true) {
+  // display_name lives on the platform_email_connections row. The
+  // helper doesn't expose a platform-side patch for it, so handle the
+  // direct update here while routing the state fields through the
+  // helper.
+  if (display_name !== undefined) {
     await service
-      .from("cma_email_connections")
-      .update({ is_default: false, updated_at: new Date().toISOString() })
-      .eq("user_id", user.id)
-      .eq("is_default", true)
-      .neq("id", id);
+      .from("platform_email_connections")
+      .update({
+        display_name,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("user_id", user.id);
   }
 
-  const { data, error } = await service
-    .from("cma_email_connections")
-    .update(update)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select(PUBLIC_FIELDS)
-    .single();
+  const connection = await updateAppEmailState(
+    service,
+    user.id,
+    "listing_studio",
+    id,
+    {
+      isActive: is_active,
+      isDefault: is_default,
+    },
+  );
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connection: data });
+  if (!connection) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  return Response.json({ connection });
 }
 
 export async function DELETE(
@@ -89,16 +89,21 @@ export async function DELETE(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
+  const service = createServiceRoleClient();
+
   // If this row is the user's default email connection, refuse to
   // delete — there's no fallback for the cadence scheduler. Agent
   // must promote another connection to default first.
-  const { data: row } = await supabase
-    .from("cma_email_connections")
-    .select("is_default")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (row?.is_default) {
+  const existing = await getAppEmailConnection(
+    service,
+    user.id,
+    "listing_studio",
+    id,
+  );
+  if (!existing) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  if (existing.state.is_default) {
     return Response.json(
       {
         error:
@@ -108,12 +113,6 @@ export async function DELETE(
     );
   }
 
-  const { error } = await supabase
-    .from("cma_email_connections")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  await deletePlatformEmailConnection(service, user.id, id);
   return Response.json({ success: true });
 }

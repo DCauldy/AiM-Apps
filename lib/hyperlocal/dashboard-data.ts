@@ -143,18 +143,26 @@ export async function getDashboardData(
   // result. `emailConnections` is one of these even though it's also used to
   // scope `hl_email_events`; we just gate that one follow-up on its ids.
   const [
-    { data: emailConnections },
+    { data: emailConnectionRows },
     { data: activeRuns },
     { data: lastCompletedRuns },
     { data: recentCompletedRuns },
     { data: campaigns },
-    { data: crmConnections },
+    { data: crmConnectionRows },
     { count: suppressionsThisWeek },
   ] = await Promise.all([
+    // Wave 9 collapsed hl_email_connections → platform_email_connections
+    // + app_email_connection_state. is_default + paused live on the
+    // per-app state row; the rest stays on the platform row. We
+    // flatten back to the legacy EmailConnectionRow shape below.
     supabase
-      .from("hl_email_connections")
-      .select("id, email_address, display_name, is_default, is_active, resend_dkim_status, paused")
-      .in("profile_id", profileIds),
+      .from("app_email_connection_state")
+      .select(
+        `connection_id, is_default, paused,
+         platform_email_connections!inner(id, email_address, display_name, is_active, resend_dkim_status, profile_id)`,
+      )
+      .eq("app", "hyperlocal")
+      .in("platform_email_connections.profile_id", profileIds),
     supabase
       .from("hl_runs")
       .select("id, campaign_id, phase, started_at, completed_at, created_at, contacts_fetched, segments_count, emails_drafted, emails_sent, emails_failed, email_connection_id")
@@ -180,11 +188,16 @@ export async function getDashboardData(
       .from("hl_campaigns")
       .select("id, name, lens")
       .in("profile_id", profileIds),
+    // CRM connections joined through the per-app state row. Hyperlocal-
+    // only — the label/platform projection mirrors the legacy shape.
     supabase
-      .from("hl_crm_connections")
-      .select("id, platform, label, is_active")
-      .in("profile_id", profileIds)
-      .eq("is_active", true)
+      .from("app_crm_connection_state")
+      .select(
+        `platform_crm_connections!inner(id, platform, label, is_active, profile_id)`,
+      )
+      .eq("app", "hyperlocal")
+      .eq("platform_crm_connections.is_active", true)
+      .in("platform_crm_connections.profile_id", profileIds)
       .limit(1),
     supabase
       .from("hl_suppressions")
@@ -193,8 +206,63 @@ export async function getDashboardData(
       .gte("added_at", sevenDaysAgo.toISOString()),
   ]);
 
+  // Flatten the joined app_state + platform rows into the legacy
+  // EmailConnectionRow shape the downstream aggregators expect. Doing
+  // this here keeps every helper below ignorant of the table split.
+  type JoinedEmailRow = {
+    connection_id: string;
+    is_default: boolean;
+    paused: boolean;
+    platform_email_connections:
+      | {
+          id: string;
+          email_address: string;
+          display_name: string | null;
+          is_active: boolean;
+          resend_dkim_status: "pending" | "verified" | "failed" | null;
+        }
+      | Array<{
+          id: string;
+          email_address: string;
+          display_name: string | null;
+          is_active: boolean;
+          resend_dkim_status: "pending" | "verified" | "failed" | null;
+        }>;
+  };
+  const emailConnections: EmailConnectionRow[] = (
+    (emailConnectionRows ?? []) as JoinedEmailRow[]
+  ).map((row) => {
+    const platform = Array.isArray(row.platform_email_connections)
+      ? row.platform_email_connections[0]
+      : row.platform_email_connections;
+    return {
+      id: platform.id,
+      email_address: platform.email_address,
+      display_name: platform.display_name,
+      is_default: row.is_default,
+      is_active: platform.is_active,
+      resend_dkim_status: platform.resend_dkim_status,
+      paused: row.paused,
+    };
+  });
+
+  // Flatten the CRM rows back to the legacy shape (label + platform).
+  type JoinedCrmRow = {
+    platform_crm_connections:
+      | { platform: string; label: string | null }
+      | Array<{ platform: string; label: string | null }>;
+  };
+  const crmConnections: Array<{ platform: string; label: string | null }> = (
+    (crmConnectionRows ?? []) as JoinedCrmRow[]
+  ).map((row) => {
+    const p = Array.isArray(row.platform_crm_connections)
+      ? row.platform_crm_connections[0]
+      : row.platform_crm_connections;
+    return { platform: p.platform, label: p.label };
+  });
+
   // Stage 2 — events query (gated on email connection ids).
-  const emailConnectionIds = (emailConnections ?? []).map((c) => c.id);
+  const emailConnectionIds = emailConnections.map((c) => c.id);
   const eventsRes =
     emailConnectionIds.length > 0
       ? await supabase
@@ -219,7 +287,7 @@ export async function getDashboardData(
 
   const [hero, recipients, recentCampaigns, neighborhoods] = await Promise.all([
     heroRunRow
-      ? buildHero(supabase, heroRunRow, campaigns ?? [], emailConnections ?? [], events)
+      ? buildHero(supabase, heroRunRow, campaigns ?? [], emailConnections, events)
       : Promise.resolve(null),
     fetchRecipientsLite(supabase, recipientIds),
     buildRecentCampaignStories(
@@ -236,8 +304,8 @@ export async function getDashboardData(
   const hotContacts = computeHotContacts(events, recipients);
   const health = computeHealth({
     events,
-    emailConnections: emailConnections ?? [],
-    crmConnections: crmConnections ?? [],
+    emailConnections,
+    crmConnections,
     suppressionsThisWeek: suppressionsThisWeek ?? 0,
   });
 

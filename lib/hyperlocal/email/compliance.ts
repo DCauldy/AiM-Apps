@@ -1,7 +1,6 @@
 import "server-only";
 
 import { getStateRequirements } from "./state-requirements";
-import type { HlEmailConnection } from "@/types/hyperlocal";
 import type { PlatformProfile } from "@/types/platform-profile";
 
 // ============================================================
@@ -69,10 +68,14 @@ interface LaunchCheckInput {
     | "license_info"
     | "state"
   >;
-  connection: Pick<
-    HlEmailConnection,
-    "is_active" | "paused" | "resend_dkim_status"
-  >;
+  /** is_active + resend_dkim_status come from platform_email_connections;
+   *  paused comes from app_email_connection_state. Callers join the two
+   *  before passing them in. */
+  connection: {
+    is_active: boolean;
+    paused: boolean;
+    resend_dkim_status: "pending" | "verified" | "failed" | null;
+  };
   recipients: RecipientForCheck[];
 }
 
@@ -160,7 +163,10 @@ export function assertRunLaunchCompliance(input: LaunchCheckInput): void {
 }
 
 interface PerSendCheckInput {
-  connection: Pick<HlEmailConnection, "is_active" | "paused">;
+  /** is_active lives on platform_email_connections; paused on the
+   *  per-app app_email_connection_state row. Callers pass the
+   *  combined view so this gate doesn't know about the split. */
+  connection: { is_active: boolean; paused: boolean };
   recipient: RecipientForCheck;
 }
 

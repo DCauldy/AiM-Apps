@@ -9,9 +9,12 @@ import { isSuppressed } from "@/lib/hyperlocal/email/suppressions";
 import { getPreviewTemplate } from "@/lib/hyperlocal/email/preview-templates";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
 import { getAdapter, hasAdapter } from "@/lib/hyperlocal/email/providers/registry";
+import {
+  getPlatformEmailConnection,
+  getAppEmailConnectionStateInternal,
+} from "@/lib/platform/connections";
 import { NextRequest } from "next/server";
 import type {
-  HlEmailConnection,
   PlatformBrandingProfile,
   PlatformSenderProfile,
 } from "@/types/hyperlocal";
@@ -78,13 +81,9 @@ export async function POST(
     );
   }
 
-  const [{ data: connection }, { data: profile }] = await Promise.all([
-    service
-      .from("hl_email_connections")
-      .select("*")
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .maybeSingle(),
+  const [conn, state, { data: profile }] = await Promise.all([
+    getPlatformEmailConnection(service, user.id, id),
+    getAppEmailConnectionStateInternal(service, "hyperlocal", id),
     service
       .from("platform_profiles")
       .select("*")
@@ -92,23 +91,22 @@ export async function POST(
       .maybeSingle(),
   ]);
 
-  if (!connection) {
+  if (!conn) {
     return Response.json({ error: "Connection not found" }, { status: 404 });
   }
   if (!profile) {
     return Response.json({ error: "Active profile not found" }, { status: 404 });
   }
 
-  const conn = connection as HlEmailConnection;
   if (!conn.is_active) {
     return Response.json(
       { error: "This connection is inactive — verify the domain first." },
       { status: 400 },
     );
   }
-  if (conn.paused) {
+  if (state?.paused) {
     return Response.json(
-      { error: conn.paused_reason ?? "Connection is paused — resume before previewing." },
+      { error: state.paused_reason ?? "Connection is paused — resume before previewing." },
       { status: 400 },
     );
   }

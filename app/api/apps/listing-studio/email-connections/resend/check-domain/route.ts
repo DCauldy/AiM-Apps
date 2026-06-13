@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/hyperlocal/encryption";
 import { getResendDomain } from "@/lib/hyperlocal/email/providers/resend";
+import {
+  getPlatformEmailConnection,
+  updateAppEmailState,
+} from "@/lib/platform/connections";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +33,16 @@ export async function GET(req: NextRequest) {
     );
 
   const service = createServiceRoleClient();
-  const { data: conn } = await service
-    .from("cma_email_connections")
-    .select("id, user_id, resend_domain_id, resend_dkim_status, resend_api_key_encrypted")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .eq("provider", "resend")
-    .maybeSingle();
+  // Load with auth blobs — we need to decrypt resend_api_key_encrypted
+  // to call Resend.
+  const conn = await getPlatformEmailConnection(service, user.id, id);
   if (!conn) return Response.json({ error: "Not found" }, { status: 404 });
+  if (conn.provider !== "resend") {
+    return Response.json(
+      { error: "Connection is not a Resend connection" },
+      { status: 400 },
+    );
+  }
   if (!conn.resend_domain_id) {
     return Response.json(
       { error: "Connection has no Resend domain id" },
@@ -54,14 +60,24 @@ export async function GET(req: NextRequest) {
     const apiKey = decrypt(conn.resend_api_key_encrypted);
     const info = await getResendDomain(apiKey, conn.resend_domain_id);
     const verified = info.status === "verified";
+
+    // Direct platform-row patch for resend_dkim_status (not on the
+    // app_state row). Use service client.
     await service
-      .from("cma_email_connections")
+      .from("platform_email_connections")
       .update({
         resend_dkim_status: verified ? "verified" : "pending",
-        is_active: verified,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    // Flip is_active through the helper so the state-row updated_at
+    // is bumped consistently with other settings flips.
+    await updateAppEmailState(service, user.id, "listing_studio", id, {
+      isActive: verified,
+    });
+
     return Response.json({ status: info.status, records: info.records });
   } catch (e) {
     return Response.json(

@@ -1,10 +1,15 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  createAppEmailConnection,
+  getAppEmailConnectionStateInternal,
+  listAppEmailConnections,
+} from "@/lib/platform/connections";
 import {
   deleteResendDomain,
   getOrCreateResendDomain,
 } from "@/lib/hyperlocal/email/providers/resend";
 import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
+import { getActiveProfile } from "@/lib/profiles/server";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -36,7 +41,7 @@ export async function POST(req: NextRequest) {
   if (!apiKey || !apiKey.startsWith("re_")) {
     return Response.json(
       { error: "Resend API key is required (starts with 're_')" },
-      { status: 400 }
+      { status: 400 },
     );
   }
   if (!domain || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) {
@@ -45,7 +50,21 @@ export async function POST(req: NextRequest) {
   if (!fromEmail || !fromEmail.endsWith("@" + domain)) {
     return Response.json(
       { error: `from_email must be on the verified domain (${domain})` },
-      { status: 400 }
+      { status: 400 },
+    );
+  }
+
+  // Scope this connection to the user's active profile so the gate +
+  // dashboard's profile-scoped queries count it. Required since the
+  // multi-profile refactor.
+  const profile = await getActiveProfile(user.id);
+  if (!profile) {
+    return Response.json(
+      {
+        error:
+          "No active profile — set one up before connecting a sending account",
+      },
+      { status: 400 },
     );
   }
 
@@ -55,67 +74,86 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "Resend domain setup failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
   const service = createServiceRoleClient();
 
-  // Scope this connection to the user's active profile so the gate +
-  // dashboard's profile-scoped queries count it. Required since the
-  // multi-profile refactor.
-  const { data: profileMeta } = await service
-    .from("profiles")
-    .select("active_profile_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profileMeta?.active_profile_id) {
-    return Response.json(
-      { error: "No active profile — set one up before connecting a sending account" },
-      { status: 400 },
-    );
-  }
-
   // One sending connection per profile. Stash any existing connection
   // (different provider) so we can disconnect it AFTER the new one is
   // verified + persisted — never strand the agent with nothing connected
   // if the new setup fails partway. UI gates this with a confirm modal.
-  const { data: priorConnection } = await service
-    .from("hl_email_connections")
-    .select("id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_metadata")
-    .eq("user_id", user.id)
-    .eq("profile_id", profileMeta.active_profile_id)
-    .limit(1)
-    .maybeSingle();
+  const existing = await listAppEmailConnections(
+    service,
+    user.id,
+    profile.id,
+    "hyperlocal",
+  );
+  const priorPair = existing[0] ?? null;
+  let priorRef: Parameters<typeof disconnectPriorConnection>[1] | null = null;
+  if (priorPair) {
+    const priorState = await getAppEmailConnectionStateInternal(
+      service,
+      "hyperlocal",
+      priorPair.connection.id,
+    );
+    // getPlatformEmailConnection wants the auth blobs too — fetch
+    // separately so disconnect has the API key to clean up provider-side.
+    const { data: priorPlatform } = await service
+      .from("platform_email_connections")
+      .select("*")
+      .eq("id", priorPair.connection.id)
+      .maybeSingle();
+    priorRef = priorPlatform
+      ? {
+          id: priorPlatform.id,
+          provider: priorPlatform.provider,
+          resend_webhook_id: priorState?.webhook_id ?? null,
+          resend_domain_id: priorPlatform.resend_domain_id,
+          resend_api_key_encrypted: priorPlatform.resend_api_key_encrypted,
+          provider_api_key_encrypted: priorPlatform.provider_api_key_encrypted,
+          provider_oauth_access_token_encrypted:
+            priorPlatform.provider_oauth_access_token_encrypted,
+          provider_metadata: (priorState?.provider_metadata ?? null) as Record<
+            string,
+            unknown
+          > | null,
+        }
+      : null;
+  }
 
-  const { count } = await service
-    .from("hl_email_connections")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("profile_id", profileMeta.active_profile_id);
-
-  const { data: row, error } = await service
-    .from("hl_email_connections")
-    .insert({
-      user_id: user.id,
-      profile_id: profileMeta.active_profile_id,
+  const isActive = resendInfo.status === "verified";
+  try {
+    const connection = await createAppEmailConnection(service, "hyperlocal", {
+      userId: user.id,
+      profileId: profile.id,
       provider: "resend",
-      email_address: fromEmail,
-      display_name: displayName,
-      resend_api_key_encrypted: encrypt(apiKey),
-      resend_domain: domain,
-      resend_domain_id: resendInfo.resend_domain_id,
-      resend_dkim_status:
-        resendInfo.status === "verified" ? "verified" : "pending",
-      is_active: resendInfo.status === "verified",
-      is_default: (count ?? 0) === 0 && resendInfo.status === "verified",
-    })
-    .select(
-      "id, provider, email_address, display_name, is_active, is_default, resend_domain, resend_dkim_status, created_at"
-    )
-    .single();
+      emailAddress: fromEmail,
+      displayName,
+      resendApiKey: apiKey,
+      resendDomain: domain,
+      resendDomainId: resendInfo.resend_domain_id,
+      resendDkimStatus: isActive ? "verified" : "pending",
+      isActive,
+      isDefault: existing.length === 0 && isActive,
+    });
 
-  if (error) {
+    // New connection persisted — now disconnect the prior one (one sending
+    // connection per profile). Best-effort: failure here doesn't roll back
+    // the new connection (user explicitly asked to replace).
+    if (priorRef && priorRef.id !== connection.connection.id) {
+      await disconnectPriorConnection(service, priorRef);
+    }
+
+    return Response.json({
+      connection: connection.connection,
+      dns_records: resendInfo.records,
+      status: resendInfo.status,
+      reused: resendInfo.reused ?? false,
+      replaced: priorRef?.provider ?? null,
+    });
+  } catch (e) {
     // Roll back the Resend-side create so a retry isn't stuck on a duplicate.
     // Never delete a domain we reused — that would yank an already-verified
     // sending domain out from under the user.
@@ -126,21 +164,12 @@ export async function POST(req: NextRequest) {
         // Best-effort; getOrCreate will handle the leftover on next attempt.
       }
     }
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json(
+      {
+        error:
+          e instanceof Error ? e.message : "Failed to persist connection",
+      },
+      { status: 500 },
+    );
   }
-
-  // New connection persisted — now disconnect the prior one (one sending
-  // connection per profile). Best-effort: failure here doesn't roll back
-  // the new connection (user explicitly asked to replace).
-  if (priorConnection && priorConnection.id !== row.id) {
-    await disconnectPriorConnection(service, priorConnection);
-  }
-
-  return Response.json({
-    connection: row,
-    dns_records: resendInfo.records,
-    status: resendInfo.status,
-    reused: resendInfo.reused ?? false,
-    replaced: priorConnection?.provider ?? null,
-  });
 }

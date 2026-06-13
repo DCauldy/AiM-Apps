@@ -9,11 +9,14 @@ import {
   generateCmaUnsubscribeToken,
   generateLandingPageToken,
 } from "@/lib/listing-studio/email/unsubscribe";
-import type {
-  CmaClient,
-  CmaClientDelivery,
-  CmaEmailConnection,
-} from "@/types/cma";
+import {
+  getAppEmailConnection,
+  getDefaultAppEmailConnection,
+  getPlatformEmailConnection,
+  updateAppEmailState,
+} from "@/lib/platform/connections";
+import type { CmaClient, CmaClientDelivery } from "@/types/cma";
+import type { PlatformEmailConnection } from "@/types/platform-connections";
 import type { PlatformProfile } from "@/types/platform-profile";
 
 // ---------------------------------------------------------------------------
@@ -86,29 +89,45 @@ export const cmaDeliver = inngest.createFunction(
       return c;
     });
 
-    // 2. Resolve sending connection — caller-specified or the agent's default.
+    // 2. Resolve sending connection — caller-specified or the agent's
+    //    default for the CMA app. We need the platform row (auth blob)
+    //    for the adapter and capture the platform connection id for the
+    //    delivery row FK + per-app state updates.
     const emailConn = await step.run("load-email-connection", async () => {
-      const q = emailConnectionId
-        ? supabase
-            .from("cma_email_connections")
-            .select("*")
-            .eq("id", emailConnectionId)
-            .eq("user_id", client.user_id)
-        : supabase
-            .from("cma_email_connections")
-            .select("*")
-            .eq("user_id", client.user_id)
-            .eq("is_default", true)
-            .eq("is_active", true);
-      const { data, error } = await q.maybeSingle();
-      if (error || !data) {
+      const joined = emailConnectionId
+        ? await getAppEmailConnection(
+            supabase,
+            client.user_id,
+            "listing_studio",
+            emailConnectionId,
+          )
+        : await getDefaultAppEmailConnection(
+            supabase,
+            client.user_id,
+            client.profile_id ?? null,
+            "listing_studio",
+          );
+      if (!joined) {
         throw new Error(
           emailConnectionId
             ? `Email connection ${emailConnectionId} not found`
             : "No default email connection configured",
         );
       }
-      return data as CmaEmailConnection;
+      const platformConn = await getPlatformEmailConnection(
+        supabase,
+        client.user_id,
+        joined.connection.id,
+      );
+      if (!platformConn) {
+        throw new Error(
+          `Platform email connection ${joined.connection.id} not found`,
+        );
+      }
+      return {
+        platform: platformConn,
+        profile_id: joined.connection.profile_id,
+      };
     });
 
     // 3. Resolve agent profile for signature + branding.
@@ -126,6 +145,9 @@ export const cmaDeliver = inngest.createFunction(
       // copy when fields are null.
       return (data ?? null) as PlatformProfile | null;
     });
+
+    // Platform connection — used for adapter calls + delivery row FK.
+    const platformConn: PlatformEmailConnection = emailConn.platform;
 
     // 4. Load prior delivery to compute the vs-last-CMA delta.
     const priorDelivery = await step.run("load-prior-delivery", async () => {
@@ -163,7 +185,7 @@ export const cmaDeliver = inngest.createFunction(
           // Persist the connection used so the webhook handler can
           // load the right per-connection signing secret without
           // guessing among the user's connections.
-          email_connection_id: emailConn.id,
+          email_connection_id: platformConn.id,
           landing_page_token: landingToken,
           trigger_source: triggerSource,
           recommended_price_cents: cmaResult.recommendedPriceCents,
@@ -214,7 +236,7 @@ export const cmaDeliver = inngest.createFunction(
 
     // 8. Send.
     const sendResult = await step.run("send-email", async () => {
-      return sendCmaEmail(emailConn, {
+      return sendCmaEmail(platformConn, {
         to: {
           email: client.email!,
           name: clientFullName(client) ?? undefined,
@@ -267,14 +289,14 @@ export const cmaDeliver = inngest.createFunction(
           })
           .eq("id", client.id);
 
-        await supabase
-          .from("cma_email_connections")
-          .update({
-            last_send_at: now,
-            last_error: null,
-            updated_at: now,
-          })
-          .eq("id", emailConn.id);
+        // Per-app last_send_at lives on app_email_connection_state.
+        await updateAppEmailState(
+          supabase,
+          client.user_id,
+          "listing_studio",
+          platformConn.id,
+          { lastSendAt: now, lastError: null },
+        );
 
         // Monthly meter — informational, distinguishes cadence vs manual.
         await supabase.rpc("cma_increment_delivery_count", {
@@ -293,13 +315,13 @@ export const cmaDeliver = inngest.createFunction(
           })
           .eq("id", delivery.id);
 
-        await supabase
-          .from("cma_email_connections")
-          .update({
-            last_error: errorMsg,
-            updated_at: now,
-          })
-          .eq("id", emailConn.id);
+        await updateAppEmailState(
+          supabase,
+          client.user_id,
+          "listing_studio",
+          platformConn.id,
+          { lastError: errorMsg },
+        );
       }
     });
 

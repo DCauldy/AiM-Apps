@@ -16,11 +16,20 @@ import { decrypt } from "@/lib/hyperlocal/encryption";
 // Best-effort: each provider-side cleanup is wrapped — failures log
 // and continue so the local row removal always happens. Leftovers on
 // the provider side can be cleaned manually by the agent.
+//
+// Wave 9 schema: deletes the underlying platform_email_connections
+// row (app_email_connection_state cascades). Webhook id + per-app
+// metadata now live on the app_state row; callers must hydrate
+// them into the PriorConnectionRef before invoking.
 // ============================================================
 
 export interface PriorConnectionRef {
+  /** platform_email_connections.id */
   id: string;
   provider: string;
+  /** Hyperlocal-app webhook id (from app_email_connection_state.webhook_id
+   *  for the "hyperlocal" app). Resend connections store this; for
+   *  Mailchimp/AC the id lives in provider_metadata instead. */
   resend_webhook_id?: string | null;
   resend_domain_id?: string | null;
   resend_api_key_encrypted?: string | null;
@@ -29,6 +38,8 @@ export interface PriorConnectionRef {
    *  `resend_api_key_encrypted` for historical reasons. */
   provider_api_key_encrypted?: string | null;
   provider_oauth_access_token_encrypted?: string | null;
+  /** Per-app provider metadata (from app_email_connection_state for
+   *  the "hyperlocal" app). Callers hydrate this from the app_state row. */
   provider_metadata?: Record<string, unknown> | null;
 }
 
@@ -56,7 +67,7 @@ export async function disconnectPriorConnection(
     );
   }
   const { error, count } = await service
-    .from("hl_email_connections")
+    .from("platform_email_connections")
     .delete({ count: "exact" })
     .eq("id", prior.id);
   if (error) {

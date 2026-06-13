@@ -5,6 +5,7 @@ import { Webhook } from "svix";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/hyperlocal/encryption";
 import { mapResendEventType } from "@/lib/hyperlocal/email/webhook-events";
+import { getAppEmailConnectionStateInternal } from "@/lib/platform/connections";
 
 export const dynamic = "force-dynamic";
 
@@ -90,14 +91,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: connection } = await supabase
-    .from("cma_email_connections")
-    .select("id, resend_webhook_secret_encrypted")
-    .eq("id", delivery.email_connection_id)
-    .maybeSingle();
+  // Per-app webhook secret lives on app_email_connection_state. The
+  // CMA webhook URL is distinct from Hyperlocal's, so each app has its
+  // own signing secret per shared platform connection.
+  const appState = await getAppEmailConnectionStateInternal(
+    supabase,
+    "listing_studio",
+    delivery.email_connection_id,
+  );
 
   // ---- 4. Verify signature ----
-  if (!connection?.resend_webhook_secret_encrypted) {
+  if (!appState?.webhook_secret_encrypted) {
     // Refuse rather than silently accept — a connection that's missing
     // its signing secret almost always means the agent re-pasted their
     // API key without re-provisioning the webhook, and we don't want
@@ -110,7 +114,7 @@ export async function POST(req: NextRequest) {
 
   let secret: string;
   try {
-    secret = decrypt(connection.resend_webhook_secret_encrypted);
+    secret = decrypt(appState.webhook_secret_encrypted);
   } catch {
     return Response.json(
       { error: "Webhook secret decrypt failed" },

@@ -3,6 +3,8 @@ import { addSuppression } from "@/lib/hyperlocal/email/suppressions";
 import { decrypt } from "@/lib/hyperlocal/encryption";
 import { evaluateKillSwitch } from "@/lib/hyperlocal/email/webhook-events";
 import { sendgridAdapter } from "@/lib/hyperlocal/email/providers/sendgrid";
+import { getAppEmailConnectionStateInternal } from "@/lib/platform/connections";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -71,15 +73,19 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true, ignored: "no connection id" });
   }
 
-  const { data: connection } = await supabase
-    .from("hl_email_connections")
-    .select("id, resend_webhook_secret_encrypted")
-    .eq("id", connectionId)
-    .maybeSingle();
-  if (!connection?.resend_webhook_secret_encrypted) {
-    // For SendGrid the column stores the verification PUBLIC key, not a
-    // secret. The name is shared with Resend's secret because both serve
-    // the same role — feeding verifyWebhookSignature.
+  // Per-app state row carries the encrypted SendGrid event-webhook
+  // signing public key under provider_metadata.sendgrid. Each app's
+  // webhook URL is distinct so each has its own configured key.
+  const appState = await getAppEmailConnectionStateInternal(
+    supabase,
+    "hyperlocal",
+    connectionId,
+  );
+  const meta = (appState?.provider_metadata ?? {}) as HlEmailAppMetadata;
+  const encryptedPublicKey = meta.sendgrid?.webhook_signing_public_key ?? null;
+  if (!encryptedPublicKey) {
+    // For SendGrid we verify with the agent's signing PUBLIC key, which
+    // they paste during verify-domain. Refuse rather than accept unsigned.
     return Response.json(
       { error: "Connection has no webhook public key configured" },
       { status: 401 },
@@ -88,7 +94,7 @@ export async function POST(req: NextRequest) {
 
   let publicKey: string;
   try {
-    publicKey = decrypt(connection.resend_webhook_secret_encrypted);
+    publicKey = decrypt(encryptedPublicKey);
   } catch {
     return Response.json({ error: "Public key decrypt failed" }, { status: 500 });
   }

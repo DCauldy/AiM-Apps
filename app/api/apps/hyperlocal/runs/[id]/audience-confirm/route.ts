@@ -1,7 +1,11 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { dispatchCampaignRun } from "@/lib/hyperlocal/email/campaign-dispatch";
 import { getAdapter } from "@/lib/hyperlocal/email/providers/registry";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import {
+  getPlatformEmailConnection,
+  getAppEmailConnectionStateInternal,
+} from "@/lib/platform/connections";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -35,14 +39,20 @@ export async function GET(
     return Response.json({ error: "Run not found or has no connection" }, { status: 404 });
   }
 
-  const { data: conn } = await service
-    .from("hl_email_connections")
-    .select("*")
-    .eq("id", run.email_connection_id)
-    .single();
+  const conn = await getPlatformEmailConnection(
+    service,
+    user.id,
+    run.email_connection_id,
+  );
   if (!conn) {
     return Response.json({ error: "Connection not found" }, { status: 404 });
   }
+  const state = await getAppEmailConnectionStateInternal(
+    service,
+    "hyperlocal",
+    run.email_connection_id,
+  );
+  const metadata = (state?.provider_metadata ?? {}) as HlEmailAppMetadata;
   const adapter = getAdapter(conn.provider);
   if (adapter.mode !== "campaign" || !adapter.lookupContacts) {
     return Response.json(
@@ -67,13 +77,14 @@ export async function GET(
       },
       new_contacts: [],
       audience_name:
-        (conn.provider_metadata as { mailchimp?: { audience_name?: string } })
+        (metadata as { mailchimp?: { audience_name?: string } })
           ?.mailchimp?.audience_name ?? null,
     });
   }
 
   const lookup = await adapter.lookupContacts(
-    conn as HlEmailConnection,
+    conn,
+    metadata,
     recipients.map((r) => r.contact_email),
   );
   const buckets = { subscribed: 0, unsubscribed: 0, cleaned: 0, pending: 0, not_found: 0 };
@@ -94,7 +105,7 @@ export async function GET(
     bucketing: buckets,
     new_contacts: newContacts,
     audience_name:
-      (conn.provider_metadata as { mailchimp?: { audience_name?: string } })
+      (metadata as { mailchimp?: { audience_name?: string } })
         ?.mailchimp?.audience_name ?? null,
   });
 }
@@ -149,14 +160,20 @@ export async function POST(
     );
   }
 
-  const { data: conn } = await service
-    .from("hl_email_connections")
-    .select("*")
-    .eq("id", run.email_connection_id)
-    .single();
+  const conn = await getPlatformEmailConnection(
+    service,
+    user.id,
+    run.email_connection_id,
+  );
   if (!conn) {
     return Response.json({ error: "Connection not found" }, { status: 404 });
   }
+  const state = await getAppEmailConnectionStateInternal(
+    service,
+    "hyperlocal",
+    run.email_connection_id,
+  );
+  const metadata = (state?.provider_metadata ?? {}) as HlEmailAppMetadata;
 
   // `skip_new` is implemented as: temporarily mark the not-found recipients
   // as "suppressed" for this run so dispatchCampaignRun's lookup excludes
@@ -182,7 +199,8 @@ export async function POST(
         .eq("send_status", "pending");
       if (recipients) {
         const lookup = await adapter.lookupContacts(
-          conn as HlEmailConnection,
+          conn,
+          metadata,
           recipients.map((r) => r.contact_email),
         );
         const subscribed = new Set(
@@ -208,7 +226,8 @@ export async function POST(
   const result = await dispatchCampaignRun({
     supabase: service,
     runId: id,
-    connection: conn as HlEmailConnection,
+    connection: conn,
+    metadata,
     audienceApproved: true,
   });
 

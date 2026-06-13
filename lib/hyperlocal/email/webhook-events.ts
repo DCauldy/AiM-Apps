@@ -71,11 +71,14 @@ export async function evaluateKillSwitch(
   supabase: SupabaseClient,
   connectionId: string,
 ): Promise<KillSwitchOutcome> {
-  // Skip if already paused.
+  // Skip if already paused. Pause state lives on the per-app state row
+  // now (each app pauses independently — Mailchimp + Resend on one shared
+  // identity could be paused for Hyperlocal but still active for CMA).
   const { data: conn } = await supabase
-    .from("hl_email_connections")
+    .from("app_email_connection_state")
     .select("paused")
-    .eq("id", connectionId)
+    .eq("connection_id", connectionId)
+    .eq("app", "hyperlocal")
     .maybeSingle();
   if (!conn || conn.paused) return { paused: false };
 
@@ -129,13 +132,14 @@ export async function evaluateKillSwitch(
   }
 
   await supabase
-    .from("hl_email_connections")
+    .from("app_email_connection_state")
     .update({
       paused: true,
       paused_reason: reason,
       paused_at: new Date().toISOString(),
     })
-    .eq("id", connectionId);
+    .eq("connection_id", connectionId)
+    .eq("app", "hyperlocal");
 
   return {
     paused: true,

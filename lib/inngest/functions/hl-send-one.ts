@@ -4,7 +4,13 @@ import { dispatchEmail } from "@/lib/hyperlocal/email/dispatch";
 import { buildUnsubscribeUrl } from "@/lib/hyperlocal/email/unsubscribe";
 import { isSuppressed, addSuppression } from "@/lib/hyperlocal/email/suppressions";
 import { assertSendOk, ComplianceError } from "@/lib/hyperlocal/email/compliance";
-import type { HlEmailConnection, PlatformSenderProfile } from "@/types/hyperlocal";
+import {
+  getPlatformEmailConnection,
+  getAppEmailConnectionStateInternal,
+  updateAppEmailState,
+} from "@/lib/platform/connections";
+import type { PlatformSenderProfile } from "@/types/hyperlocal";
+import type { PlatformEmailConnection } from "@/types/platform-connections";
 
 type HlSendOneEvent = {
   name: "hl/recipient.send";
@@ -49,7 +55,8 @@ export const hlSendOne = inngest.createFunction(
     const ctx = await step.run("load-send-context", async () => {
       const [
         { data: recipient },
-        { data: connection },
+        connection,
+        appState,
       ] = await Promise.all([
         supabase
           .from("hl_recipients")
@@ -58,14 +65,12 @@ export const hlSendOne = inngest.createFunction(
           )
           .eq("id", recipientId)
           .single(),
-        supabase
-          .from("hl_email_connections")
-          .select("*")
-          .eq("id", emailConnectionId)
-          .single(),
+        getPlatformEmailConnection(supabase, userId, emailConnectionId),
+        getAppEmailConnectionStateInternal(supabase, "hyperlocal", emailConnectionId),
       ]);
       if (!recipient) throw new Error("Recipient not found");
       if (!connection) throw new Error("Email connection not found");
+      if (!appState) throw new Error("Hyperlocal app state for connection not found");
       if (recipient.send_status !== "pending") {
         return { skip: true };
       }
@@ -120,7 +125,8 @@ export const hlSendOne = inngest.createFunction(
       return {
         skip: false,
         recipient,
-        connection: connection as HlEmailConnection,
+        connection,
+        appPaused: appState.paused,
         email,
         sender: sender as unknown as PlatformSenderProfile,
       };
@@ -131,6 +137,7 @@ export const hlSendOne = inngest.createFunction(
     const {
       recipient,
       connection,
+      appPaused,
       email,
       sender,
     } = ctx as {
@@ -143,7 +150,8 @@ export const hlSendOne = inngest.createFunction(
         contact_last_name: string | null;
         unsubscribe_token: string | null;
       };
-      connection: HlEmailConnection;
+      connection: PlatformEmailConnection;
+      appPaused: boolean;
       email: {
         subject: string;
         preheader: string;
@@ -172,9 +180,10 @@ export const hlSendOne = inngest.createFunction(
     }
 
     // ---- Per-recipient compliance gate (kill switch + token must exist) ----
+    // is_active lives on the platform row, paused on the per-app state row.
     try {
       assertSendOk({
-        connection,
+        connection: { is_active: connection.is_active, paused: appPaused },
         recipient: {
           contact_email: recipient.contact_email,
           unsubscribe_token: recipient.unsubscribe_token,
@@ -275,11 +284,11 @@ export const hlSendOne = inngest.createFunction(
               .eq("id", runId);
           }
         );
-        // Update connection last_send_at
-        await supabase
-          .from("hl_email_connections")
-          .update({ last_send_at: now, last_error: null })
-          .eq("id", connection.id);
+        // Update per-app last_send_at on app_email_connection_state.
+        await updateAppEmailState(supabase, userId, "hyperlocal", connection.id, {
+          lastSendAt: now,
+          lastError: null,
+        });
       } else {
         const isBounce = sendResult.is_hard_bounce === true;
         await supabase
@@ -321,11 +330,10 @@ export const hlSendOne = inngest.createFunction(
             sourceRunId: runId,
           });
         }
-        // Persist last_error on the connection
-        await supabase
-          .from("hl_email_connections")
-          .update({ last_error: sendResult.error ?? null })
-          .eq("id", connection.id);
+        // Persist last_error on the per-app state row.
+        await updateAppEmailState(supabase, userId, "hyperlocal", connection.id, {
+          lastError: sendResult.error ?? null,
+        });
       }
     });
 

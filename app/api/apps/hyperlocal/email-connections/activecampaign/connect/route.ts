@@ -1,5 +1,9 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  createAppEmailConnection,
+  getAppEmailConnectionStateInternal,
+  listAppEmailConnections,
+} from "@/lib/platform/connections";
 import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
 import {
   acListSubscriberCount,
@@ -7,8 +11,10 @@ import {
   normalizeAcBaseUrl,
   type AcAuth,
 } from "@/lib/hyperlocal/email/providers/activecampaign-client";
+import { getActiveProfile } from "@/lib/profiles/server";
 import { randomBytes } from "node:crypto";
 import { NextRequest } from "next/server";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +26,8 @@ export const dynamic = "force-dynamic";
  * one on the account). Persists the connection encrypted, replacing any
  * prior sending connection on this profile (one-at-a-time enforcement).
  *
- * Webhooks are not provisioned in Phase 1 — they ship with the run
- * pipeline in Phase 2.
+ * Webhooks: a fresh URL secret is generated and stored on the per-app
+ * webhook_secret_encrypted column.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -40,7 +46,10 @@ export async function POST(req: NextRequest) {
 
   if (!apiKey) {
     return Response.json(
-      { error: "ActiveCampaign API key is required (Settings → Developer in AC)." },
+      {
+        error:
+          "ActiveCampaign API key is required (Settings → Developer in AC).",
+      },
       { status: 400 },
     );
   }
@@ -62,11 +71,19 @@ export async function POST(req: NextRequest) {
   let accountName: string | null = null;
   try {
     const me = await acV3<{
-      user?: { email?: string; username?: string; first_name?: string; last_name?: string };
+      user?: {
+        email?: string;
+        username?: string;
+        first_name?: string;
+        last_name?: string;
+      };
     }>(auth, "GET", "/users/me");
     accountEmail = me.user?.email ?? null;
     accountName =
-      [me.user?.first_name, me.user?.last_name].filter(Boolean).join(" ").trim() ||
+      [me.user?.first_name, me.user?.last_name]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
       me.user?.username ||
       null;
   } catch (e) {
@@ -82,10 +99,18 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- Pick the list ----
-  let lists: Array<{ id: string; name: string; subscriber_count?: string | number }>;
+  let lists: Array<{
+    id: string;
+    name: string;
+    subscriber_count?: string | number;
+  }>;
   try {
     const data = await acV3<{
-      lists: Array<{ id: string; name: string; subscriber_count?: string | number }>;
+      lists: Array<{
+        id: string;
+        name: string;
+        subscriber_count?: string | number;
+      }>;
     }>(auth, "GET", "/lists?limit=100");
     lists = data.lists ?? [];
   } catch (e) {
@@ -110,17 +135,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const list =
-    lists.find((l) => l.id === requestedListId) ?? lists[0];
+  const list = lists.find((l) => l.id === requestedListId) ?? lists[0];
   // AC's /lists endpoint doesn't return subscriber_count — fetch it via
   // /contactLists with status=1 (active). Falls back to 0 on error.
   const memberCount = await acListSubscriberCount(auth, list.id);
 
   // ---- Provision webhook (best-effort, skipped on localhost) ----
-  // AC doesn't sign payloads — we append a URL secret at provisioning
-  // time and the receiver compares timing-safely. Subscribe to the
-  // events the pipeline cares about; "subscribe"/"update" are noisy
-  // and not actionable for us so we skip them.
   const webhookSecret = randomBytes(24).toString("hex");
   const endpointUrl = resolveWebhookEndpoint(req, webhookSecret);
   let webhookId: string | null = null;
@@ -155,82 +175,109 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- Persist connection ----
-  const service = createServiceRoleClient();
-  const { data: profileMeta } = await service
-    .from("profiles")
-    .select("active_profile_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profileMeta?.active_profile_id) {
+  const profile = await getActiveProfile(user.id);
+  if (!profile) {
     return Response.json(
-      { error: "No active profile — set one up before connecting ActiveCampaign." },
+      {
+        error:
+          "No active profile — set one up before connecting ActiveCampaign.",
+      },
       { status: 400 },
     );
   }
-  const profileId = profileMeta.active_profile_id;
+
+  const service = createServiceRoleClient();
 
   // One sending connection per profile — stash prior for auto-disconnect.
-  const { data: priorConnection } = await service
-    .from("hl_email_connections")
-    .select(
-      "id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_api_key_encrypted, provider_oauth_access_token_encrypted, provider_metadata",
-    )
-    .eq("user_id", user.id)
-    .eq("profile_id", profileId)
-    .limit(1)
-    .maybeSingle();
-
-  const { count } = await service
-    .from("hl_email_connections")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("profile_id", profileId);
-
-  const { data: row, error } = await service
-    .from("hl_email_connections")
-    .insert({
-      user_id: user.id,
-      profile_id: profileId,
-      provider: "activecampaign",
-      email_address: accountEmail ?? `activecampaign:${list.id}@${hostFromUrl(baseUrl)}`,
-      display_name: displayName ?? accountName ?? list.name,
-      provider_api_key_encrypted: encrypt(apiKey),
-      // Shared secret column — AC's URL secret feeds verifyWebhookSignature.
-      resend_webhook_secret_encrypted: encrypt(webhookSecret),
-      provider_metadata: {
-        activecampaign: {
-          base_url: baseUrl,
-          list_id: list.id,
-          list_name: list.name,
-          member_count: memberCount,
-          account_name: accountName,
-          account_email: accountEmail,
-          webhook_id: webhookId,
-          webhook_error: webhookError,
-        },
-      },
-      is_active: true,
-      is_default: (count ?? 0) === 0,
-    })
-    .select(
-      "id, provider, email_address, display_name, is_active, is_default, provider_metadata, created_at",
-    )
-    .single();
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-
-  if (priorConnection && priorConnection.id !== row.id) {
-    await disconnectPriorConnection(service, priorConnection);
+  const existing = await listAppEmailConnections(
+    service,
+    user.id,
+    profile.id,
+    "hyperlocal",
+  );
+  const priorPair = existing[0] ?? null;
+  let priorRef: Parameters<typeof disconnectPriorConnection>[1] | null = null;
+  if (priorPair) {
+    const priorState = await getAppEmailConnectionStateInternal(
+      service,
+      "hyperlocal",
+      priorPair.connection.id,
+    );
+    const { data: priorPlatform } = await service
+      .from("platform_email_connections")
+      .select("*")
+      .eq("id", priorPair.connection.id)
+      .maybeSingle();
+    priorRef = priorPlatform
+      ? {
+          id: priorPlatform.id,
+          provider: priorPlatform.provider,
+          resend_webhook_id: priorState?.webhook_id ?? null,
+          resend_domain_id: priorPlatform.resend_domain_id,
+          resend_api_key_encrypted: priorPlatform.resend_api_key_encrypted,
+          provider_api_key_encrypted: priorPlatform.provider_api_key_encrypted,
+          provider_oauth_access_token_encrypted:
+            priorPlatform.provider_oauth_access_token_encrypted,
+          provider_metadata: (priorState?.provider_metadata ?? null) as Record<
+            string,
+            unknown
+          > | null,
+        }
+      : null;
   }
 
-  return Response.json({
-    connection: row,
-    list: { id: list.id, name: list.name, member_count: memberCount },
-    lists_available: lists.length,
-    webhook: webhookId ? "provisioned" : "skipped",
+  const providerMetadata: HlEmailAppMetadata = {
+    activecampaign: {
+      account_url: baseUrl,
+      list_id: Number(list.id) || undefined,
+    },
+  };
+  // Free-form extras land alongside the typed fields.
+  Object.assign(providerMetadata.activecampaign as Record<string, unknown>, {
+    base_url: baseUrl,
+    list_name: list.name,
+    member_count: memberCount,
+    account_name: accountName,
+    account_email: accountEmail,
+    webhook_id: webhookId,
     webhook_error: webhookError,
-    replaced: priorConnection?.provider ?? null,
   });
+
+  try {
+    const connection = await createAppEmailConnection(service, "hyperlocal", {
+      userId: user.id,
+      profileId: profile.id,
+      provider: "activecampaign",
+      emailAddress:
+        accountEmail ?? `activecampaign:${list.id}@${hostFromUrl(baseUrl)}`,
+      displayName: displayName ?? accountName ?? list.name,
+      providerApiKey: apiKey,
+      webhookSecret,
+      providerMetadata,
+      isActive: true,
+      isDefault: existing.length === 0,
+    });
+
+    if (priorRef && priorRef.id !== connection.connection.id) {
+      await disconnectPriorConnection(service, priorRef);
+    }
+
+    return Response.json({
+      connection: connection.connection,
+      list: { id: list.id, name: list.name, member_count: memberCount },
+      lists_available: lists.length,
+      webhook: webhookId ? "provisioned" : "skipped",
+      webhook_error: webhookError,
+      replaced: priorRef?.provider ?? null,
+    });
+  } catch (e) {
+    return Response.json(
+      {
+        error: e instanceof Error ? e.message : "Failed to persist connection",
+      },
+      { status: 500 },
+    );
+  }
 }
 
 function hostFromUrl(url: string): string {

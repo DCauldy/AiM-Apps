@@ -1,12 +1,16 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { decrypt, encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  getAppEmailConnectionStateInternal,
+  getPlatformEmailConnection,
+  updateAppEmailState,
+} from "@/lib/platform/connections";
 import {
   mcAuthFromConnection,
   mcRequest,
 } from "@/lib/hyperlocal/email/providers/mailchimp-client";
 import { randomBytes } from "node:crypto";
-import type { HlEmailConnection } from "@/types/hyperlocal";
 import { NextRequest } from "next/server";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +19,10 @@ export const dynamic = "force-dynamic";
  * Body: { audience_id }
  *
  * Switch which Mailchimp audience Hyperlocal sends to. Side effects:
- *   1. Update connection.provider_metadata.mailchimp.audience_id + name
+ *   1. Update app_state.provider_metadata.mailchimp.audience_id + name
  *   2. Delete the old webhook on the previous audience (best-effort)
  *   3. Provision a new webhook on the new audience with a fresh URL secret
+ *      and store the secret on app_state.webhook_secret_encrypted
  *
  * Webhooks in Mailchimp are per-list. Switching audiences without
  * re-provisioning would leave bounce/unsubscribe events on the wrong
@@ -41,24 +46,35 @@ export async function PATCH(
   }
 
   const service = createServiceRoleClient();
-  const { data: conn } = await service
-    .from("hl_email_connections")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .eq("provider", "mailchimp")
-    .maybeSingle();
-  if (!conn) {
-    return Response.json({ error: "Mailchimp connection not found" }, { status: 404 });
+  const conn = await getPlatformEmailConnection(service, user.id, id);
+  if (!conn || conn.provider !== "mailchimp") {
+    return Response.json(
+      { error: "Mailchimp connection not found" },
+      { status: 404 },
+    );
   }
-
-  const typed = conn as HlEmailConnection;
-  const auth = mcAuthFromConnection(typed);
+  const state = await getAppEmailConnectionStateInternal(
+    service,
+    "hyperlocal",
+    id,
+  );
+  if (!state || state.app !== "hyperlocal") {
+    return Response.json(
+      { error: "Hyperlocal state row missing for this connection" },
+      { status: 404 },
+    );
+  }
+  const metadata = state.provider_metadata as HlEmailAppMetadata;
+  const auth = mcAuthFromConnection(conn, metadata);
 
   // Confirm the new audience exists + fetch its name for the metadata.
   let newAudience: { id: string; name: string; member_count: number | null };
   try {
-    const data = await mcRequest<{ id: string; name: string; stats?: { member_count?: number } }>(
+    const data = await mcRequest<{
+      id: string;
+      name: string;
+      stats?: { member_count?: number };
+    }>(
       auth,
       "GET",
       `/lists/${audienceId}?fields=id,name,stats.member_count`,
@@ -75,25 +91,25 @@ export async function PATCH(
     );
   }
 
-  const prevMeta = (conn.provider_metadata ?? {}) as {
-    mailchimp?: {
-      dc?: string;
-      audience_id?: string;
-      webhook_id?: string;
-    };
-  };
-  const prevAudienceId = prevMeta.mailchimp?.audience_id;
-  const prevWebhookId = prevMeta.mailchimp?.webhook_id;
+  const prevMailchimp = (metadata.mailchimp ?? {}) as Record<string, unknown>;
+  const prevAudienceId = prevMailchimp.audience_id as string | undefined;
+  const prevWebhookId = prevMailchimp.webhook_id as string | undefined;
 
   // ---- Provision a new webhook on the new audience ----
   // Generate a fresh URL secret per audience switch — easier to invalidate
   // the old webhook cleanly and avoid replaying secrets.
   const newWebhookSecret = randomBytes(24).toString("hex");
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin).replace(/\/+$/, "");
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin).replace(
+    /\/+$/,
+    "",
+  );
   const newWebhookUrl = `${appUrl}/api/webhooks/mailchimp?secret=${encodeURIComponent(newWebhookSecret)}`;
   let newWebhookId: string | null = null;
   let webhookError: string | null = null;
-  if (!newWebhookUrl.includes("://localhost") && !newWebhookUrl.includes("://127.0.0.1")) {
+  if (
+    !newWebhookUrl.includes("://localhost") &&
+    !newWebhookUrl.includes("://127.0.0.1")
+  ) {
     try {
       const wh = await mcRequest<{ id: string }>(
         auth,
@@ -114,7 +130,8 @@ export async function PATCH(
       );
       newWebhookId = wh.id;
     } catch (e) {
-      webhookError = e instanceof Error ? e.message : "webhook provision failed";
+      webhookError =
+        e instanceof Error ? e.message : "webhook provision failed";
     }
   } else {
     webhookError =
@@ -135,34 +152,29 @@ export async function PATCH(
   }
 
   // ---- Persist updated metadata + secret ----
-  const updateBody: Record<string, unknown> = {
-    provider_metadata: {
-      ...(conn.provider_metadata ?? {}),
-      mailchimp: {
-        ...prevMeta.mailchimp,
-        audience_id: newAudience.id,
-        audience_name: newAudience.name,
-        member_count: newAudience.member_count,
-        webhook_id: newWebhookId,
-        webhook_error: webhookError,
-      },
+  const nextMetadata: HlEmailAppMetadata = {
+    ...metadata,
+    mailchimp: {
+      ...(metadata.mailchimp ?? {}),
+      dc: metadata.mailchimp?.dc,
+      audience_id: newAudience.id,
+      server_prefix: metadata.mailchimp?.server_prefix,
     },
-    updated_at: new Date().toISOString(),
   };
-  if (newWebhookId) {
-    updateBody.resend_webhook_secret_encrypted = encrypt(newWebhookSecret);
-  }
+  Object.assign(nextMetadata.mailchimp as Record<string, unknown>, {
+    audience_name: newAudience.name,
+    member_count: newAudience.member_count,
+    webhook_id: newWebhookId,
+    webhook_error: webhookError,
+  });
 
-  // Ensure decrypt import survives tree-shake (used implicitly via auth helpers).
-  void decrypt;
-
-  const { error: updateErr } = await service
-    .from("hl_email_connections")
-    .update(updateBody)
-    .eq("id", id);
-  if (updateErr) {
-    return Response.json({ error: updateErr.message }, { status: 500 });
-  }
+  await updateAppEmailState(service, user.id, "hyperlocal", id, {
+    providerMetadata: nextMetadata,
+    // Only rotate the stored secret when we successfully provisioned the
+    // new webhook. Otherwise the old secret stays valid for the existing
+    // (still-active) webhook.
+    ...(newWebhookId ? { webhookSecret: newWebhookSecret } : {}),
+  });
 
   return Response.json({
     success: true,

@@ -4,7 +4,11 @@ import {
   acListSubscriberCount,
   acV3,
 } from "@/lib/hyperlocal/email/providers/activecampaign-client";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import {
+  getPlatformEmailConnection,
+  getAppEmailConnectionStateInternal,
+} from "@/lib/platform/connections";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -28,23 +32,19 @@ export async function GET(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const service = createServiceRoleClient();
-  const { data: conn } = await service
-    .from("hl_email_connections")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .eq("provider", "activecampaign")
-    .maybeSingle();
-  if (!conn) {
+  const conn = await getPlatformEmailConnection(service, user.id, id);
+  if (!conn || conn.provider !== "activecampaign") {
     return Response.json(
       { error: "ActiveCampaign connection not found" },
       { status: 404 },
     );
   }
+  const state = await getAppEmailConnectionStateInternal(service, "hyperlocal", id);
+  const metadata = (state?.provider_metadata ?? {}) as HlEmailAppMetadata;
 
   let lists;
   try {
-    const auth = acAuthFromConnection(conn as HlEmailConnection);
+    const auth = acAuthFromConnection(conn, metadata);
     const data = await acV3<{
       lists: Array<{ id: string; name: string }>;
     }>(auth, "GET", "/lists?limit=100");
@@ -65,12 +65,10 @@ export async function GET(
     );
   }
 
-  const meta = (conn.provider_metadata ?? {}) as {
-    activecampaign?: { list_id?: string };
-  };
+  const selectedListId = metadata.activecampaign?.list_id ?? null;
 
   return Response.json({
     lists,
-    selected_list_id: meta.activecampaign?.list_id ?? null,
+    selected_list_id: selectedListId != null ? String(selectedListId) : null,
   });
 }

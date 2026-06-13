@@ -5,6 +5,7 @@ import {
   evaluateKillSwitch,
   mapResendEventType,
 } from "@/lib/hyperlocal/email/webhook-events";
+import { getAppEmailConnectionStateInternal } from "@/lib/platform/connections";
 import { Webhook } from "svix";
 import { NextRequest } from "next/server";
 
@@ -83,18 +84,20 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true, ignored: "no connection id on run" });
   }
 
-  const { data: connection } = await supabase
-    .from("hl_email_connections")
-    .select("id, resend_webhook_secret_encrypted")
-    .eq("id", connectionId)
-    .maybeSingle();
+  // Per-app webhook secret lives on app_email_connection_state — each
+  // app's webhook URL is distinct so it has its own signing secret.
+  const appState = await getAppEmailConnectionStateInternal(
+    supabase,
+    "hyperlocal",
+    connectionId,
+  );
 
   // ---- 4. Verify Svix signature ----
   // We require a per-connection secret in production. If the column is empty
   // (e.g. a user hasn't pasted their Resend signing secret yet), we refuse
   // rather than silently accepting unsigned events — quieter failure modes
   // are worse than a loud one here.
-  if (!connection?.resend_webhook_secret_encrypted) {
+  if (!appState?.webhook_secret_encrypted) {
     return Response.json(
       { error: "Connection has no webhook secret configured" },
       { status: 401 },
@@ -103,7 +106,7 @@ export async function POST(req: NextRequest) {
 
   let secret: string;
   try {
-    secret = decrypt(connection.resend_webhook_secret_encrypted);
+    secret = decrypt(appState.webhook_secret_encrypted);
   } catch {
     return Response.json({ error: "Webhook secret decrypt failed" }, { status: 500 });
   }

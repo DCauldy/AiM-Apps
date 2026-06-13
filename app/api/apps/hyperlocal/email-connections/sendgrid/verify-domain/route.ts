@@ -1,11 +1,17 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  createAppEmailConnection,
+  getAppEmailConnectionStateInternal,
+  listAppEmailConnections,
+} from "@/lib/platform/connections";
 import {
   getOrCreateSendgridDomain,
   setupSendgridWebhook,
 } from "@/lib/hyperlocal/email/providers/sendgrid-setup";
 import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
+import { getActiveProfile } from "@/lib/profiles/server";
 import { NextRequest } from "next/server";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +26,8 @@ const VALID_DOMAIN = /^[a-z0-9.-]+\.[a-z]{2,}$/;
  *   2. Auto-provision the event webhook + fetch the signing public key
  *   3. Persist connection scoped to the active profile
  *
- * The signing public key (not a secret) is stored on the connection so
- * future webhook signature verification works without re-fetching.
+ * The signing public key (not a secret) is stored on app_state.webhook_secret_encrypted
+ * so signature verification works without re-fetching.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -54,29 +60,57 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const service = createServiceRoleClient();
-  const { data: profileMeta } = await service
-    .from("profiles")
-    .select("active_profile_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profileMeta?.active_profile_id) {
+  const profile = await getActiveProfile(user.id);
+  if (!profile) {
     return Response.json(
-      { error: "No active profile — set one up before connecting a sending account" },
+      {
+        error:
+          "No active profile — set one up before connecting a sending account",
+      },
       { status: 400 },
     );
   }
-  const profileId = profileMeta.active_profile_id;
+
+  const service = createServiceRoleClient();
 
   // Stash prior connection so we can disconnect it AFTER the new one is
   // persisted. UI gates this with a confirm modal.
-  const { data: priorConnection } = await service
-    .from("hl_email_connections")
-    .select("id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_api_key_encrypted, provider_oauth_access_token_encrypted, provider_metadata")
-    .eq("user_id", user.id)
-    .eq("profile_id", profileId)
-    .limit(1)
-    .maybeSingle();
+  const existing = await listAppEmailConnections(
+    service,
+    user.id,
+    profile.id,
+    "hyperlocal",
+  );
+  const priorPair = existing[0] ?? null;
+  let priorRef: Parameters<typeof disconnectPriorConnection>[1] | null = null;
+  if (priorPair) {
+    const priorState = await getAppEmailConnectionStateInternal(
+      service,
+      "hyperlocal",
+      priorPair.connection.id,
+    );
+    const { data: priorPlatform } = await service
+      .from("platform_email_connections")
+      .select("*")
+      .eq("id", priorPair.connection.id)
+      .maybeSingle();
+    priorRef = priorPlatform
+      ? {
+          id: priorPlatform.id,
+          provider: priorPlatform.provider,
+          resend_webhook_id: priorState?.webhook_id ?? null,
+          resend_domain_id: priorPlatform.resend_domain_id,
+          resend_api_key_encrypted: priorPlatform.resend_api_key_encrypted,
+          provider_api_key_encrypted: priorPlatform.provider_api_key_encrypted,
+          provider_oauth_access_token_encrypted:
+            priorPlatform.provider_oauth_access_token_encrypted,
+          provider_metadata: (priorState?.provider_metadata ?? null) as Record<
+            string,
+            unknown
+          > | null,
+        }
+      : null;
+  }
 
   // ---- Authenticate the domain (idempotent) ----
   let domainInfo;
@@ -84,7 +118,9 @@ export async function POST(req: NextRequest) {
     domainInfo = await getOrCreateSendgridDomain(apiKey, domain);
   } catch (e) {
     return Response.json(
-      { error: e instanceof Error ? e.message : "SendGrid domain setup failed" },
+      {
+        error: e instanceof Error ? e.message : "SendGrid domain setup failed",
+      },
       { status: 500 },
     );
   }
@@ -96,13 +132,15 @@ export async function POST(req: NextRequest) {
   const endpointUrl = resolveWebhookEndpoint(req);
   let signingPublicKey: string | null = null;
   let webhookError: string | null = null;
-  if (endpointUrl && !endpointUrl.includes("://localhost") && !endpointUrl.includes("://127.0.0.1")) {
+  if (
+    endpointUrl &&
+    !endpointUrl.includes("://localhost") &&
+    !endpointUrl.includes("://127.0.0.1")
+  ) {
     try {
       const result = await setupSendgridWebhook(apiKey, endpointUrl);
       signingPublicKey = result.signing_public_key;
     } catch (e) {
-      // Don't fail the whole setup — agent can retry webhook provisioning
-      // from the connection panel after manual cleanup.
       webhookError = e instanceof Error ? e.message : "Webhook setup failed";
     }
   } else if (endpointUrl) {
@@ -110,68 +148,63 @@ export async function POST(req: NextRequest) {
       "Skipped webhook setup — SendGrid can't reach localhost. Set NEXT_PUBLIC_APP_URL to a tunnel and re-provision from the connection panel.";
   }
 
-  // ---- Count existing SendGrid connections under this profile for default flag ----
-  const { count } = await service
-    .from("hl_email_connections")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("profile_id", profileId);
-
-  // ---- Persist ----
   const isActive = domainInfo.valid;
-  const { data: row, error } = await service
-    .from("hl_email_connections")
-    .insert({
-      user_id: user.id,
-      profile_id: profileId,
+  const providerMetadata: HlEmailAppMetadata = {
+    sendgrid: {
+      domain_id: domainInfo.domain_id,
+      webhook_endpoint: endpointUrl ?? undefined,
+      webhook_error: webhookError,
+    },
+  };
+
+  try {
+    const connection = await createAppEmailConnection(service, "hyperlocal", {
+      userId: user.id,
+      profileId: profile.id,
       provider: "sendgrid",
-      email_address: fromEmail,
-      display_name: displayName,
-      provider_api_key_encrypted: encrypt(apiKey),
-      // SendGrid's webhook signing PUBLIC key (not a shared secret) sits
-      // in the existing column so verifyWebhookSignature() finds it via
-      // the same field as Resend's signing secret.
-      resend_webhook_secret_encrypted: signingPublicKey
-        ? encrypt(signingPublicKey)
-        : null,
-      resend_domain: domain,
-      resend_domain_id: String(domainInfo.domain_id),
-      resend_dkim_status: domainInfo.valid ? "verified" : "pending",
-      provider_metadata: {
-        sendgrid: {
-          domain_id: domainInfo.domain_id,
-          webhook_endpoint: endpointUrl,
-          webhook_error: webhookError,
-        },
+      emailAddress: fromEmail,
+      displayName,
+      providerApiKey: apiKey,
+      resendDomain: domain,
+      resendDomainId: String(domainInfo.domain_id),
+      resendDkimStatus: isActive ? "verified" : "pending",
+      isActive,
+      isDefault: existing.length === 0 && isActive,
+      // SendGrid's webhook signing public key is stored as the per-app
+      // webhook secret so verifyWebhookSignature() finds it in the same
+      // slot as Resend's signing secret.
+      webhookSecret: signingPublicKey ?? null,
+      providerMetadata,
+    });
+
+    if (priorRef && priorRef.id !== connection.connection.id) {
+      await disconnectPriorConnection(service, priorRef);
+    }
+
+    return Response.json({
+      connection: connection.connection,
+      dns_records: domainInfo.records,
+      status: domainInfo.valid ? "verified" : "pending",
+      reused: domainInfo.reused,
+      webhook: signingPublicKey ? "provisioned" : "skipped",
+      webhook_error: webhookError,
+      replaced: priorRef?.provider ?? null,
+    });
+  } catch (e) {
+    return Response.json(
+      {
+        error: e instanceof Error ? e.message : "Failed to persist connection",
       },
-      is_active: isActive,
-      is_default: (count ?? 0) === 0 && isActive,
-    })
-    .select(
-      "id, provider, email_address, display_name, is_active, is_default, resend_domain, resend_dkim_status, created_at",
-    )
-    .single();
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-
-  if (priorConnection && priorConnection.id !== row.id) {
-    await disconnectPriorConnection(service, priorConnection);
+      { status: 500 },
+    );
   }
-
-  return Response.json({
-    connection: row,
-    dns_records: domainInfo.records,
-    status: domainInfo.valid ? "verified" : "pending",
-    reused: domainInfo.reused,
-    webhook: signingPublicKey ? "provisioned" : "skipped",
-    webhook_error: webhookError,
-    replaced: priorConnection?.provider ?? null,
-  });
 }
 
 function resolveWebhookEndpoint(req: NextRequest): string | null {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
   if (base) return `${base}/api/webhooks/sendgrid`;
   const origin = req.nextUrl.origin;
-  return origin ? `${origin.replace(/\/+$/, "")}/api/webhooks/sendgrid` : null;
+  return origin
+    ? `${origin.replace(/\/+$/, "")}/api/webhooks/sendgrid`
+    : null;
 }

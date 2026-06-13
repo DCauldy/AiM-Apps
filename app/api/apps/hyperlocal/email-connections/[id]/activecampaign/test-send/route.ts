@@ -7,9 +7,13 @@ import { getPreviewTemplate } from "@/lib/hyperlocal/email/preview-templates";
 import { renderEmailHtml, htmlToPlainText } from "@/lib/hyperlocal/email/render";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
 import { isSuppressed } from "@/lib/hyperlocal/email/suppressions";
+import {
+  getPlatformEmailConnection,
+  getAppEmailConnectionStateInternal,
+} from "@/lib/platform/connections";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 import { NextRequest } from "next/server";
 import type {
-  HlEmailConnection,
   PlatformBrandingProfile,
   PlatformSenderProfile,
 } from "@/types/hyperlocal";
@@ -77,14 +81,9 @@ export async function POST(
     );
   }
 
-  const [{ data: connection }, { data: profile }] = await Promise.all([
-    service
-      .from("hl_email_connections")
-      .select("*")
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .eq("provider", "activecampaign")
-      .maybeSingle(),
+  const [conn, state, { data: profile }] = await Promise.all([
+    getPlatformEmailConnection(service, user.id, id),
+    getAppEmailConnectionStateInternal(service, "hyperlocal", id),
     service
       .from("platform_profiles")
       .select("*")
@@ -92,23 +91,23 @@ export async function POST(
       .maybeSingle(),
   ]);
 
-  if (!connection) {
+  if (!conn || conn.provider !== "activecampaign") {
     return Response.json({ error: "ActiveCampaign connection not found" }, { status: 404 });
   }
   if (!profile) {
     return Response.json({ error: "Active profile not found" }, { status: 404 });
   }
+  const metadata = (state?.provider_metadata ?? {}) as HlEmailAppMetadata;
 
-  const conn = connection as HlEmailConnection;
   if (!conn.is_active) {
     return Response.json(
       { error: "This connection is inactive — reconnect under Settings → Email." },
       { status: 400 },
     );
   }
-  if (conn.paused) {
+  if (state?.paused) {
     return Response.json(
-      { error: conn.paused_reason ?? "Connection is paused — resume before previewing." },
+      { error: state.paused_reason ?? "Connection is paused — resume before previewing." },
       { status: 400 },
     );
   }
@@ -133,7 +132,7 @@ export async function POST(
 
   let auth;
   try {
-    auth = acAuthFromConnection(conn);
+    auth = acAuthFromConnection(conn, metadata);
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "ActiveCampaign auth failed" },

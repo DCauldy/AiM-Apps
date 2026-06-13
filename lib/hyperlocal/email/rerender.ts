@@ -58,7 +58,7 @@ export async function rerenderEmail(emailId: string): Promise<{
   let espHandlesComplianceFooter = false;
   if (run.email_connection_id) {
     const { data: conn } = await supabase
-      .from("hl_email_connections")
+      .from("platform_email_connections")
       .select("provider")
       .eq("id", run.email_connection_id)
       .maybeSingle();

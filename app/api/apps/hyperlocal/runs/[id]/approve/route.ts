@@ -56,32 +56,44 @@ export async function POST(
   }
 
   // ---- Compliance gate: refuse to launch a non-compliant run ----
-  const [{ data: profile }, { data: connection }, { data: recipients }] =
-    await Promise.all([
-      service
-        .from("platform_profiles")
-        .select(
-          "physical_address, license_number, brokerage, license_info, state"
-        )
-        .eq("id", run.profile_id)
-        .maybeSingle(),
-      service
-        .from("hl_email_connections")
-        .select("is_active, paused, resend_dkim_status")
-        .eq("id", run.email_connection_id)
-        .maybeSingle(),
-      service
-        .from("hl_recipients")
-        .select("contact_email, unsubscribe_token, hl_emails!inner(run_id)")
-        .eq("hl_emails.run_id", id),
-    ]);
+  // is_active + resend_dkim_status live on platform_email_connections;
+  // paused lives on the Hyperlocal app_email_connection_state row.
+  const [
+    { data: profile },
+    { data: platformConn },
+    { data: appState },
+    { data: recipients },
+  ] = await Promise.all([
+    service
+      .from("platform_profiles")
+      .select(
+        "physical_address, license_number, brokerage, license_info, state"
+      )
+      .eq("id", run.profile_id)
+      .maybeSingle(),
+    service
+      .from("platform_email_connections")
+      .select("is_active, resend_dkim_status")
+      .eq("id", run.email_connection_id)
+      .maybeSingle(),
+    service
+      .from("app_email_connection_state")
+      .select("paused")
+      .eq("connection_id", run.email_connection_id)
+      .eq("app", "hyperlocal")
+      .maybeSingle(),
+    service
+      .from("hl_recipients")
+      .select("contact_email, unsubscribe_token, hl_emails!inner(run_id)")
+      .eq("hl_emails.run_id", id),
+  ]);
   if (!profile) {
     return Response.json(
       { error: "Profile attached to this run no longer exists" },
       { status: 400 }
     );
   }
-  if (!connection) {
+  if (!platformConn) {
     return Response.json(
       { error: "Email connection attached to this run no longer exists" },
       { status: 400 }
@@ -89,7 +101,11 @@ export async function POST(
   }
   const issues: ComplianceIssue[] = checkRunLaunchCompliance({
     profile,
-    connection,
+    connection: {
+      is_active: platformConn.is_active,
+      paused: appState?.paused ?? false,
+      resend_dkim_status: platformConn.resend_dkim_status,
+    },
     recipients: (recipients ?? []).map((r) => ({
       contact_email: r.contact_email,
       unsubscribe_token: r.unsubscribe_token,

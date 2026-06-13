@@ -1,4 +1,5 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { getPlatformEmailConnection } from "@/lib/platform/connections";
 import { dispatchEmail } from "@/lib/hyperlocal/email/dispatch";
 import {
   generateUnsubscribeToken,
@@ -6,10 +7,7 @@ import {
 } from "@/lib/hyperlocal/email/unsubscribe";
 import { isSuppressed } from "@/lib/hyperlocal/email/suppressions";
 import { NextRequest } from "next/server";
-import type {
-  HlEmailConnection,
-  PlatformSenderProfile,
-} from "@/types/hyperlocal";
+import type { PlatformSenderProfile } from "@/types/hyperlocal";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +29,7 @@ const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: runId } = await params;
   const supabase = await createClient();
@@ -61,7 +59,7 @@ export async function POST(
   if (testEmails.length === 0) {
     return Response.json(
       { error: "No valid test email addresses provided" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -80,13 +78,13 @@ export async function POST(
   if (!run.email_connection_id) {
     return Response.json(
       { error: "No email connection configured for this run" },
-      { status: 400 }
+      { status: 400 },
     );
   }
   if (!run.profile_id) {
     return Response.json(
       { error: "No Profile configured for this run" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -102,20 +100,17 @@ export async function POST(
     emailsQuery = emailsQuery.eq("id", onlyEmailId);
   }
 
-  const [{ data: connection }, { data: profile }, { data: emails }] =
-    await Promise.all([
-      service
-        .from("hl_email_connections")
-        .select("*")
-        .eq("id", run.email_connection_id)
-        .single(),
-      service
-        .from("platform_profiles")
-        .select("id, display_name, full_name, title, brokerage, phone, reply_to_email, license_number, physical_address, sign_off")
-        .eq("id", run.profile_id)
-        .single(),
-      emailsQuery,
-    ]);
+  const [connection, { data: profile }, { data: emails }] = await Promise.all([
+    getPlatformEmailConnection(service, user.id, run.email_connection_id),
+    service
+      .from("platform_profiles")
+      .select(
+        "id, display_name, full_name, title, brokerage, phone, reply_to_email, license_number, physical_address, sign_off",
+      )
+      .eq("id", run.profile_id)
+      .single(),
+    emailsQuery,
+  ]);
 
   // Shape the row into the Sender-like object the downstream renderer expects.
   const sender = profile
@@ -135,13 +130,13 @@ export async function POST(
   if (!connection) {
     return Response.json(
       { error: "Email connection not found" },
-      { status: 404 }
+      { status: 404 },
     );
   }
   if (!sender) {
     return Response.json(
       { error: "Sender profile not found" },
-      { status: 404 }
+      { status: 404 },
     );
   }
   if (!emails || emails.length === 0) {
@@ -151,31 +146,38 @@ export async function POST(
           ? "Draft not found for this run"
           : "No drafts to test-send. Run hasn't generated yet.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
   // Mirror the per-send compliance gate so test sends can't bypass it:
   //   - inactive / paused connection blocks the whole batch
   //   - suppressed test addresses are dropped (other addresses still go)
-  // Content-compliance issues (missing license, brokerage, etc.) are NOT
-  // enforced here because the agent uses test sends to iterate on content
-  // before the launch-time gate catches those at approve.
-  const conn = connection as HlEmailConnection;
-  if (!conn.is_active) {
-    return Response.json(
-      { error: "Email connection is inactive — re-verify your sending domain before test-sending." },
-      { status: 400 }
-    );
-  }
-  if (conn.paused) {
+  // Paused lives on app_email_connection_state — pull it via the service
+  // role since we already have it on hand.
+  if (!connection.is_active) {
     return Response.json(
       {
         error:
-          conn.paused_reason ??
+          "Email connection is inactive — re-verify your sending domain before test-sending.",
+      },
+      { status: 400 },
+    );
+  }
+  const { data: stateRow } = await service
+    .from("app_email_connection_state")
+    .select("paused, paused_reason")
+    .eq("connection_id", connection.id)
+    .eq("app", "hyperlocal")
+    .maybeSingle();
+  if (stateRow?.paused) {
+    return Response.json(
+      {
+        error:
+          stateRow.paused_reason ??
           "Email connection is paused — resolve the deliverability issue before test-sending.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -192,7 +194,7 @@ export async function POST(
         error:
           "All provided test addresses are on your suppression list. Remove them from Settings → Suppression or use a different address.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -208,46 +210,45 @@ export async function POST(
 
   for (const email of emails) {
     for (const to of deliverableTestEmails) {
-      // Fresh per-recipient unsubscribe token so the link in the test email
-      // actually works (suppresses that address from future real sends if
-      // clicked — useful warning if the user is sending to a list they
-      // don't want messed with)
       const unsubscribeToken = await generateUnsubscribeToken(user.id, to);
       const unsubscribeUrl = buildUnsubscribeUrl(unsubscribeToken);
 
       const finalHtml = (email.html ?? "")
-        .replace(/\{\{UNSUBSCRIBE_URL:\{\{UNSUBSCRIBE_TOKEN\}\}\}\}/g, unsubscribeUrl)
+        .replace(
+          /\{\{UNSUBSCRIBE_URL:\{\{UNSUBSCRIBE_TOKEN\}\}\}\}/g,
+          unsubscribeUrl,
+        )
         .replace(/\{\{UNSUBSCRIBE_URL\}\}/g, unsubscribeUrl);
       const finalText = (email.plain_text ?? "")
-        .replace(/\{\{UNSUBSCRIBE_URL:\{\{UNSUBSCRIBE_TOKEN\}\}\}\}/g, unsubscribeUrl)
+        .replace(
+          /\{\{UNSUBSCRIBE_URL:\{\{UNSUBSCRIBE_TOKEN\}\}\}\}/g,
+          unsubscribeUrl,
+        )
         .replace(/\{\{UNSUBSCRIBE_URL\}\}/g, unsubscribeUrl);
 
       try {
-        const result = await dispatchEmail(
-          connection as HlEmailConnection,
-          {
-            from: {
-              email: (connection as HlEmailConnection).email_address,
-              name: (sender as PlatformSenderProfile).full_name,
-            },
-            reply_to:
-              (sender as PlatformSenderProfile).reply_to_email ?? undefined,
-            to: { email: to },
-            subject: SUBJECT_PREFIX + (email.subject ?? "(no subject)"),
-            html: finalHtml,
-            text: finalText,
-            headers: {
-              "List-Unsubscribe": `<${unsubscribeUrl}>`,
-              "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-              "X-Hyperlocal-Test": "1",
-            },
-            tags: {
-              run_id: runId,
-              email_id: email.id,
-              mode: "test",
-            },
-          }
-        );
+        const result = await dispatchEmail(connection, {
+          from: {
+            email: connection.email_address,
+            name: (sender as PlatformSenderProfile).full_name,
+          },
+          reply_to:
+            (sender as PlatformSenderProfile).reply_to_email ?? undefined,
+          to: { email: to },
+          subject: SUBJECT_PREFIX + (email.subject ?? "(no subject)"),
+          html: finalHtml,
+          text: finalText,
+          headers: {
+            "List-Unsubscribe": `<${unsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            "X-Hyperlocal-Test": "1",
+          },
+          tags: {
+            run_id: runId,
+            email_id: email.id,
+            mode: "test",
+          },
+        });
         results.push({
           email_id: email.id,
           subject: email.subject ?? "",
@@ -276,7 +277,9 @@ export async function POST(
     total: results.length,
     test_emails: deliverableTestEmails,
     suppressed_test_emails:
-      suppressedTestEmails.size > 0 ? Array.from(suppressedTestEmails) : undefined,
+      suppressedTestEmails.size > 0
+        ? Array.from(suppressedTestEmails)
+        : undefined,
     results,
   });
 }

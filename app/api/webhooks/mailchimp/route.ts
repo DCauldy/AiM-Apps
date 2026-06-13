@@ -3,6 +3,7 @@ import { addSuppression } from "@/lib/hyperlocal/email/suppressions";
 import { decrypt } from "@/lib/hyperlocal/encryption";
 import { evaluateKillSwitch } from "@/lib/hyperlocal/email/webhook-events";
 import { mailchimpAdapter } from "@/lib/hyperlocal/email/providers/mailchimp";
+import { getAppEmailConnectionStateInternal } from "@/lib/platform/connections";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -61,12 +62,12 @@ export async function POST(req: NextRequest) {
     return Response.json({ ok: true, ignored: "run not found for campaign id" });
   }
 
-  const { data: connection } = await supabase
-    .from("hl_email_connections")
-    .select("id, resend_webhook_secret_encrypted")
-    .eq("id", run.email_connection_id)
-    .maybeSingle();
-  if (!connection?.resend_webhook_secret_encrypted) {
+  const appState = await getAppEmailConnectionStateInternal(
+    supabase,
+    "hyperlocal",
+    run.email_connection_id,
+  );
+  if (!appState?.webhook_secret_encrypted) {
     return Response.json(
       { error: "Connection has no webhook secret configured" },
       { status: 401 },
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest) {
 
   let storedSecret: string;
   try {
-    storedSecret = decrypt(connection.resend_webhook_secret_encrypted);
+    storedSecret = decrypt(appState.webhook_secret_encrypted);
   } catch {
     return Response.json({ error: "Secret decrypt failed" }, { status: 500 });
   }

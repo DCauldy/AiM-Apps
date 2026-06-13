@@ -1,29 +1,25 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  deletePlatformEmailConnection,
+  getAppEmailConnectionStateInternal,
+  getPlatformEmailConnection,
+  updateAppEmailState,
+} from "@/lib/platform/connections";
 import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-// Encrypted credential columns are deliberately NOT here — those are
-// secret. `resend_webhook_secret_encrypted` IS pulled so we can reshape
-// it into a `webhook_secret_set` boolean. `provider_metadata` is exposed
-// because campaign-mode panels read list/audience ids from it.
-const PUBLIC_FIELDS = `id, provider, email_address, display_name, is_active, is_default, paused, paused_reason, paused_at, resend_domain, resend_dkim_status, resend_webhook_secret_encrypted, provider_metadata, last_send_at, last_error, created_at, updated_at`;
-
-type RawRow = {
-  resend_webhook_secret_encrypted: string | null;
-  [k: string]: unknown;
-};
-
-function shapeRow(row: RawRow) {
-  const { resend_webhook_secret_encrypted, ...rest } = row;
-  return { ...rest, webhook_secret_set: !!resend_webhook_secret_encrypted };
-}
-
+/**
+ * PATCH /api/apps/hyperlocal/email-connections/:id
+ *
+ * Updates fields on the per-app state (is_default, paused, webhook secret)
+ * and/or the platform row (display_name, is_active). The is_default flip
+ * demotes sibling defaults inside updateAppEmailState.
+ */
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const supabase = await createClient();
@@ -33,52 +29,65 @@ export async function PATCH(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const update: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
-  if (typeof body.display_name === "string") update.display_name = body.display_name;
-  if (typeof body.is_active === "boolean") update.is_active = body.is_active;
-  if (typeof body.is_default === "boolean") update.is_default = body.is_default;
-
-  // Resend signing secret — agent gets this from their Resend webhook config.
-  // Empty string clears it.
-  if (typeof body.webhook_secret === "string") {
-    const trimmed = body.webhook_secret.trim();
-    update.resend_webhook_secret_encrypted = trimmed ? encrypt(trimmed) : null;
-  }
-
-  // Unpause path — agent has resolved the deliverability issue.
-  if (body.paused === false) {
-    update.paused = false;
-    update.paused_reason = null;
-    update.paused_at = null;
-  }
 
   const service = createServiceRoleClient();
 
-  // If setting default, clear other defaults first
-  if (body.is_default === true) {
+  // Platform-row update — display_name + is_active. Patch through the
+  // service role directly since updateAppEmailState only writes platform
+  // is_active; display_name lives on the same row but we still want to
+  // honor PATCH semantics for it.
+  if (typeof body.display_name === "string") {
     await service
-      .from("hl_email_connections")
-      .update({ is_default: false })
+      .from("platform_email_connections")
+      .update({
+        display_name: body.display_name,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
       .eq("user_id", user.id);
   }
 
-  const { data, error } = await service
-    .from("hl_email_connections")
-    .update(update)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select(PUBLIC_FIELDS)
-    .single();
+  // App-state update — webhook secret, paused flag, is_default, is_active
+  // gate. Empty string clears the webhook secret.
+  const stateInput: Parameters<typeof updateAppEmailState<"hyperlocal">>[4] = {};
+  if (typeof body.is_active === "boolean") stateInput.isActive = body.is_active;
+  if (typeof body.is_default === "boolean") stateInput.isDefault = body.is_default;
+  if (typeof body.webhook_secret === "string") {
+    const trimmed = body.webhook_secret.trim();
+    stateInput.webhookSecret = trimmed.length > 0 ? trimmed : null;
+  }
+  // Unpause — agent has resolved the deliverability issue.
+  if (body.paused === false) {
+    stateInput.paused = false;
+    stateInput.pausedReason = null;
+    stateInput.pausedAt = null;
+  }
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connection: shapeRow(data as RawRow) });
+  const connection = await updateAppEmailState(
+    service,
+    user.id,
+    "hyperlocal",
+    id,
+    stateInput,
+  );
+  if (!connection) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+  return Response.json({ connection });
 }
 
+/**
+ * DELETE /api/apps/hyperlocal/email-connections/:id
+ *
+ * Hand off to the shared disconnect helper so provider-side cleanup
+ * (Resend webhook removal, Mailchimp audience webhook removal, etc.)
+ * fires before the platform row is dropped. We hydrate the prior
+ * connection's per-app metadata + webhook id from app_state since
+ * those moved off the platform row in Wave 9.
+ */
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const supabase = await createClient();
@@ -87,27 +96,33 @@ export async function DELETE(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Load the row scoped to the user (auth check), then hand off to the
-  // shared disconnect helper. The helper runs provider-side cleanup
-  // (Resend webhook, Mailchimp audience webhook, etc.) and deletes the
-  // row via the service-role client — user-scoped deletes silently no-op
-  // under RLS, which is what caused the "still connected after disconnect"
-  // bug we hit before this refactor.
   const service = createServiceRoleClient();
-  const { data: conn } = await service
-    .from("hl_email_connections")
-    .select(
-      "id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_api_key_encrypted, provider_oauth_access_token_encrypted, provider_metadata",
-    )
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const conn = await getPlatformEmailConnection(service, user.id, id);
   if (!conn) {
     return Response.json({ error: "Connection not found" }, { status: 404 });
   }
+  const state = await getAppEmailConnectionStateInternal(
+    service,
+    "hyperlocal",
+    id,
+  );
 
   try {
-    await disconnectPriorConnection(service, conn);
+    await disconnectPriorConnection(service, {
+      id: conn.id,
+      provider: conn.provider,
+      // Resend webhook id is per-app — pull from the Hyperlocal state row.
+      resend_webhook_id: state?.webhook_id ?? null,
+      resend_domain_id: conn.resend_domain_id,
+      resend_api_key_encrypted: conn.resend_api_key_encrypted,
+      provider_api_key_encrypted: conn.provider_api_key_encrypted,
+      provider_oauth_access_token_encrypted:
+        conn.provider_oauth_access_token_encrypted,
+      provider_metadata: (state?.provider_metadata ?? null) as Record<
+        string,
+        unknown
+      > | null,
+    });
   } catch (e) {
     return Response.json(
       {
@@ -119,5 +134,10 @@ export async function DELETE(
       { status: 500 },
     );
   }
+
+  // Fall-through delete in case disconnectPriorConnection skipped its own
+  // (it always tries, but kept defensive). No-op if the cascade already ran.
+  await deletePlatformEmailConnection(service, user.id, id).catch(() => {});
+
   return Response.json({ success: true });
 }

@@ -12,7 +12,8 @@ const MAX_SIZE = 25 * 1024 * 1024;  // 25 MB
  * multipart/form-data: { file: File }
  * Uploads to hyperlocal-uploads/{user_id}/csv/{timestamp}.csv and returns
  * detected columns + sample rows so the user can confirm the mapping before
- * we create the hl_crm_connections row.
+ * we create the connection. The returned storage_path lands on
+ * filter_config.column_mapping.storage_path when the agent POSTs the create.
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();

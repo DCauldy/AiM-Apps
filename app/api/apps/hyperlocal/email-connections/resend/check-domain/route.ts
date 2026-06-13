@@ -1,6 +1,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/hyperlocal/encryption";
 import { getResendDomain } from "@/lib/hyperlocal/email/providers/resend";
+import { getPlatformEmailConnection } from "@/lib/platform/connections";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -17,26 +18,28 @@ export async function GET(req: NextRequest) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const id = new URL(req.url).searchParams.get("connection_id");
-  if (!id) return Response.json({ error: "connection_id required" }, { status: 400 });
+  if (!id) {
+    return Response.json(
+      { error: "connection_id required" },
+      { status: 400 },
+    );
+  }
 
   const service = createServiceRoleClient();
-  const { data: conn } = await service
-    .from("hl_email_connections")
-    .select(
-      "id, user_id, resend_domain_id, resend_dkim_status, resend_api_key_encrypted"
-    )
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .eq("provider", "resend")
-    .maybeSingle();
-  if (!conn) return Response.json({ error: "Not found" }, { status: 404 });
+  const conn = await getPlatformEmailConnection(service, user.id, id);
+  if (!conn || conn.provider !== "resend") {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
   if (!conn.resend_domain_id) {
-    return Response.json({ error: "Connection has no Resend domain id" }, { status: 400 });
+    return Response.json(
+      { error: "Connection has no Resend domain id" },
+      { status: 400 },
+    );
   }
   if (!conn.resend_api_key_encrypted) {
     return Response.json(
       { error: "Connection has no stored Resend API key — re-add it" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -45,18 +48,19 @@ export async function GET(req: NextRequest) {
     const info = await getResendDomain(apiKey, conn.resend_domain_id);
     const verified = info.status === "verified";
     await service
-      .from("hl_email_connections")
+      .from("platform_email_connections")
       .update({
         resend_dkim_status: verified ? "verified" : "pending",
         is_active: verified,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", user.id);
     return Response.json({ status: info.status, records: info.records });
   } catch (e) {
     return Response.json(
       { error: e instanceof Error ? e.message : "Check failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

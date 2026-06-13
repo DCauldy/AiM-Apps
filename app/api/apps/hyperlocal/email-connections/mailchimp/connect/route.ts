@@ -1,8 +1,14 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  createAppEmailConnection,
+  getAppEmailConnectionStateInternal,
+  listAppEmailConnections,
+} from "@/lib/platform/connections";
 import { randomBytes } from "node:crypto";
 import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
+import { getActiveProfile } from "@/lib/profiles/server";
 import { NextRequest } from "next/server";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +23,8 @@ export const dynamic = "force-dynamic";
  *
  * The webhook secret is generated locally and appended to the webhook URL
  * as ?secret=... — Mailchimp doesn't sign payloads by default, and this
- * URL-secret approach is their documented pattern.
+ * URL-secret approach is their documented pattern. We store the secret on
+ * app_email_connection_state.webhook_secret_encrypted (per-app scope).
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -72,11 +79,24 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- Pick the audience ----
-  let audiences: Array<{ id: string; name: string; stats?: { member_count?: number } }>;
+  let audiences: Array<{
+    id: string;
+    name: string;
+    stats?: { member_count?: number };
+  }>;
   try {
     const data = await mcFetch<{
-      lists: Array<{ id: string; name: string; stats?: { member_count?: number } }>;
-    }>(apiKey, dc, "GET", "/lists?count=50&fields=lists.id,lists.name,lists.stats.member_count");
+      lists: Array<{
+        id: string;
+        name: string;
+        stats?: { member_count?: number };
+      }>;
+    }>(
+      apiKey,
+      dc,
+      "GET",
+      "/lists?count=50&fields=lists.id,lists.name,lists.stats.member_count",
+    );
     audiences = data.lists ?? [];
   } catch (e) {
     return Response.json(
@@ -149,79 +169,111 @@ export async function POST(req: NextRequest) {
   }
 
   // ---- Persist connection ----
-  const service = createServiceRoleClient();
-  const { data: profileMeta } = await service
-    .from("profiles")
-    .select("active_profile_id")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profileMeta?.active_profile_id) {
+  const profile = await getActiveProfile(user.id);
+  if (!profile) {
     return Response.json(
       { error: "No active profile — set one up before connecting Mailchimp" },
       { status: 400 },
     );
   }
-  const profileId = profileMeta.active_profile_id;
+
+  const service = createServiceRoleClient();
 
   // One sending connection per profile — stash prior for auto-disconnect
   // after the new one is persisted. UI confirms with the agent first.
-  const { data: priorConnection } = await service
-    .from("hl_email_connections")
-    .select("id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_api_key_encrypted, provider_oauth_access_token_encrypted, provider_metadata")
-    .eq("user_id", user.id)
-    .eq("profile_id", profileId)
-    .limit(1)
-    .maybeSingle();
-
-  const { count } = await service
-    .from("hl_email_connections")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("profile_id", profileId);
-
-  const { data: row, error } = await service
-    .from("hl_email_connections")
-    .insert({
-      user_id: user.id,
-      profile_id: profileId,
-      provider: "mailchimp",
-      email_address: accountEmail ?? `mailchimp:${audience.id}@${dc}`,
-      display_name: displayName ?? audience.name,
-      provider_api_key_encrypted: encrypt(apiKey),
-      // Shared secret column — Mailchimp's URL secret feeds verifyWebhookSignature.
-      resend_webhook_secret_encrypted: encrypt(webhookSecret),
-      provider_metadata: {
-        mailchimp: {
-          dc,
-          audience_id: audience.id,
-          audience_name: audience.name,
-          webhook_id: webhookId,
-          webhook_error: webhookError,
-          member_count: audience.stats?.member_count ?? null,
-        },
-      },
-      is_active: true,
-      is_default: (count ?? 0) === 0,
-    })
-    .select(
-      "id, provider, email_address, display_name, is_active, is_default, provider_metadata, created_at",
-    )
-    .single();
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-
-  if (priorConnection && priorConnection.id !== row.id) {
-    await disconnectPriorConnection(service, priorConnection);
+  const existing = await listAppEmailConnections(
+    service,
+    user.id,
+    profile.id,
+    "hyperlocal",
+  );
+  const priorPair = existing[0] ?? null;
+  let priorRef: Parameters<typeof disconnectPriorConnection>[1] | null = null;
+  if (priorPair) {
+    const priorState = await getAppEmailConnectionStateInternal(
+      service,
+      "hyperlocal",
+      priorPair.connection.id,
+    );
+    const { data: priorPlatform } = await service
+      .from("platform_email_connections")
+      .select("*")
+      .eq("id", priorPair.connection.id)
+      .maybeSingle();
+    priorRef = priorPlatform
+      ? {
+          id: priorPlatform.id,
+          provider: priorPlatform.provider,
+          resend_webhook_id: priorState?.webhook_id ?? null,
+          resend_domain_id: priorPlatform.resend_domain_id,
+          resend_api_key_encrypted: priorPlatform.resend_api_key_encrypted,
+          provider_api_key_encrypted: priorPlatform.provider_api_key_encrypted,
+          provider_oauth_access_token_encrypted:
+            priorPlatform.provider_oauth_access_token_encrypted,
+          provider_metadata: (priorState?.provider_metadata ?? null) as Record<
+            string,
+            unknown
+          > | null,
+        }
+      : null;
   }
 
-  return Response.json({
-    connection: row,
-    audience: { id: audience.id, name: audience.name, member_count: audience.stats?.member_count ?? null },
-    audiences_available: audiences.length,
-    webhook: webhookId ? "provisioned" : "skipped",
-    webhook_error: webhookError,
-    replaced: priorConnection?.provider ?? null,
-  });
+  const providerMetadata: HlEmailAppMetadata = {
+    mailchimp: {
+      dc,
+      audience_id: audience.id,
+      server_prefix: dc,
+    },
+  };
+  // Stash audience name + webhook id under the mailchimp namespace too —
+  // they're outside the HlEmailAppMetadata strict shape but the JSONB
+  // column is open-ended, and downstream readers look them up by path.
+  (providerMetadata.mailchimp as Record<string, unknown>).audience_name =
+    audience.name;
+  (providerMetadata.mailchimp as Record<string, unknown>).webhook_id = webhookId;
+  (providerMetadata.mailchimp as Record<string, unknown>).webhook_error =
+    webhookError;
+  (providerMetadata.mailchimp as Record<string, unknown>).member_count =
+    audience.stats?.member_count ?? null;
+
+  try {
+    const connection = await createAppEmailConnection(service, "hyperlocal", {
+      userId: user.id,
+      profileId: profile.id,
+      provider: "mailchimp",
+      emailAddress: accountEmail ?? `mailchimp:${audience.id}@${dc}`,
+      displayName: displayName ?? audience.name,
+      providerApiKey: apiKey,
+      webhookSecret,
+      providerMetadata,
+      isActive: true,
+      isDefault: existing.length === 0,
+    });
+
+    if (priorRef && priorRef.id !== connection.connection.id) {
+      await disconnectPriorConnection(service, priorRef);
+    }
+
+    return Response.json({
+      connection: connection.connection,
+      audience: {
+        id: audience.id,
+        name: audience.name,
+        member_count: audience.stats?.member_count ?? null,
+      },
+      audiences_available: audiences.length,
+      webhook: webhookId ? "provisioned" : "skipped",
+      webhook_error: webhookError,
+      replaced: priorRef?.provider ?? null,
+    });
+  } catch (e) {
+    return Response.json(
+      {
+        error: e instanceof Error ? e.message : "Failed to persist connection",
+      },
+      { status: 500 },
+    );
+  }
 }
 
 function resolveWebhookEndpoint(
@@ -254,7 +306,9 @@ async function mcFetch<T>(
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Mailchimp ${method} ${path} → ${res.status}: ${text.slice(0, 280)}`);
+    throw new Error(
+      `Mailchimp ${method} ${path} → ${res.status}: ${text.slice(0, 280)}`,
+    );
   }
   if (res.status === 204) return undefined as unknown as T;
   return (await res.json()) as T;

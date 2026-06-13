@@ -2,7 +2,11 @@ import { inngest } from "@/lib/inngest/client";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getAdapter } from "@/lib/hyperlocal/email/providers/registry";
 import { dispatchCampaignRun } from "@/lib/hyperlocal/email/campaign-dispatch";
-import type { HlEmailConnection } from "@/types/hyperlocal";
+import {
+  getPlatformEmailConnection,
+  getAppEmailConnectionStateInternal,
+} from "@/lib/platform/connections";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 
 type HlSendEvent = {
   name: "hl/run.send.approved";
@@ -52,22 +56,35 @@ export const hlSend = inngest.createFunction(
     // through campaign-dispatch instead. Transactional-mode (Resend,
     // SendGrid) keeps the current fan-out path below.
     const conn = await step.run("load-connection", async () => {
-      const { data: c } = await supabase
-        .from("hl_email_connections")
-        .select("*")
-        .eq("id", run.email_connection_id)
-        .single();
+      const c = await getPlatformEmailConnection(
+        supabase,
+        run.user_id,
+        run.email_connection_id,
+      );
       if (!c) throw new Error("Email connection not found");
-      return c as HlEmailConnection;
+      return c;
     });
 
     const adapter = getAdapter(conn.provider);
     if (adapter.mode === "campaign") {
+      // Campaign-mode dispatch wants the per-app provider_metadata
+      // (Mailchimp audience id, AC list id, etc.) loaded separately.
+      const appState = await step.run("load-app-state", async () => {
+        const s = await getAppEmailConnectionStateInternal(
+          supabase,
+          "hyperlocal",
+          run.email_connection_id,
+        );
+        if (!s) throw new Error("Hyperlocal app state for connection not found");
+        return s;
+      });
+
       const result = await step.run("campaign-dispatch", () =>
         dispatchCampaignRun({
           supabase,
           runId,
           connection: conn,
+          metadata: (appState.provider_metadata ?? {}) as HlEmailAppMetadata,
           // First pass through hl-send is implicit-no-approval — if there
           // are new contacts the run parks at awaiting_audience_confirmation.
           // The approve route re-triggers hl-send with the audienceApproved

@@ -4,6 +4,8 @@ import { NextRequest } from "next/server";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { decrypt } from "@/lib/hyperlocal/encryption";
 import { sendgridAdapter } from "@/lib/hyperlocal/email/providers/sendgrid";
+import { getAppEmailConnectionStateInternal } from "@/lib/platform/connections";
+import type { CmaEmailAppMetadata } from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +24,6 @@ export const dynamic = "force-dynamic";
 // cma_email_connections.provider_metadata.sendgrid.webhook_signing_public_key
 // (AES-encrypted at rest by the verify-domain route).
 // ============================================================
-
-interface SendgridConnectionMetadata {
-  sendgrid?: {
-    webhook_signing_public_key?: string | null;
-  };
-}
 
 export async function POST(req: NextRequest) {
   const supabase = createServiceRoleClient();
@@ -72,13 +68,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: connection } = await supabase
-    .from("cma_email_connections")
-    .select("id, provider_metadata")
-    .eq("id", delivery.email_connection_id)
-    .maybeSingle();
-  const meta = (connection?.provider_metadata ?? {}) as SendgridConnectionMetadata;
-  const encryptedPublicKey = meta.sendgrid?.webhook_signing_public_key;
+  // The signing PUBLIC key now lives on the per-app state row's
+  // provider_metadata.sendgrid block (the per-app webhook URL means each
+  // app's signing key is independent of the other's).
+  const appState = await getAppEmailConnectionStateInternal(
+    supabase,
+    "listing_studio",
+    delivery.email_connection_id,
+  );
+  const meta = (appState?.provider_metadata ?? {}) as CmaEmailAppMetadata;
+  const encryptedPublicKey = meta.sendgrid?.webhook_signing_public_key ?? null;
 
   if (!encryptedPublicKey) {
     return Response.json(

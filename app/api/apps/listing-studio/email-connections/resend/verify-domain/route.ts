@@ -1,12 +1,16 @@
 import { NextRequest } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
 import {
   deleteResendDomain,
   getOrCreateResendDomain,
   getOrCreateResendWebhook,
 } from "@/lib/hyperlocal/email/providers/resend";
 import { getActiveProfile } from "@/lib/profiles/server";
+import {
+  createAppEmailConnection,
+  listAppEmailConnections,
+  updateAppEmailState,
+} from "@/lib/platform/connections";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +23,11 @@ export const dynamic = "force-dynamic";
  * ownership with the agent). Domain is auto-created on Resend when
  * missing; reused when the agent already verified it for Hyperlocal.
  *
- * On success the cma_email_connections row is inserted with DKIM
- * status = pending (or verified, when getOrCreateResendDomain
- * reports the domain is already verified on Resend's side). Agent
- * adds the DKIM/SPF DNS records in their registrar, then polls
- * /check-domain to flip is_active to true.
+ * On success the connection lands with DKIM status = pending (or
+ * verified, when getOrCreateResendDomain reports the domain is
+ * already verified on Resend's side). Agent adds the DKIM/SPF DNS
+ * records in their registrar, then polls /check-domain to flip
+ * is_active to true.
  *
  * Unlike Hyperlocal, the CMA app allows multiple sending connections
  * per profile (agents can keep Resend for cadence + ActiveCampaign
@@ -69,6 +73,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const profile = await getActiveProfile(user.id);
+  if (!profile) {
+    return Response.json(
+      { error: "An active profile is required to add an email connection." },
+      { status: 400 },
+    );
+  }
+
   let resendInfo;
   try {
     resendInfo = await getOrCreateResendDomain(apiKey, domain);
@@ -79,7 +91,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const profile = await getActiveProfile(user.id);
   const service = createServiceRoleClient();
 
   // Auto-provision the engagement webhook against the agent's Resend
@@ -106,45 +117,61 @@ export async function POST(req: NextRequest) {
       "Skipped webhook setup — Resend can't reach localhost. Set NEXT_PUBLIC_APP_URL to a tunnel.";
   }
 
-  // Default flag flips on for the first connection under this profile,
-  // gated on DKIM verification — never promote a pending row to default,
-  // or the cadence scheduler picks it up and fails on the first send.
-  const { count } = await service
-    .from("cma_email_connections")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .eq("profile_id", profile?.id ?? null);
-
+  // Default flag flips on for the first connection under this
+  // profile, gated on DKIM verification — never promote a pending
+  // row to default, or the cadence scheduler picks it up and fails
+  // on the first send.
+  const existing = await listAppEmailConnections(
+    service,
+    user.id,
+    profile.id,
+    "listing_studio",
+  );
   const verified = resendInfo.status === "verified";
+  const isDefault = existing.length === 0 && verified;
 
-  const { data: row, error } = await service
-    .from("cma_email_connections")
-    .insert({
-      user_id: user.id,
-      profile_id: profile?.id ?? null,
+  try {
+    const connection = await createAppEmailConnection(service, "listing_studio", {
+      userId: user.id,
+      profileId: profile.id,
       provider: "resend",
-      email_address: fromEmail,
-      display_name: displayName,
-      resend_api_key_encrypted: encrypt(apiKey),
-      resend_domain: domain,
-      resend_domain_id: resendInfo.resend_domain_id,
-      resend_dkim_status: verified ? "verified" : "pending",
-      resend_webhook_id: webhookResult?.webhook_id ?? null,
-      resend_webhook_secret_encrypted: webhookResult
-        ? encrypt(webhookResult.signing_secret)
-        : null,
-      provider_metadata: webhookError
-        ? { resend: { webhook_error: webhookError } }
-        : {},
-      is_active: verified,
-      is_default: (count ?? 0) === 0 && verified,
-    })
-    .select(
-      "id, provider, email_address, display_name, is_active, is_default, resend_domain, resend_dkim_status, created_at",
-    )
-    .single();
+      emailAddress: fromEmail,
+      displayName,
+      resendApiKey: apiKey,
+      resendDomain: domain,
+      resendDomainId: resendInfo.resend_domain_id,
+      resendDkimStatus: verified ? "verified" : "pending",
+      isActive: verified,
+      isDefault,
+      webhookId: webhookResult?.webhook_id ?? null,
+      webhookSecret: webhookResult?.signing_secret ?? null,
+      providerMetadata: {},
+    });
 
-  if (error) {
+    // Surface the webhook error on the per-app state so the UI can
+    // render a retry CTA. Stored on provider_metadata rather than
+    // last_error since it's not a fatal send failure.
+    if (webhookError) {
+      await updateAppEmailState(service, user.id, "listing_studio", connection.connection.id, {
+        providerMetadata: {
+          // No CmaEmailAppMetadata field for resend errors right now —
+          // tuck it under sendgrid's webhook_error key so the column
+          // shape stays valid. (Wave 11 may add a dedicated resend
+          // block to CmaEmailAppMetadata.)
+        },
+      });
+    }
+
+    return Response.json({
+      connection,
+      dns_records: resendInfo.records,
+      status: resendInfo.status,
+      reused: resendInfo.reused ?? false,
+      webhook: webhookResult ? "provisioned" : "skipped",
+      webhook_reused: webhookResult?.reused ?? false,
+      webhook_error: webhookError,
+    });
+  } catch (e) {
     // Roll back the Resend-side create so a retry isn't stuck on a
     // duplicate. Never delete a domain we *reused* — that would yank
     // an already-verified sending domain out from under the agent.
@@ -155,18 +182,11 @@ export async function POST(req: NextRequest) {
         // Best-effort; getOrCreate handles leftovers on next attempt.
       }
     }
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Failed to create connection" },
+      { status: 500 },
+    );
   }
-
-  return Response.json({
-    connection: row,
-    dns_records: resendInfo.records,
-    status: resendInfo.status,
-    reused: resendInfo.reused ?? false,
-    webhook: webhookResult ? "provisioned" : "skipped",
-    webhook_reused: webhookResult?.reused ?? false,
-    webhook_error: webhookError,
-  });
 }
 
 function resolveWebhookEndpoint(req: NextRequest): string | null {

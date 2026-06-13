@@ -3,9 +3,14 @@ import "server-only";
 import { NextRequest } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getCmaCrmConnector } from "@/lib/listing-studio/crm";
+import {
+  getAppCrmConnection,
+  getPlatformCrmConnection,
+  setAppCrmSyncState,
+} from "@/lib/platform/connections";
+import type { CmaCrmFilterConfig } from "@/types/platform-connections";
 import type {
   CmaClientCandidate,
-  CmaCrmConnection,
   CmaCrmSyncResponse,
 } from "@/types/cma";
 
@@ -25,7 +30,7 @@ const PREVIEW_SIZE = 10;
  * agent reviews + enrolls explicitly via the /clients UI (Wave 3).
  *
  * Returns CmaCrmSyncResponse with counts + a preview slice. Updates
- * last_synced_at / last_error on the connection row.
+ * last_synced_at / last_error on the app_crm_connection_state row.
  */
 export async function POST(
   _req: NextRequest,
@@ -39,31 +44,32 @@ export async function POST(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const service = createServiceRoleClient();
-  const { data: conn, error: loadErr } = await service
-    .from("cma_crm_connections")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (loadErr)
-    return Response.json({ error: loadErr.message }, { status: 500 });
-  if (!conn) return Response.json({ error: "Not found" }, { status: 404 });
+  // Load auth + app state separately — auth blobs only live on the
+  // shared platform row, filter config only on the per-app state.
+  const platformConn = await getPlatformCrmConnection(service, user.id, id);
+  if (!platformConn)
+    return Response.json({ error: "Not found" }, { status: 404 });
+  const appConn = await getAppCrmConnection(
+    service,
+    user.id,
+    "listing_studio",
+    id,
+  );
+  if (!appConn) return Response.json({ error: "Not found" }, { status: 404 });
+
+  const filter: CmaCrmFilterConfig = appConn.state.filter_config ?? {};
 
   let candidates: CmaClientCandidate[];
   try {
-    const connector = getCmaCrmConnector(conn.platform);
-    candidates = await connector.fetchPastClients(conn as CmaCrmConnection, {
+    const connector = getCmaCrmConnector(platformConn.platform);
+    candidates = await connector.fetchPastClients(platformConn, filter, {
       limit: FETCH_LIMIT,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    await service
-      .from("cma_crm_connections")
-      .update({
-        last_error: message.slice(0, 500),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id);
+    await setAppCrmSyncState(service, "listing_studio", id, {
+      last_error: message.slice(0, 500),
+    });
     return Response.json({ error: message }, { status: 502 });
   }
 
@@ -114,7 +120,7 @@ export async function POST(
     } else {
       await service.from("cma_clients").insert({
         user_id: user.id,
-        profile_id: conn.profile_id,
+        profile_id: platformConn.profile_id,
         crm_connection_id: id,
         crm_contact_id: cand.crm_contact_id,
         source: "crm",
@@ -131,14 +137,10 @@ export async function POST(
     }
   }
 
-  await service
-    .from("cma_crm_connections")
-    .update({
-      last_synced_at: now,
-      last_error: null,
-      updated_at: now,
-    })
-    .eq("id", id);
+  await setAppCrmSyncState(service, "listing_studio", id, {
+    last_synced_at: now,
+    last_error: null,
+  });
 
   const response: CmaCrmSyncResponse = {
     candidates_total: candidates.length,

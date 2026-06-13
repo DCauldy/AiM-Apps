@@ -1,14 +1,24 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  deletePlatformCrmConnection,
+  getAppCrmConnection,
+  updateAppCrmConnection,
+} from "@/lib/platform/connections";
 import { NextRequest } from "next/server";
+import type {
+  HlCrmFilterConfig,
+} from "@/types/platform-connections";
 
 export const dynamic = "force-dynamic";
 
-const PUBLIC_FIELDS = `id, platform, label, base_url, column_mapping, search_area_source, search_area_column, search_area_tag_pattern, is_active, last_synced_at, last_error, created_at, updated_at`;
-
+/**
+ * PATCH /api/apps/hyperlocal/crm-connections/:id
+ * Splits the body into platform-row fields (label, api_key, base_url, is_active)
+ * and app_state fields (search_area_*, column_mapping → filter_config).
+ */
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const supabase = await createClient();
@@ -31,46 +41,89 @@ export async function PATCH(
     label?: string;
     api_key?: string;
     base_url?: string;
-    column_mapping?: Record<string, unknown>;
-    search_area_source?: string;
+    column_mapping?: HlCrmFilterConfig["column_mapping"];
+    search_area_source?: HlCrmFilterConfig["search_area_source"];
     search_area_column?: string;
     search_area_tag_pattern?: string;
     is_active?: boolean;
   };
 
-  const update: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
-  if (label !== undefined) update.label = label;
-  if (base_url !== undefined) update.base_url = base_url;
-  if (column_mapping !== undefined) update.column_mapping = column_mapping;
-  if (search_area_source !== undefined)
-    update.search_area_source = search_area_source;
-  if (search_area_column !== undefined)
-    update.search_area_column = search_area_column;
-  if (search_area_tag_pattern !== undefined)
-    update.search_area_tag_pattern = search_area_tag_pattern;
-  if (is_active !== undefined) update.is_active = is_active;
-  if (api_key && api_key.trim().length > 0) {
-    update.api_key_encrypted = encrypt(api_key.trim());
-  }
+  // Only build a filterConfig update when any filter-config field is touched.
+  // We merge into the existing filter_config so partial PATCHes don't blow
+  // away unrelated fields (e.g. updating only search_area_column shouldn't
+  // clear column_mapping).
+  let filterConfig: HlCrmFilterConfig | undefined;
+  const filterFieldTouched =
+    column_mapping !== undefined ||
+    search_area_source !== undefined ||
+    search_area_column !== undefined ||
+    search_area_tag_pattern !== undefined;
 
   const service = createServiceRoleClient();
-  const { data, error } = await service
-    .from("hl_crm_connections")
-    .update(update)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select(PUBLIC_FIELDS)
-    .single();
+  if (filterFieldTouched) {
+    const existing = await getAppCrmConnection(
+      service,
+      user.id,
+      "hyperlocal",
+      id,
+    );
+    if (!existing) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    const prev = existing.state.filter_config;
+    filterConfig = {
+      search_area_source:
+        search_area_source !== undefined
+          ? search_area_source
+          : prev.search_area_source ?? null,
+      search_area_column:
+        search_area_column !== undefined
+          ? search_area_column
+          : prev.search_area_column ?? null,
+      search_area_tag_pattern:
+        search_area_tag_pattern !== undefined
+          ? search_area_tag_pattern
+          : prev.search_area_tag_pattern ?? null,
+      column_mapping:
+        column_mapping !== undefined
+          ? column_mapping
+          : prev.column_mapping ?? null,
+    };
+  }
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connection: data });
+  try {
+    const connection = await updateAppCrmConnection(
+      service,
+      user.id,
+      "hyperlocal",
+      id,
+      {
+        label: label,
+        apiKey: api_key,
+        baseUrl: base_url,
+        isActive: is_active,
+        filterConfig,
+      },
+    );
+    if (!connection) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    return Response.json({ connection });
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Update failed" },
+      { status: 500 },
+    );
+  }
 }
 
+/**
+ * DELETE /api/apps/hyperlocal/crm-connections/:id
+ * Drops the platform_crm_connections row; app_state rows cascade.
+ */
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
   const supabase = await createClient();
@@ -79,12 +132,14 @@ export async function DELETE(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { error } = await supabase
-    .from("hl_crm_connections")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ success: true });
+  const service = createServiceRoleClient();
+  try {
+    await deletePlatformCrmConnection(service, user.id, id);
+    return Response.json({ success: true });
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Delete failed" },
+      { status: 500 },
+    );
+  }
 }

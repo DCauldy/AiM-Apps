@@ -1,16 +1,14 @@
 import { NextRequest } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
+import {
+  deletePlatformCrmConnection,
+  getAppCrmConnection,
+  updateAppCrmConnection,
+} from "@/lib/platform/connections";
+import type { CmaCrmFilterConfig } from "@/types/platform-connections";
 import type { PastClientSource } from "@/types/cma";
 
 export const dynamic = "force-dynamic";
-
-const PUBLIC_FIELDS = `
-  id, profile_id, platform, label, base_url,
-  past_client_source, past_client_value,
-  is_active, last_synced_at, last_error,
-  created_at, updated_at
-`;
 
 const ALLOWED_SOURCES: ReadonlySet<PastClientSource> = new Set([
   "tag",
@@ -18,6 +16,13 @@ const ALLOWED_SOURCES: ReadonlySet<PastClientSource> = new Set([
   "all",
 ]);
 
+/**
+ * PATCH /api/apps/listing-studio/crm-connections/[id]
+ *
+ * Patches either the shared platform row (label, base_url, api_key,
+ * is_active) or the per-app filter_config (past_client_source/value).
+ * updateAppCrmConnection takes care of both in one call.
+ */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -43,11 +48,11 @@ export async function PATCH(
     past_client_value,
     is_active,
   } = (body ?? {}) as {
-    label?: string;
+    label?: string | null;
     api_key?: string;
-    base_url?: string;
-    past_client_source?: string;
-    past_client_value?: string;
+    base_url?: string | null;
+    past_client_source?: string | null;
+    past_client_value?: string | null;
     is_active?: boolean;
   };
 
@@ -62,31 +67,60 @@ export async function PATCH(
     );
   }
 
-  const update: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
-  if (label !== undefined) update.label = label;
-  if (base_url !== undefined) update.base_url = base_url;
-  if (past_client_source !== undefined)
-    update.past_client_source = past_client_source;
-  if (past_client_value !== undefined)
-    update.past_client_value = past_client_value?.trim() || null;
-  if (is_active !== undefined) update.is_active = is_active;
-  if (api_key && api_key.trim().length > 0) {
-    update.api_key_encrypted = encrypt(api_key.trim());
+  // Only include filter_config in the update when one of the filter
+  // fields was actually sent — otherwise we'd overwrite the stored
+  // config with a half-empty patch.
+  let filterConfig: CmaCrmFilterConfig | undefined;
+  if (past_client_source !== undefined || past_client_value !== undefined) {
+    // Read the existing app-state row to preserve untouched fields.
+    const service = createServiceRoleClient();
+    const existing = await getAppCrmConnection(
+      service,
+      user.id,
+      "listing_studio",
+      id,
+    );
+    if (!existing) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    const cur = existing.state.filter_config ?? {};
+    filterConfig = {
+      past_client_source:
+        past_client_source === undefined
+          ? (cur.past_client_source ?? null)
+          : (past_client_source as PastClientSource | null),
+      past_client_value:
+        past_client_value === undefined
+          ? (cur.past_client_value ?? null)
+          : past_client_value?.trim() || null,
+    };
   }
 
   const service = createServiceRoleClient();
-  const { data, error } = await service
-    .from("cma_crm_connections")
-    .update(update)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select(PUBLIC_FIELDS)
-    .single();
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ connection: data });
+  try {
+    const connection = await updateAppCrmConnection(
+      service,
+      user.id,
+      "listing_studio",
+      id,
+      {
+        label: label ?? undefined,
+        apiKey: api_key,
+        baseUrl: base_url ?? undefined,
+        isActive: is_active,
+        filterConfig,
+      },
+    );
+    if (!connection) {
+      return Response.json({ error: "Not found" }, { status: 404 });
+    }
+    return Response.json({ connection });
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Update failed" },
+      { status: 500 },
+    );
+  }
 }
 
 export async function DELETE(
@@ -100,12 +134,7 @@ export async function DELETE(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { error } = await supabase
-    .from("cma_crm_connections")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", user.id);
-
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  const service = createServiceRoleClient();
+  await deletePlatformCrmConnection(service, user.id, id);
   return Response.json({ success: true });
 }
