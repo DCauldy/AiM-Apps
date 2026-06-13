@@ -1,8 +1,8 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 import {
-  createFakeTourRenderRun,
+  createTourRenderRun,
   listRecentTourRenderRuns,
-  preflightFakeTourRenderRun,
+  preflightTourRenderRun,
   toTourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/tour-render-runs";
 
@@ -39,7 +39,7 @@ export async function POST(
     return toursAccessErrorResponse(access);
   }
 
-  const preflight = await preflightFakeTourRenderRun({
+  const preflight = await preflightTourRenderRun({
     projectId,
     userId: access.user.id,
   });
@@ -50,7 +50,7 @@ export async function POST(
     );
   }
 
-  const run = await createFakeTourRenderRun(
+  const run = await createTourRenderRun(
     {
       projectId,
       userId: access.user.id,

@@ -153,7 +153,7 @@ describe("preflightTourRender", () => {
     });
   });
 
-  test("requires HeyGen for avatar tours", async () => {
+  test("requires ElevenLabs and HeyGen for avatar tours", async () => {
     const repository = createRepository({
       ...baseProject,
       project: { ...baseProject.project, tourType: "tour_video_avatar" },
@@ -162,6 +162,20 @@ describe("preflightTourRender", () => {
     await expect(runPreflight(repository, {}, { elevenlabs: true })).resolves.toMatchObject({
       ok: false,
       issues: [{ code: "missing_heygen_key", severity: "blocking" }],
+    });
+
+    await expect(runPreflight(repository, {}, { heygen: true })).resolves.toMatchObject({
+      ok: false,
+      issues: [{ code: "missing_elevenlabs_key", severity: "blocking" }],
+    });
+
+    await expect(
+      runPreflight(repository, {}, { elevenlabs: true, heygen: true })
+    ).resolves.toMatchObject({
+      ok: true,
+      summary: {
+        requiredProviderKeys: ["elevenlabs", "heygen"],
+      },
     });
   });
 

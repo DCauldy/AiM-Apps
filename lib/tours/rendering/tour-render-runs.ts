@@ -1,6 +1,7 @@
 import "server-only";
 
 import { tasks } from "@trigger.dev/sdk/v3";
+import type { renderTourProjectTask } from "@/src/triggers/render-tour-project";
 import type { toursRenderNoopProofTask } from "@/src/triggers/tours-render-noop-proof";
 import {
   isTourRenderRunActive,
@@ -16,6 +17,7 @@ import {
 } from "./tour-render.repository";
 import {
   preflightTourRender,
+  type TourRenderOptions,
   type TourRenderPreflightResult,
 } from "./tour-render-preflight";
 
@@ -24,9 +26,22 @@ type CreateFakeTourRenderRunInput = {
   userId: string;
 };
 
-type RenderRunServiceOptions = {
+type CreateTourRenderRunInput = CreateFakeTourRenderRunInput & {
+  options?: TourRenderOptions;
+};
+
+type FakeRenderRunServiceOptions = {
   repository?: TourRenderRepository;
   triggerTask?: typeof tasks.trigger<typeof toursRenderNoopProofTask>;
+  skipPreflight?: boolean;
+};
+
+type RenderRunServiceOptions = {
+  repository?: TourRenderRepository;
+};
+
+type CreateTourRenderRunServiceOptions = RenderRunServiceOptions & {
+  triggerTask?: typeof tasks.trigger<typeof renderTourProjectTask>;
   skipPreflight?: boolean;
 };
 
@@ -36,7 +51,14 @@ const FAKE_RENDER_OPTIONS = {
   reuseExistingAssets: true,
 } as const;
 
+const DEFAULT_RENDER_OPTIONS: TourRenderOptions = {
+  renderMode: "ken_burns_ffmpeg",
+  reuseExistingAssets: true,
+};
+
 const TRIGGER_ATTACH_TIMEOUT_MS = 3_000;
+const RENDER_TASK_ENQUEUE_FAILED_MESSAGE =
+  "Could not start the render task. Try again.";
 
 type FakeRenderStage = {
   elapsedMs: number;
@@ -289,7 +311,7 @@ async function createFakeFinalAssetAndComplete(
 
 export async function createFakeTourRenderRun(
   input: CreateFakeTourRenderRunInput,
-  options: RenderRunServiceOptions = {}
+  options: FakeRenderRunServiceOptions = {}
 ): Promise<TourRenderRun | null> {
   const repository = options.repository ?? (await createTourRenderRepository());
   if (!options.skipPreflight) {
@@ -369,7 +391,7 @@ export async function createFakeTourRenderRun(
 
 export async function preflightFakeTourRenderRun(
   input: CreateFakeTourRenderRunInput,
-  options: Pick<RenderRunServiceOptions, "repository"> = {}
+  options: Pick<FakeRenderRunServiceOptions, "repository"> = {}
 ): Promise<TourRenderPreflightResult> {
   const repository = options.repository ?? (await createTourRenderRepository());
   return preflightTourRender(
@@ -377,6 +399,130 @@ export async function preflightFakeTourRenderRun(
       projectId: input.projectId,
       userId: input.userId,
       options: FAKE_RENDER_OPTIONS,
+    },
+    { repository }
+  );
+}
+
+export async function createTourRenderRun(
+  input: CreateTourRenderRunInput,
+  options: CreateTourRenderRunServiceOptions = {}
+): Promise<TourRenderRun | null> {
+  const repository = options.repository ?? (await createTourRenderRepository());
+  const renderOptions: TourRenderOptions = {
+    ...DEFAULT_RENDER_OPTIONS,
+    ...(input.options ?? {}),
+  };
+
+  if (!options.skipPreflight) {
+    const preflight = await preflightTourRender(
+      {
+        projectId: input.projectId,
+        userId: input.userId,
+        options: renderOptions,
+      },
+      { repository }
+    );
+
+    if (!preflight.ok) {
+      return null;
+    }
+  }
+
+  const renderableProject = await repository.getRenderableTourProject(input);
+  if (!renderableProject) {
+    return null;
+  }
+
+  const run = await repository.createRenderRun({
+    projectId: input.projectId,
+    userId: input.userId,
+    sceneClipTotalCount: renderableProject.scenes.filter((scene) => scene.included).length,
+    options: {
+      ...renderOptions,
+      tourType: renderableProject.project.tourType,
+    },
+  });
+
+  if (!run) {
+    return null;
+  }
+
+  const triggerTask = options.triggerTask ?? tasks.trigger<typeof renderTourProjectTask>;
+  const handle = await Promise.race([
+    triggerTask(
+      "render-tour-project",
+      {
+        projectId: input.projectId,
+        userId: input.userId,
+        renderRunId: run.id,
+        options: {
+          ...renderOptions,
+          tourType: renderableProject.project.tourType,
+        },
+      },
+      {
+        idempotencyKey: `tour-render:${run.id}`,
+        tags: [`user:${input.userId}`, `tour-project:${input.projectId}`, "render-tour-project"],
+        metadata: {
+          product: "tours",
+          projectId: input.projectId,
+          renderRunId: run.id,
+          step: "queued",
+          progressPercent: 0,
+        },
+      },
+    ).catch(() => null),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), TRIGGER_ATTACH_TIMEOUT_MS);
+    }),
+  ]);
+
+  if (!handle?.id) {
+    const failedRun = await repository.markFailed({
+      runId: run.id,
+      projectId: input.projectId,
+      userId: input.userId,
+      step: "failed",
+      label: "Failed",
+      safeMessage: RENDER_TASK_ENQUEUE_FAILED_MESSAGE,
+    });
+
+    await repository.appendEvent({
+      runId: run.id,
+      projectId: input.projectId,
+      step: "failed",
+      status: "failed",
+      safeMessage: RENDER_TASK_ENQUEUE_FAILED_MESSAGE,
+      metadata: {
+        reason: "trigger_enqueue_failed",
+      },
+    });
+
+    return failedRun ?? run;
+  }
+
+  return (await repository.attachTriggerRunId({
+    runId: run.id,
+    projectId: input.projectId,
+    userId: input.userId,
+    triggerRunId: handle.id,
+  })) ?? run;
+}
+
+export async function preflightTourRenderRun(
+  input: CreateTourRenderRunInput,
+  options: RenderRunServiceOptions = {}
+): Promise<TourRenderPreflightResult> {
+  const repository = options.repository ?? (await createTourRenderRepository());
+  return preflightTourRender(
+    {
+      projectId: input.projectId,
+      userId: input.userId,
+      options: {
+        ...DEFAULT_RENDER_OPTIONS,
+        ...(input.options ?? {}),
+      },
     },
     { repository }
   );

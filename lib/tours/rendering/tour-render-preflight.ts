@@ -1,7 +1,6 @@
-import "server-only";
-
 import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
 import type { TourProjectType } from "../project-types";
+import { getRequiredProviderKeysForTourType } from "../tour-type-availability";
 import {
   createTourRenderRepository,
   type TourRenderPreflightProject,
@@ -15,6 +14,22 @@ export type TourRenderOptions = {
   reuseExistingAssets?: boolean;
   fakeRenderRun?: boolean;
   tourType?: TourProjectType;
+  scriptPlanningModelId?: string;
+  scriptPlanningFallbackDurationSeconds?: number;
+  scriptPlanningMinDurationSeconds?: number;
+  scriptPlanningMaxDurationSeconds?: number;
+  elevenLabsVoiceId?: string;
+  elevenLabsModelId?: string;
+  elevenLabsVoiceSettings?: {
+    stability?: number;
+    style?: number;
+    use_speaker_boost?: boolean;
+  };
+  voiceoverTranscriptOptions?: {
+    phraseMode?: "sentence" | "word-count";
+    wordsPerPhrase?: number;
+    useNormalizedAlignment?: boolean;
+  };
 };
 
 export type TourRenderPreflightIssueCode =
@@ -71,18 +86,6 @@ function issue(
     severity: "blocking",
     ...(sceneId ? { sceneId } : {}),
   };
-}
-
-function getRequiredProviderKeys(tourType: TourProjectType): Array<"elevenlabs" | "heygen"> {
-  if (tourType === "tour_video_voice_over") {
-    return ["elevenlabs"];
-  }
-
-  if (tourType === "tour_video_avatar") {
-    return ["heygen"];
-  }
-
-  return [];
 }
 
 function summarizePreflightProject(
@@ -158,7 +161,7 @@ export async function preflightTourRender(
     }
   }
 
-  const requiredProviderKeys = getRequiredProviderKeys(project.project.tourType);
+  const requiredProviderKeys = getRequiredProviderKeysForTourType(project.project.tourType);
   if (requiredProviderKeys.length > 0) {
     const keyStatus = await getStatusMap(input.userId, requiredProviderKeys);
 
@@ -167,6 +170,15 @@ export async function preflightTourRender(
         issue(
           "missing_elevenlabs_key",
           "Add an ElevenLabs API key before rendering a voice-over tour."
+        )
+      );
+    }
+
+    if (project.project.tourType === "tour_video_avatar" && keyStatus.elevenlabs !== true) {
+      issues.push(
+        issue(
+          "missing_elevenlabs_key",
+          "Add an ElevenLabs API key before rendering an avatar tour."
         )
       );
     }

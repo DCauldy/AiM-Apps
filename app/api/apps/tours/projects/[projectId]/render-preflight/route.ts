@@ -1,5 +1,5 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import { preflightFakeTourRenderRun } from "@/lib/tours/rendering/tour-render-runs";
+import { preflightTourRenderRun } from "@/lib/tours/rendering/tour-render-runs";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ export async function POST(
     return toursAccessErrorResponse(access);
   }
 
-  const preflight = await preflightFakeTourRenderRun({
+  const preflight = await preflightTourRenderRun({
     projectId,
     userId: access.user.id,
   });

@@ -26,6 +26,7 @@ import {
   TOUR_PROJECT_TYPE_LABELS,
   type TourProjectType,
 } from "@/lib/tours/project-types";
+import { isTourTypeAvailable } from "@/lib/tours/tour-type-availability";
 import { cn } from "@/lib/utils";
 
 type CreateTourProjectInput = {
@@ -58,20 +59,28 @@ const tourTypeOptions: Array<{
     title: TOUR_PROJECT_TYPE_LABELS.tour_video_voice_over,
     description: "Add generated narration to the property tour video.",
     icon: Mic2,
-    isEnabled: ({ canUseElevenLabs, canUseHeyGen }) => canUseElevenLabs || canUseHeyGen,
-    disabledReason: "Requires a HeyGen or ElevenLabs API key.",
+    isEnabled: ({ canUseElevenLabs, canUseHeyGen }) =>
+      isTourTypeAvailable("tour_video_voice_over", {
+        elevenlabs: canUseElevenLabs,
+        heygen: canUseHeyGen,
+      }),
+    disabledReason: "Requires an ElevenLabs API key.",
     disabledDetails:
-      "Voice over tours will unlock when an active profile has a HeyGen or ElevenLabs API key.",
+      "Voice over tours will unlock when an active profile has an ElevenLabs API key.",
   },
   {
     value: "tour_video_avatar",
     title: TOUR_PROJECT_TYPE_LABELS.tour_video_avatar,
     description: "Present the tour with a generated on-screen video avatar.",
     icon: UserRound,
-    isEnabled: ({ canUseHeyGen }) => canUseHeyGen,
-    disabledReason: "Requires a HeyGen API key.",
+    isEnabled: ({ canUseElevenLabs, canUseHeyGen }) =>
+      isTourTypeAvailable("tour_video_avatar", {
+        elevenlabs: canUseElevenLabs,
+        heygen: canUseHeyGen,
+      }),
+    disabledReason: "Requires ElevenLabs and HeyGen API keys.",
     disabledDetails:
-      "Video avatar tours will unlock when an active profile has a HeyGen API key.",
+      "Video avatar tours will unlock when an active profile has ElevenLabs and HeyGen API keys.",
   },
 ];
 

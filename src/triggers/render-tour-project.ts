@@ -1,0 +1,58 @@
+import { logger, metadata, task } from "@trigger.dev/sdk/v3";
+
+import {
+  generateTourProjectVideo,
+  type GenerateTourProjectVideoInput,
+} from "@/lib/tours/rendering/generate-tour-project-video";
+import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/tour-voiceover";
+import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/openrouter-script-planning-provider";
+import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/tour-render.repository";
+
+export type RenderTourProjectPayload = Omit<GenerateTourProjectVideoInput, "progress">;
+
+export const renderTourProjectTask = task({
+  id: "render-tour-project",
+  maxDuration: 60 * 60,
+  run: async (payload: RenderTourProjectPayload, { ctx }) => {
+    metadata.set("product", "tours");
+    metadata.set("projectId", payload.projectId);
+    metadata.set("renderRunId", payload.renderRunId);
+    metadata.set("triggerRunId", ctx.run.id);
+    metadata.set("step", "queued");
+    metadata.set("progressPercent", 0);
+
+    logger.log("Tours render task shell started.", {
+      projectId: payload.projectId,
+      renderRunId: payload.renderRunId,
+      triggerRunId: ctx.run.id,
+    });
+
+    const run = await generateTourProjectVideo(
+      {
+        ...payload,
+        progress: (update) => {
+          metadata.set("step", update.step);
+          metadata.set("label", update.label);
+          metadata.set("progressPercent", update.progressPercent);
+          metadata.set("message", update.message ?? update.label);
+        },
+      },
+      {
+        repository: createServiceRoleTourRenderRepository(),
+        scriptPlanningProvider: createOpenRouterScriptPlanningProvider({
+          apiKey: process.env.OPENROUTER_API_KEY ?? "",
+        }),
+        voiceoverProvider: createElevenLabsVoiceoverProvider(),
+      }
+    );
+
+    metadata.set("status", run?.status ?? "failed");
+    await metadata.flush();
+
+    return {
+      ok: run?.status === "completed",
+      renderRunId: payload.renderRunId,
+      status: run?.status ?? "failed",
+    };
+  },
+});

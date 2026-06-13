@@ -21,9 +21,9 @@ const mocks = vi.hoisted(() => ({
   toursAccessErrorResponse: vi.fn((access: { error: string; status: number }) =>
     Response.json({ error: access.error }, { status: access.status })
   ),
-  createFakeTourRenderRun: vi.fn(),
+  createTourRenderRun: vi.fn(),
   listRecentTourRenderRuns: vi.fn(),
-  preflightFakeTourRenderRun: vi.fn(),
+  preflightTourRenderRun: vi.fn(),
   toTourRenderRunStatusResponse: vi.fn((value) => value),
 }));
 
@@ -33,9 +33,9 @@ vi.mock("@/lib/tours/access.server", () => ({
 }));
 
 vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
-  createFakeTourRenderRun: mocks.createFakeTourRenderRun,
+  createTourRenderRun: mocks.createTourRenderRun,
   listRecentTourRenderRuns: mocks.listRecentTourRenderRuns,
-  preflightFakeTourRenderRun: mocks.preflightFakeTourRenderRun,
+  preflightTourRenderRun: mocks.preflightTourRenderRun,
   toTourRenderRunStatusResponse: mocks.toTourRenderRunStatusResponse,
 }));
 
@@ -46,13 +46,13 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     vi.clearAllMocks();
   });
 
-  it("creates a fake render run for an open project", async () => {
+  it("creates a real render task run for an open project", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
-    mocks.preflightFakeTourRenderRun.mockResolvedValue({
+    mocks.preflightTourRenderRun.mockResolvedValue({
       ok: true,
       summary: { projectId: "project-1" },
     });
-    mocks.createFakeTourRenderRun.mockResolvedValue(run);
+    mocks.createTourRenderRun.mockResolvedValue(run);
 
     const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
       params: Promise.resolve({ projectId: "project-1" }),
@@ -63,11 +63,11 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     expect(mocks.requireToursAccess).toHaveBeenCalledWith({
       projectId: "project-1",
     });
-    expect(mocks.preflightFakeTourRenderRun).toHaveBeenCalledWith({
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
       projectId: "project-1",
       userId: "user-1",
     });
-    expect(mocks.createFakeTourRenderRun).toHaveBeenCalledWith(
+    expect(mocks.createTourRenderRun).toHaveBeenCalledWith(
       {
         projectId: "project-1",
         userId: "user-1",
@@ -88,7 +88,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       ],
     };
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
-    mocks.preflightFakeTourRenderRun.mockResolvedValue(preflight);
+    mocks.preflightTourRenderRun.mockResolvedValue(preflight);
 
     const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
       params: Promise.resolve({ projectId: "project-1" }),
@@ -99,7 +99,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       error: "Tour project is not ready for rendering.",
       preflight,
     });
-    expect(mocks.createFakeTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
   });
 
   it("returns recent render runs for polling from product state", async () => {
@@ -132,7 +132,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Tour project was not found." });
-    expect(mocks.preflightFakeTourRenderRun).not.toHaveBeenCalled();
-    expect(mocks.createFakeTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.preflightTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
   });
 });

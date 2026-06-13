@@ -1,7 +1,5 @@
-import "server-only";
-
 import { randomUUID } from "node:crypto";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { TourProjectType } from "@/lib/tours/project-types";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 
@@ -120,6 +118,17 @@ export type TourRenderAsset = {
   reusable: boolean;
   metadata: Record<string, unknown>;
   createdAt: string;
+};
+
+export type SignedSourcePhotoUrl = {
+  storagePath: string;
+  signedUrl: string;
+};
+
+export type UploadedRenderAsset = {
+  storageBucket: "tours-generated-media";
+  storagePath: string;
+  contentType: string;
 };
 
 type TourProjectRow = {
@@ -244,6 +253,30 @@ export type TourRenderRepository = {
   }): Promise<RenderableTourProject | null>;
   canReadListingMedia(input: { storagePaths: string[] }): Promise<boolean>;
   canWriteGeneratedMedia(input: { userId: string; projectId: string }): Promise<boolean>;
+  createSignedSourcePhotoUrls(input: {
+    storagePaths: string[];
+    expiresInSeconds?: number;
+  }): Promise<SignedSourcePhotoUrl[]>;
+  uploadRenderAssetJson(input: {
+    userId: string;
+    projectId: string;
+    runId: string;
+    kind: TourRenderAssetKind;
+    value: unknown;
+  }): Promise<UploadedRenderAsset | null>;
+  uploadRenderAssetBytes(input: {
+    userId: string;
+    projectId: string;
+    runId: string;
+    kind: TourRenderAssetKind;
+    content: Buffer | Blob;
+    contentType: string;
+    extension: string;
+  }): Promise<UploadedRenderAsset | null>;
+  downloadRenderAssetJson(input: {
+    storageBucket: "tours-generated-media";
+    storagePath: string;
+  }): Promise<unknown | null>;
   getRenderRun(input: {
     runId: string;
     projectId: string;
@@ -266,7 +299,7 @@ export type TourRenderRepository = {
     runId: string;
     projectId: string;
     userId: string;
-    resultAssetId: string;
+    resultAssetId?: string | null;
   }): Promise<TourRenderRun | null>;
   markFailed(input: {
     runId: string;
@@ -492,6 +525,10 @@ export async function createTourRenderRepository(): Promise<TourRenderRepository
   return createTourRenderRepositoryFromSupabase(supabase);
 }
 
+export function createServiceRoleTourRenderRepository(): TourRenderRepository {
+  return createTourRenderRepositoryFromSupabase(createServiceRoleClient());
+}
+
 export function createTourRenderRepositoryFromSupabase(supabase: SupabaseClient): TourRenderRepository {
   return {
     async getTourRenderPreflightProject(input) {
@@ -551,6 +588,88 @@ export function createTourRenderRepositoryFromSupabase(supabase: SupabaseClient)
 
       const { error: removeError } = await bucket.remove([storagePath]);
       return !removeError;
+    },
+
+    async createSignedSourcePhotoUrls(input) {
+      const bucket = supabase.storage.from("tours-listing-media");
+      const signedUrls: SignedSourcePhotoUrl[] = [];
+
+      for (const storagePath of input.storagePaths) {
+        const { data, error } = await bucket.createSignedUrl(
+          storagePath,
+          input.expiresInSeconds ?? 5 * 60
+        );
+
+        if (error || !data?.signedUrl) {
+          return [];
+        }
+
+        signedUrls.push({
+          storagePath,
+          signedUrl: data.signedUrl,
+        });
+      }
+
+      return signedUrls;
+    },
+
+    async uploadRenderAssetJson(input) {
+      const storagePath = `${input.userId}/${input.projectId}/${input.runId}/${input.kind}-${randomUUID()}.json`;
+      const content = JSON.stringify(input.value, null, 2);
+      const contentType = "application/json";
+      const { error } = await supabase.storage
+        .from("tours-generated-media")
+        .upload(storagePath, new Blob([content], { type: contentType }), {
+          contentType,
+          upsert: false,
+        });
+
+      if (error) {
+        return null;
+      }
+
+      return {
+        storageBucket: "tours-generated-media",
+        storagePath,
+        contentType,
+      };
+    },
+
+    async uploadRenderAssetBytes(input) {
+      const safeExtension = input.extension.replace(/^\./, "").replace(/[^a-z0-9]/gi, "");
+      const storagePath = `${input.userId}/${input.projectId}/${input.runId}/${input.kind}-${randomUUID()}.${safeExtension || "bin"}`;
+      const { error } = await supabase.storage
+        .from("tours-generated-media")
+        .upload(storagePath, input.content, {
+          contentType: input.contentType,
+          upsert: false,
+        });
+
+      if (error) {
+        return null;
+      }
+
+      return {
+        storageBucket: "tours-generated-media",
+        storagePath,
+        contentType: input.contentType,
+      };
+    },
+
+    async downloadRenderAssetJson(input) {
+      const { data, error } = await supabase.storage
+        .from(input.storageBucket)
+        .download(input.storagePath);
+
+      if (error || !data) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(await data.text());
+      } catch {
+        return null;
+      }
     },
 
     async createRenderRun(input) {

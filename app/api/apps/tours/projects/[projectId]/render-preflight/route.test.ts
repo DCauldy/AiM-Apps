@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   toursAccessErrorResponse: vi.fn((access: { error: string; status: number }) =>
     Response.json({ error: access.error }, { status: access.status })
   ),
-  preflightFakeTourRenderRun: vi.fn(),
+  preflightTourRenderRun: vi.fn(),
 }));
 
 vi.mock("@/lib/tours/access.server", () => ({
@@ -14,7 +14,7 @@ vi.mock("@/lib/tours/access.server", () => ({
 }));
 
 vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
-  preflightFakeTourRenderRun: mocks.preflightFakeTourRenderRun,
+  preflightTourRenderRun: mocks.preflightTourRenderRun,
 }));
 
 import { POST } from "./route";
@@ -38,7 +38,7 @@ describe("POST /api/apps/tours/projects/:projectId/render-preflight", () => {
       },
     };
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
-    mocks.preflightFakeTourRenderRun.mockResolvedValue(preflight);
+    mocks.preflightTourRenderRun.mockResolvedValue(preflight);
 
     const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
       params: Promise.resolve({ projectId: "project-1" }),
@@ -47,7 +47,7 @@ describe("POST /api/apps/tours/projects/:projectId/render-preflight", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ preflight });
     expect(mocks.requireToursAccess).toHaveBeenCalledWith({ projectId: "project-1" });
-    expect(mocks.preflightFakeTourRenderRun).toHaveBeenCalledWith({
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
       projectId: "project-1",
       userId: "user-1",
     });
@@ -65,7 +65,7 @@ describe("POST /api/apps/tours/projects/:projectId/render-preflight", () => {
       ],
     };
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
-    mocks.preflightFakeTourRenderRun.mockResolvedValue(preflight);
+    mocks.preflightTourRenderRun.mockResolvedValue(preflight);
 
     const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
       params: Promise.resolve({ projectId: "project-1" }),
@@ -87,6 +87,6 @@ describe("POST /api/apps/tours/projects/:projectId/render-preflight", () => {
     });
 
     expect(response.status).toBe(404);
-    expect(mocks.preflightFakeTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.preflightTourRenderRun).not.toHaveBeenCalled();
   });
 });

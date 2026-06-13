@@ -5,6 +5,10 @@ import {
   TOUR_PROJECT_TYPES,
   type TourProjectType,
 } from "@/lib/tours/project-types";
+import {
+  getMissingProviderKeysForTourType,
+  getTourTypeAvailabilityMessage,
+} from "@/lib/tours/tour-type-availability";
 import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
 
 export const dynamic = "force-dynamic";
@@ -30,16 +34,8 @@ async function getTourTypeAvailabilityError(
 
   const apiKeyStatus = await getUserApiKeyStatusMap(userId, ["elevenlabs", "heygen"]);
 
-  if (
-    tourType === "tour_video_voice_over" &&
-    apiKeyStatus.elevenlabs !== true &&
-    apiKeyStatus.heygen !== true
-  ) {
-    return "Add a HeyGen or ElevenLabs API key before creating a voice over tour.";
-  }
-
-  if (tourType === "tour_video_avatar" && apiKeyStatus.heygen !== true) {
-    return "Add a HeyGen API key before creating a video avatar tour.";
+  if (getMissingProviderKeysForTourType(tourType, apiKeyStatus).length > 0) {
+    return getTourTypeAvailabilityMessage(tourType, "creating");
   }
 
   return null;
