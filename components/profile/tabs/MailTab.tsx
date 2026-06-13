@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Mail as MailIcon,
   Loader2,
-  Plus,
   Trash2,
   Star,
   CheckCircle2,
@@ -13,17 +12,17 @@ import {
   PauseCircle,
   PlayCircle,
   AlertCircle,
-  PlugZap,
-  Send,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { EMAIL_PROVIDER_LABELS } from "@/types/hyperlocal";
+import type { EmailProvider } from "@/types/hyperlocal";
 import type {
   AppSlug,
   PlatformEmailConnectionPublic,
 } from "@/types/platform-connections";
+import { IntegrationGrid } from "@/components/profile/IntegrationGrid";
 
 // ---------------------------------------------------------------------------
 // Wire formats
@@ -56,8 +55,18 @@ export function ProfileMailTab() {
   const { addToast } = useToast();
   const [conns, setConns] = useState<EmailConnEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [setupKind, setSetupKind] =
-    useState<{ app: AppSlug; provider: "resend" | "sendgrid" } | null>(null);
+  // Modal kinds:
+  //   {provider: "resend"|"sendgrid"} — opens the domain-verify modal
+  //   {provider: "mailchimp"|"activecampaign"} — opens the API-key/OAuth flow
+  const [setupKind, setSetupKind] = useState<
+    | { provider: "resend" | "sendgrid" }
+    | { provider: "mailchimp" }
+    | { provider: "activecampaign" }
+    | null
+  >(null);
+  const [oauthInFlight, setOauthInFlight] = useState<EmailProvider | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     try {
@@ -82,58 +91,67 @@ export function ProfileMailTab() {
     load();
   }, [load]);
 
+  // Set of provider slugs the agent has already connected — drives the
+  // checkmark + "Manage" state on each card vs. "Connect."
+  const connectedProviders = useMemo(
+    () => new Set(conns.map((c) => c.connection.provider)),
+    [conns],
+  );
+
+  // One handler routes Connect clicks to the right place per provider.
+  // Mailchimp = full-page OAuth redirect; ActiveCampaign + Resend +
+  // SendGrid open inline modals.
+  const handleConnect = (provider: EmailProvider) => {
+    if (provider === "mailchimp") {
+      setOauthInFlight("mailchimp");
+      window.location.href =
+        "/api/apps/hyperlocal/email-connections/mailchimp/oauth/start";
+      return;
+    }
+    if (provider === "activecampaign") {
+      setSetupKind({ provider: "activecampaign" });
+      return;
+    }
+    if (provider === "resend" || provider === "sendgrid") {
+      setSetupKind({ provider });
+      return;
+    }
+    // constantcontact + klaviyo are "Coming soon" — grid disables Connect.
+  };
+
   return (
-    <div className="space-y-5">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-base font-semibold">Email connections</h2>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-            BYO verified domain. Both apps (CMA + Hyperlocal) can send
-            from the same Resend or SendGrid setup; each one keeps its
-            own default + webhook subscription.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setSetupKind({ app: "listing_studio", provider: "resend" })
-            }
-            className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-3 py-1.5 transition-opacity hover:opacity-90"
-            style={{
-              background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
-            }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Resend
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              setSetupKind({ app: "listing_studio", provider: "sendgrid" })
-            }
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add SendGrid
-          </button>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-base font-semibold">Email connections</h2>
+        <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+          One sending setup powers both CMA and Hyperlocal. Pick a
+          provider below — Resend or SendGrid for BYO-domain
+          transactional sends, Mailchimp or ActiveCampaign for campaign-
+          mode marketing (Hyperlocal only for now).
+        </p>
       </div>
 
-      {loading ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">
-          <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
-          Loading…
-        </div>
-      ) : conns.length === 0 ? (
-        <EmptyState
-          onAddResend={() =>
-            setSetupKind({ app: "listing_studio", provider: "resend" })
-          }
-        />
-      ) : (
-        <div className="space-y-3">
-          {conns.map((entry) => (
+      <IntegrationGrid
+        connectedProviders={connectedProviders}
+        onConnect={handleConnect}
+        oauthInFlight={oauthInFlight}
+      />
+
+      <div id="connected-list" className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Your connections
+        </h3>
+        {loading ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+            Loading…
+          </div>
+        ) : conns.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border bg-card/50 p-6 text-center text-sm text-muted-foreground">
+            Nothing connected yet. Pick a provider above to get started.
+          </div>
+        ) : (
+          conns.map((entry) => (
             <ConnCard
               key={entry.connection.id}
               entry={entry}
@@ -144,13 +162,13 @@ export function ProfileMailTab() {
               }
               onReload={load}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
-      {setupKind && (
+      {setupKind?.provider === "resend" || setupKind?.provider === "sendgrid" ? (
         <SetupModal
-          app={setupKind.app}
+          app="listing_studio"
           provider={setupKind.provider}
           onClose={() => setSetupKind(null)}
           onSaved={() => {
@@ -158,31 +176,16 @@ export function ProfileMailTab() {
             void load();
           }}
         />
+      ) : null}
+      {setupKind?.provider === "activecampaign" && (
+        <ActiveCampaignSetupModal
+          onClose={() => setSetupKind(null)}
+          onSaved={() => {
+            setSetupKind(null);
+            void load();
+          }}
+        />
       )}
-    </div>
-  );
-}
-
-function EmptyState({ onAddResend }: { onAddResend: () => void }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center">
-      <div className="mx-auto mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#D4A35C]/10 text-[#D4A35C]">
-        <Send className="h-6 w-6" />
-      </div>
-      <h3 className="text-base font-semibold">No sending connection yet</h3>
-      <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
-        Verify a Resend (recommended) or SendGrid domain. Deliverability
-        + reputation stay with you.
-      </p>
-      <button
-        type="button"
-        onClick={onAddResend}
-        className="mt-5 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-3 py-1.5 transition-opacity hover:opacity-90"
-        style={{ background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)" }}
-      >
-        <Plus className="h-3.5 w-3.5" />
-        Add Resend connection
-      </button>
     </div>
   );
 }
@@ -800,6 +803,143 @@ function FormField({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ActiveCampaign setup modal
+//
+// AC connects via API URL + API key (no OAuth). The /connect route
+// validates by hitting /users/me on the agent's account, picks a list
+// (auto-defaults to the first), and persists the connection scoped
+// to the Hyperlocal app. CMA cadence-mode for campaign ESPs is
+// deferred (Wave 4.5).
+// ---------------------------------------------------------------------------
+
+function ActiveCampaignSetupModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [apiUrl, setApiUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!apiUrl.trim() || !apiKey.trim()) {
+      setError("API URL and API key are both required.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(
+        "/api/apps/hyperlocal/email-connections/activecampaign/connect",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_url: apiUrl.trim(),
+            api_key: apiKey.trim(),
+            display_name: displayName.trim() || null,
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error ?? `Request failed (${res.status})`);
+        return;
+      }
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-2xl"
+      >
+        <h2 className="text-base font-semibold">Connect ActiveCampaign</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Find your API URL + API key under Settings → Developer in your
+          ActiveCampaign account. Connects for Hyperlocal today; CMA
+          campaign-mode support is on the roadmap.
+        </p>
+
+        <div className="mt-5 space-y-4">
+          <FormField label="API URL">
+            <input
+              type="url"
+              value={apiUrl}
+              onChange={(e) => setApiUrl(e.target.value)}
+              placeholder="https://your-account.api-us1.com"
+              className="block w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+          </FormField>
+          <FormField label="API key">
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Paste your AC API key"
+              className="block w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+          </FormField>
+          <FormField label="Display name (optional)">
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Jane Doe Realty"
+              className="block w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+            />
+          </FormField>
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-md border border-rose-500/40 bg-rose-500/5 px-3 py-2 text-xs text-rose-300 flex items-start gap-2">
+            <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-4 py-1.5 transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{
+              background:
+                "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
+            }}
+          >
+            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Connect
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
