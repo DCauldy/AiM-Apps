@@ -157,8 +157,19 @@ export function ProfileEditor({ initialProfile }: Props) {
 
   const showSave = activeTab === "bio" || activeTab === "market" || activeTab === "brand";
 
+  // Form wrapping is conditional: Bio/Market/Brand share form state +
+  // need the Save button, so they go inside <form>. CRM + Mail tabs
+  // have their own modal forms (Connect CRM, Resend setup, etc.) —
+  // wrapping them in <form> would nest forms which HTML forbids and
+  // React blocks at submit time. Hence: wrap only when the active
+  // tab actually needs the outer form.
+  const Wrapper = showSave ? "form" : "div";
+  const wrapperProps = showSave
+    ? { onSubmit, className: "max-w-3xl mx-auto p-6 space-y-8" }
+    : { className: "max-w-3xl mx-auto p-6 space-y-8" };
+
   return (
-    <form onSubmit={onSubmit} className="max-w-3xl mx-auto p-6 space-y-8">
+    <Wrapper {...wrapperProps}>
       <div className="space-y-1">
         <h1 className="text-2xl font-bold">
           {isEdit ? `Edit ${initialProfile?.display_name}` : "New Profile"}
@@ -509,7 +520,7 @@ export function ProfileEditor({ initialProfile }: Props) {
           </Button>
         </div>
       )}
-    </form>
+    </Wrapper>
   );
 }
 
