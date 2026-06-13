@@ -1,90 +1,107 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  Mail,
+  Mail as MailIcon,
+  Loader2,
   Plus,
   Trash2,
   Star,
-  AlertCircle,
   CheckCircle2,
   Clock,
   XCircle,
-  Loader2,
-  Copy,
+  PauseCircle,
+  PlayCircle,
+  AlertCircle,
+  PlugZap,
   Send,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
-import type { CmaEmailProvider } from "@/types/cma";
-import type { AppEmailConnection } from "@/types/platform-connections";
+import { EMAIL_PROVIDER_LABELS } from "@/types/hyperlocal";
+import type {
+  AppSlug,
+  PlatformEmailConnectionPublic,
+} from "@/types/platform-connections";
 
-type EspConn = AppEmailConnection<"listing_studio">;
+// ---------------------------------------------------------------------------
+// Wire formats
+// ---------------------------------------------------------------------------
 
-interface DnsRecord {
-  type?: string;
-  name?: string;
-  value?: string;
-  priority?: number;
-  ttl?: string | number;
+interface AppStateSummary {
+  app: AppSlug;
+  state_id: string;
+  is_default: boolean;
+  paused: boolean;
+  last_send_at: string | null;
+  last_error: string | null;
 }
 
-const PROVIDER_LABELS: Record<CmaEmailProvider, string> = {
-  resend: "Resend",
-  sendgrid: "SendGrid",
-  mailchimp: "Mailchimp",
-  activecampaign: "ActiveCampaign",
-  constantcontact: "Constant Contact",
-  klaviyo: "Klaviyo",
+interface EmailConnEntry {
+  connection: PlatformEmailConnectionPublic;
+  used_by: AppStateSummary[];
+}
+
+const APP_LABELS: Record<AppSlug, string> = {
+  hyperlocal: "Hyperlocal",
+  listing_studio: "CMA",
 };
 
-export function EspTab({
-  initialConnections,
-}: {
-  initialConnections: EspConn[];
-}) {
-  const { addToast } = useToast();
-  const [connections, setConnections] = useState(initialConnections);
-  const [setupKind, setSetupKind] = useState<"resend" | "sendgrid" | null>(null);
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
-  const refreshList = async () => {
+export function ProfileMailTab() {
+  const { addToast } = useToast();
+  const [conns, setConns] = useState<EmailConnEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [setupKind, setSetupKind] =
+    useState<{ app: AppSlug; provider: "resend" | "sendgrid" } | null>(null);
+
+  const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/apps/listing-studio/email-connections", {
+      const res = await fetch("/api/profile/integrations/email-connections", {
         cache: "no-store",
       });
       const data = await res.json();
-      if (res.ok) setConnections(data.connections as EspConn[]);
-    } catch {
-      // No-op — card actions update local state.
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      setConns(data.connections as EmailConnEntry[]);
+    } catch (e) {
+      addToast({
+        title: "Couldn't load email connections",
+        description: e instanceof Error ? e.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [addToast]);
 
-  const onSetupComplete = (conn: EspConn) => {
-    setSetupKind(null);
-    setConnections((prev) => [conn, ...prev]);
-    addToast({ title: "Email connection added" });
-  };
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-sm font-semibold">Email connections</h2>
-          <p className="text-xs text-muted-foreground mt-0.5 max-w-2xl">
-            CMAs send through your verified Resend or SendGrid domain.
-            One connection per profile is marked default; the cadence
-            scheduler uses that one for every send.
+          <h2 className="text-base font-semibold">Email connections</h2>
+          <p className="text-sm text-muted-foreground mt-1 max-w-xl">
+            BYO verified domain. Both apps (CMA + Hyperlocal) can send
+            from the same Resend or SendGrid setup; each one keeps its
+            own default + webhook subscription.
           </p>
         </div>
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setSetupKind("resend")}
+            onClick={() =>
+              setSetupKind({ app: "listing_studio", provider: "resend" })
+            }
             className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-3 py-1.5 transition-opacity hover:opacity-90"
             style={{
-              background:
-                "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
+              background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
             }}
           >
             <Plus className="h-3.5 w-3.5" />
@@ -92,7 +109,9 @@ export function EspTab({
           </button>
           <button
             type="button"
-            onClick={() => setSetupKind("sendgrid")}
+            onClick={() =>
+              setSetupKind({ app: "listing_studio", provider: "sendgrid" })
+            }
             className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -101,58 +120,48 @@ export function EspTab({
         </div>
       </div>
 
-      {connections.length === 0 ? (
-        <EmptyState onAddResend={() => setSetupKind("resend")} />
+      {loading ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          <Loader2 className="mx-auto mb-2 h-4 w-4 animate-spin" />
+          Loading…
+        </div>
+      ) : conns.length === 0 ? (
+        <EmptyState
+          onAddResend={() =>
+            setSetupKind({ app: "listing_studio", provider: "resend" })
+          }
+        />
       ) : (
         <div className="space-y-3">
-          {connections.map((c) => (
-            <ConnectionCard
-              key={c.connection.id}
-              connection={c}
-              onAfterAction={refreshList}
+          {conns.map((entry) => (
+            <ConnCard
+              key={entry.connection.id}
+              entry={entry}
               onDeleted={() =>
-                setConnections((prev) =>
-                  prev.filter(
-                    (x) => x.connection.id !== c.connection.id,
-                  ),
+                setConns((p) =>
+                  p.filter((e) => e.connection.id !== entry.connection.id),
                 )
               }
-              onSetDefault={(updated) =>
-                setConnections((prev) =>
-                  prev.map((x) =>
-                    x.connection.id === updated.connection.id
-                      ? updated
-                      : {
-                          ...x,
-                          state: { ...x.state, is_default: false },
-                        },
-                  ),
-                )
-              }
+              onReload={load}
             />
           ))}
         </div>
       )}
 
-      {setupKind === "resend" && (
-        <ResendSetupModal
+      {setupKind && (
+        <SetupModal
+          app={setupKind.app}
+          provider={setupKind.provider}
           onClose={() => setSetupKind(null)}
-          onSaved={onSetupComplete}
-        />
-      )}
-      {setupKind === "sendgrid" && (
-        <SendgridSetupModal
-          onClose={() => setSetupKind(null)}
-          onSaved={onSetupComplete}
+          onSaved={() => {
+            setSetupKind(null);
+            void load();
+          }}
         />
       )}
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Empty state
-// ---------------------------------------------------------------------------
 
 function EmptyState({ onAddResend }: { onAddResend: () => void }) {
   return (
@@ -162,17 +171,14 @@ function EmptyState({ onAddResend }: { onAddResend: () => void }) {
       </div>
       <h3 className="text-base font-semibold">No sending connection yet</h3>
       <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
-        Connect Resend (recommended) or SendGrid to send your CMA
-        emails from your own verified domain. BYO API key —
-        deliverability + reputation stay with you.
+        Verify a Resend (recommended) or SendGrid domain. Deliverability
+        + reputation stay with you.
       </p>
       <button
         type="button"
         onClick={onAddResend}
         className="mt-5 inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-3 py-1.5 transition-opacity hover:opacity-90"
-        style={{
-          background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
-        }}
+        style={{ background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)" }}
       >
         <Plus className="h-3.5 w-3.5" />
         Add Resend connection
@@ -185,67 +191,37 @@ function EmptyState({ onAddResend }: { onAddResend: () => void }) {
 // Connection card
 // ---------------------------------------------------------------------------
 
-function ConnectionCard({
-  connection,
-  onAfterAction,
+function ConnCard({
+  entry,
   onDeleted,
-  onSetDefault,
+  onReload,
 }: {
-  connection: EspConn;
-  onAfterAction: () => Promise<void> | void;
+  entry: EmailConnEntry;
   onDeleted: () => void;
-  onSetDefault: (updated: EspConn) => void;
+  onReload: () => Promise<void> | void;
 }) {
   const { addToast } = useToast();
-  const [busy, setBusy] = useState<"default" | "delete" | "check" | null>(null);
-
-  const connectionId = connection.connection.id;
-  const provider = connection.connection.provider;
-  const emailAddress = connection.connection.email_address;
-  const isDefault = connection.state.is_default;
-
-  const handleSetDefault = async () => {
-    setBusy("default");
-    try {
-      const res = await fetch(
-        `/api/apps/listing-studio/email-connections/${connectionId}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_default: true }),
-        },
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        addToast({
-          title: "Update failed",
-          description: data?.error,
-          variant: "destructive",
-        });
-        return;
-      }
-      onSetDefault(data.connection as EspConn);
-      addToast({ title: "Default updated" });
-    } finally {
-      setBusy(null);
-    }
-  };
+  const [busy, setBusy] = useState<string | null>(null);
+  const c = entry.connection;
 
   const handleDelete = async () => {
+    const usageList = entry.used_by.map((u) => APP_LABELS[u.app]).join(", ");
     if (
       !confirm(
-        `Disconnect ${emailAddress}? Deliveries already sent stay; future cadence sends will need another connection set as default.`,
+        entry.used_by.length > 0
+          ? `Disconnect ${EMAIL_PROVIDER_LABELS[c.provider]} from every app (${usageList})? Existing deliveries stay; future sends stop.`
+          : `Delete this ${EMAIL_PROVIDER_LABELS[c.provider]} connection?`,
       )
     )
       return;
     setBusy("delete");
     try {
       const res = await fetch(
-        `/api/apps/listing-studio/email-connections/${connectionId}`,
+        `/api/profile/integrations/email-connections/${c.id}`,
         { method: "DELETE" },
       );
-      const data = await res.json();
       if (!res.ok) {
+        const data = await res.json();
         addToast({
           title: "Delete failed",
           description: data?.error,
@@ -260,12 +236,14 @@ function ConnectionCard({
     }
   };
 
-  // Resend-only: re-poll domain status without re-running verify.
   const handleCheckDomain = async () => {
-    setBusy("check");
+    setBusy("recheck");
     try {
+      // Resend re-check is hosted under the CMA route since the
+      // logic is the same (talks to Resend) — it doesn't care which
+      // app called it. Could be hoisted to a profile route later.
       const res = await fetch(
-        `/api/apps/listing-studio/email-connections/resend/check-domain?connection_id=${connectionId}`,
+        `/api/apps/listing-studio/email-connections/resend/check-domain?connection_id=${c.id}`,
       );
       const data = await res.json();
       if (!res.ok) {
@@ -277,101 +255,223 @@ function ConnectionCard({
         return;
       }
       addToast({
-        title: data.status === "verified" ? "Domain verified" : "Still pending",
+        title:
+          data.status === "verified" ? "Domain verified" : "Still pending",
       });
-      await onAfterAction();
+      await onReload();
     } finally {
       setBusy(null);
     }
   };
 
-  const showWebhookWarning =
-    provider === "resend" && connection.state.webhook_secret_set === false;
-
   return (
-    <div className="rounded-lg border border-border bg-card p-5">
-      <div className="flex items-start gap-4 flex-wrap">
+    <div className="rounded-lg border border-border bg-card">
+      <div className="p-5 flex items-start gap-4 flex-wrap">
         <div className="inline-flex h-10 w-10 items-center justify-center rounded-md bg-[#D4A35C]/10 text-[#D4A35C] flex-shrink-0">
-          <Mail className="h-5 w-5" />
+          <MailIcon className="h-5 w-5" />
         </div>
         <div className="flex-1 min-w-[200px]">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold">
-              {PROVIDER_LABELS[provider]}
+              {EMAIL_PROVIDER_LABELS[c.provider]}
             </h3>
             <span className="text-xs text-muted-foreground">
-              {emailAddress}
+              {c.email_address}
             </span>
-            {isDefault && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-[#D4A35C]/40 text-[#D4A35C] bg-[#D4A35C]/5">
-                <Star className="h-2.5 w-2.5 fill-current" />
-                Default
-              </span>
-            )}
-            <DkimBadge status={connection.connection.resend_dkim_status} />
+            <DkimBadge status={c.resend_dkim_status} />
           </div>
-          <div className="mt-1 text-xs text-muted-foreground space-y-0.5">
-            {connection.connection.resend_domain && (
-              <div>Domain: {connection.connection.resend_domain}</div>
-            )}
-            <div>
-              Last send:{" "}
-              {connection.state.last_send_at
-                ? new Date(connection.state.last_send_at).toLocaleString()
-                : "never"}
+          {c.resend_domain && (
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              Domain: {c.resend_domain}
             </div>
-            {connection.state.last_error && (
-              <div className="text-rose-400">
-                Last error: {connection.state.last_error}
-              </div>
-            )}
-            {showWebhookWarning && (
-              <div className="text-amber-400">
-                Webhook not configured — engagement events won&apos;t track
-                until you re-run setup.
-              </div>
-            )}
-          </div>
+          )}
+          {entry.used_by.length === 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Not wired into any app yet — toggle default in the per-app
+              section below once one appears.
+            </p>
+          )}
         </div>
-        <div className="flex flex-col items-end gap-1.5">
-          <div className="flex gap-1">
-            {provider === "resend" && (
-              <CardBtn
-                onClick={handleCheckDomain}
-                disabled={busy !== null}
-                busy={busy === "check"}
-                Icon={CheckCircle2}
-              >
-                Re-check
-              </CardBtn>
-            )}
-            {!isDefault && (
-              <CardBtn
-                onClick={handleSetDefault}
-                disabled={busy !== null || !connection.connection.is_active}
-                busy={busy === "default"}
-                Icon={Star}
-              >
-                Set default
-              </CardBtn>
-            )}
-            <CardBtn
-              onClick={handleDelete}
+        <div className="flex gap-1">
+          {c.provider === "resend" && (
+            <button
+              type="button"
+              onClick={handleCheckDomain}
               disabled={busy !== null}
-              busy={busy === "delete"}
-              Icon={Trash2}
-              danger
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-border bg-background hover:bg-accent disabled:opacity-50"
             >
-              Delete
-            </CardBtn>
-          </div>
-          <a
-            href={`/apps/profile/integrations?conn=${connectionId}`}
-            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              {busy === "recheck" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3 w-3" />
+              )}
+              Re-check DKIM
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-destructive/40 text-destructive hover:bg-destructive/10 disabled:opacity-50"
           >
-            Edit auth in profile →
-          </a>
+            {busy === "delete" ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+            Disconnect
+          </button>
         </div>
+      </div>
+
+      {entry.used_by.length > 0 && (
+        <div className="border-t border-border">
+          {entry.used_by.map((u) => (
+            <PerAppRow
+              key={u.state_id}
+              connectionId={c.id}
+              state={u}
+              onReload={onReload}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-app row (default toggle + pause)
+// ---------------------------------------------------------------------------
+
+function PerAppRow({
+  connectionId,
+  state,
+  onReload,
+}: {
+  connectionId: string;
+  state: AppStateSummary;
+  onReload: () => Promise<void> | void;
+}) {
+  const { addToast } = useToast();
+  const [busy, setBusy] = useState<"default" | "pause" | null>(null);
+
+  const patchState = async (
+    body: { is_default?: boolean; paused?: boolean; paused_reason?: string | null; paused_at?: string | null },
+    busyKey: "default" | "pause",
+  ) => {
+    setBusy(busyKey);
+    try {
+      const res = await fetch(
+        `/api/profile/integrations/email-connections/${connectionId}/state/${state.app}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Update failed");
+      await onReload();
+    } catch (e) {
+      addToast({
+        title: "Update failed",
+        description: e instanceof Error ? e.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="px-5 py-3 border-b border-border last:border-b-0 flex items-center justify-between gap-3 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium text-foreground">
+          {APP_LABELS[state.app]}
+        </span>
+        {state.is_default && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-[#D4A35C]/40 text-[#D4A35C] bg-[#D4A35C]/5">
+            <Star className="h-2.5 w-2.5 fill-current" />
+            Default
+          </span>
+        )}
+        {state.paused && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-500/40 text-amber-400 bg-amber-500/5">
+            Paused
+          </span>
+        )}
+        {state.last_send_at && (
+          <span className="text-[11px] text-muted-foreground">
+            · last send {new Date(state.last_send_at).toLocaleDateString()}
+          </span>
+        )}
+        {state.last_error && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-rose-400">
+            <AlertCircle className="h-3 w-3" />
+            {state.last_error.slice(0, 60)}
+          </span>
+        )}
+      </div>
+      <div className="flex gap-1">
+        {!state.is_default && (
+          <button
+            type="button"
+            onClick={() => patchState({ is_default: true }, "default")}
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-border bg-background hover:bg-accent disabled:opacity-50"
+          >
+            {busy === "default" ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Star className="h-3 w-3" />
+            )}
+            Set default
+          </button>
+        )}
+        {state.paused ? (
+          <button
+            type="button"
+            onClick={() =>
+              patchState(
+                { paused: false, paused_reason: null, paused_at: null },
+                "pause",
+              )
+            }
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-border bg-background hover:bg-accent disabled:opacity-50"
+          >
+            {busy === "pause" ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <PlayCircle className="h-3 w-3" />
+            )}
+            Resume
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              patchState(
+                {
+                  paused: true,
+                  paused_reason: "manually paused",
+                  paused_at: new Date().toISOString(),
+                },
+                "pause",
+              )
+            }
+            disabled={busy !== null}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border border-amber-500/40 bg-amber-500/5 text-amber-400 hover:bg-amber-500/10 disabled:opacity-50"
+          >
+            {busy === "pause" ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <PauseCircle className="h-3 w-3" />
+            )}
+            Pause
+          </button>
+        )}
       </div>
     </div>
   );
@@ -411,106 +511,33 @@ function DkimBadge({
   );
 }
 
-function CardBtn({
-  onClick,
-  disabled,
-  busy,
-  Icon,
-  children,
-  danger,
-}: {
-  onClick: () => void;
-  disabled: boolean;
-  busy: boolean;
-  Icon: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-  danger?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-50",
-        danger
-          ? "border-destructive/40 text-destructive hover:bg-destructive/10"
-          : "border-border bg-background hover:bg-accent",
-      )}
-    >
-      {busy ? (
-        <Loader2 className="h-3 w-3 animate-spin" />
-      ) : (
-        <Icon className="h-3 w-3" />
-      )}
-      {children}
-    </button>
-  );
-}
-
 // ---------------------------------------------------------------------------
-// Resend setup modal
+// Setup modal (Resend / SendGrid verify-domain)
 // ---------------------------------------------------------------------------
 
-function ResendSetupModal({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: (conn: EspConn) => void;
-}) {
-  return (
-    <ProviderSetupModal
-      title="Connect Resend"
-      apiKeyHelper="Get your API key from resend.com → API Keys"
-      apiKeyPrefix="re_"
-      endpoint="/api/apps/listing-studio/email-connections/resend/verify-domain"
-      onClose={onClose}
-      onSaved={onSaved}
-    />
-  );
-}
-
-function SendgridSetupModal({
-  onClose,
-  onSaved,
-}: {
-  onClose: () => void;
-  onSaved: (conn: EspConn) => void;
-}) {
-  return (
-    <ProviderSetupModal
-      title="Connect SendGrid"
-      apiKeyHelper="Get your API key from app.sendgrid.com → Settings → API Keys (Full Access)"
-      apiKeyPrefix="SG."
-      endpoint="/api/apps/listing-studio/email-connections/sendgrid/verify-domain"
-      onClose={onClose}
-      onSaved={onSaved}
-    />
-  );
+interface DnsRecord {
+  type?: string;
+  name?: string;
+  value?: string;
+  priority?: number;
 }
 
 interface VerifyDomainResponse {
-  connection: EspConn;
   dns_records?: DnsRecord[];
   status?: string;
   webhook_error?: string | null;
 }
 
-function ProviderSetupModal({
-  title,
-  apiKeyHelper,
-  apiKeyPrefix,
-  endpoint,
+function SetupModal({
+  app,
+  provider,
   onClose,
   onSaved,
 }: {
-  title: string;
-  apiKeyHelper: string;
-  apiKeyPrefix: string;
-  endpoint: string;
+  app: AppSlug;
+  provider: "resend" | "sendgrid";
   onClose: () => void;
-  onSaved: (conn: EspConn) => void;
+  onSaved: () => void;
 }) {
   const [apiKey, setApiKey] = useState("");
   const [domain, setDomain] = useState("");
@@ -519,6 +546,12 @@ function ProviderSetupModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verified, setVerified] = useState<VerifyDomainResponse | null>(null);
+
+  const apiKeyPrefix = provider === "resend" ? "re_" : "SG.";
+  const verifyEndpoint =
+    app === "listing_studio"
+      ? `/api/apps/listing-studio/email-connections/${provider}/verify-domain`
+      : `/api/apps/hyperlocal/email-connections/${provider}/verify-domain`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -533,7 +566,7 @@ function ProviderSetupModal({
     }
     setSubmitting(true);
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(verifyEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -558,9 +591,6 @@ function ProviderSetupModal({
     }
   };
 
-  // After verification: show DNS records the user must add. The card
-  // they'll see in the list reflects DKIM status; they can come back
-  // and click "Re-check" to refresh once DNS propagates.
   if (verified) {
     return (
       <div
@@ -574,8 +604,8 @@ function ProviderSetupModal({
           <h2 className="text-base font-semibold">Almost there</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Add these DNS records to your domain&apos;s registrar.
-            Verification can take 1-10 minutes once they&apos;re live —
-            we&apos;ll re-check every time you open this connection card.
+            Verification can take 1–10 minutes once they&apos;re live.
+            Re-check from the connection card after DNS propagates.
           </p>
 
           {verified.dns_records && verified.dns_records.length > 0 ? (
@@ -587,7 +617,7 @@ function ProviderSetupModal({
           ) : (
             <div className="mt-5 rounded-md border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-300">
               <CheckCircle2 className="inline h-3.5 w-3.5 mr-1" />
-              Domain is already verified on this account — nothing to add.
+              Domain already verified — nothing to add.
             </div>
           )}
 
@@ -596,9 +626,7 @@ function ProviderSetupModal({
               <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
               <span>
                 Webhook setup skipped: {verified.webhook_error}. Engagement
-                events won&apos;t track until you re-provision. Set
-                NEXT_PUBLIC_APP_URL or re-run setup from a production
-                URL.
+                events won&apos;t track until you re-provision.
               </span>
             </div>
           )}
@@ -606,7 +634,7 @@ function ProviderSetupModal({
           <div className="mt-6 flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={() => onSaved(verified.connection)}
+              onClick={() => onSaved()}
               className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-4 py-1.5 transition-opacity hover:opacity-90"
               style={{
                 background:
@@ -631,8 +659,15 @@ function ProviderSetupModal({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-2xl"
       >
-        <h2 className="text-base font-semibold">{title}</h2>
-        <p className="mt-1 text-xs text-muted-foreground">{apiKeyHelper}</p>
+        <h2 className="text-base font-semibold">
+          Connect {provider === "resend" ? "Resend" : "SendGrid"} for{" "}
+          {APP_LABELS[app]}
+        </h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {provider === "resend"
+            ? "Get your API key from resend.com → API Keys"
+            : "Get your API key from app.sendgrid.com → Settings → API Keys (Full Access)"}
+        </p>
 
         <div className="mt-5 space-y-4">
           <FormField label="API key">
@@ -708,12 +743,11 @@ function ProviderSetupModal({
 
 function DnsRecordRow({ record }: { record: DnsRecord }) {
   const { addToast } = useToast();
-  const copy = (value: string) => {
+  const copy = (value: string) =>
     navigator.clipboard.writeText(value).then(
       () => addToast({ title: "Copied" }),
       () => addToast({ title: "Copy failed", variant: "destructive" }),
     );
-  };
   return (
     <div className="rounded-md border border-border bg-background/50 p-3 font-mono text-xs">
       <div className="grid grid-cols-[60px_1fr_auto] gap-2 items-start">
@@ -736,7 +770,7 @@ function DnsRecordRow({ record }: { record: DnsRecord }) {
             </div>
           )}
         </div>
-        <div className="flex flex-col gap-1">
+        <div>
           {record.value && (
             <button
               type="button"
@@ -744,7 +778,7 @@ function DnsRecordRow({ record }: { record: DnsRecord }) {
               className="inline-flex items-center gap-1 rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] font-medium font-sans hover:bg-accent"
               title="Copy value"
             >
-              <Copy className="h-2.5 w-2.5" />
+              Copy
             </button>
           )}
         </div>

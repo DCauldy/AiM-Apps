@@ -2,10 +2,6 @@ import { redirect } from "next/navigation";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getCachedUser } from "@/lib/auth/get-cached-user";
 import { getActiveProfile } from "@/lib/profiles/server";
-import {
-  listAppCrmConnections,
-  listAppEmailConnections,
-} from "@/lib/platform/connections";
 import type { CmaAgentSettings } from "@/types/cma";
 import { SettingsClient } from "./settings-client";
 
@@ -21,7 +17,6 @@ export default async function CmaSettingsPage() {
   const service = createServiceRoleClient();
   const profile = await getActiveProfile(user.id);
 
-  // Pack lookup — same shape UpgradeTab already reads.
   const { data: userPack } = await service
     .from("ls_user_packs")
     .select("pack_id, status, stripe_subscription_id")
@@ -32,8 +27,6 @@ export default async function CmaSettingsPage() {
   const hasSubscription =
     !!userPack?.stripe_subscription_id && userPack.status !== "canceled";
 
-  // Agent settings — falls back to defaults when row doesn't exist
-  // yet. PATCHing the form upserts; no need to write here.
   const { data: agentSettingsRow } = await service
     .from("cma_agent_settings")
     .select("*")
@@ -49,29 +42,15 @@ export default async function CmaSettingsPage() {
       updated_at: new Date().toISOString(),
     };
 
-  // Connection lists come back as the joined AppCrmConnection /
-  // AppEmailConnection shape (Wave 9+10). Tabs consume directly now —
-  // the flatten band-aid that bridged Wave 10 → Wave 11 is gone.
-  const crmConnections = await listAppCrmConnections(
-    service,
-    user.id,
-    profile?.id ?? null,
-    "listing_studio",
-  );
-  const espConnections = await listAppEmailConnections(
-    service,
-    user.id,
-    profile?.id ?? null,
-    "listing_studio",
-  );
-
+  // Wave 12 dropped the CRM + ESP tabs — connection management moved
+  // to /apps/profile/[id]?tab={crm|mail}. CMA settings is now just
+  // cadence + upgrade + a callout linking to the profile.
   return (
     <SettingsClient
       activePackId={activePackId}
       hasSubscription={hasSubscription}
       agentSettings={agentSettings}
-      crmConnections={crmConnections}
-      espConnections={espConnections}
+      profileId={profile?.id ?? null}
     />
   );
 }

@@ -559,22 +559,18 @@ function OnboardingState() {
         in under 10 minutes.
       </p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
+        {/* Wave 12: CRM + ESP connection management moved to the
+            profile editor. CTAs land on the profile list — agent
+            clicks into their profile and picks the CRM or Mail tab. */}
         <Link
-          href="/apps/cma/settings?tab=crm"
+          href="/apps/profile"
           className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-3 py-1.5 transition-opacity hover:opacity-90"
           style={{
             background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
           }}
         >
           <PlugZap className="h-3.5 w-3.5" />
-          Connect CRM
-        </Link>
-        <Link
-          href="/apps/cma/settings?tab=esp"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-        >
-          <Mail className="h-3.5 w-3.5" />
-          Connect ESP
+          Connect CRM + email
         </Link>
         <Link
           href="/apps/cma/settings?tab=cadence"
