@@ -157,6 +157,22 @@ export async function POST(
         address: clientAddress,
         subject: facts,
       });
+      // Persist the zpid + image_url the pipeline resolved so the
+      // landing page can render the actual property photo on this
+      // and every subsequent render instead of falling back to the
+      // Mapbox satellite map.
+      const mergedFacts: PropertyFacts = {
+        ...facts,
+        ...result.hydratedSubject,
+      };
+      await service
+        .from("cma_clients")
+        .update({
+          property_facts: mergedFacts,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", client.id);
+      client = { ...client, property_facts: mergedFacts };
       const { data: freshRun } = await service
         .from("ls_cma_runs")
         .select("*")

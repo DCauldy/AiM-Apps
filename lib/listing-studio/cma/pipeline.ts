@@ -61,6 +61,11 @@ export interface RunCmaResult {
   recommendedPriceCents: number;
   estimatedValueCents: number;
   marketableValueCents: number;
+  /** Subject after the pipeline backfilled zpid + image_url. Callers
+   *  that own a cma_clients row should merge this back onto
+   *  property_facts so the landing page renders the MLS / Street View
+   *  photo instead of falling through to the Mapbox map. */
+  hydratedSubject: PropertyFacts;
 }
 
 export async function runCmaPipeline(input: RunCmaInput): Promise<RunCmaResult> {
@@ -207,6 +212,7 @@ export async function runCmaPipeline(input: RunCmaInput): Promise<RunCmaResult> 
       recommendedPriceCents: recommendation.recommended_price_cents,
       estimatedValueCents: recommendation.appraised_value_cents,
       marketableValueCents: recommendation.marketable_value_cents,
+      hydratedSubject: subject,
     };
   } catch (err) {
     // Best-effort placeholder row so the caller can surface the failure.

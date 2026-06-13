@@ -170,6 +170,27 @@ export const cmaDeliver = inngest.createFunction(
       }),
     );
 
+    // 5b. Persist the zpid + image_url the pipeline backfilled onto
+    //     the subject so the next render (landing page open, future
+    //     preview, future delivery) doesn't re-fetch — and so the
+    //     hero image actually shows up on this delivery's landing page
+    //     instead of falling through to the Mapbox map.
+    await step.run("persist-hydrated-subject", async () => {
+      const merged = {
+        ...(client.property_facts ?? {}),
+        ...cmaResult.hydratedSubject,
+      };
+      await supabase
+        .from("cma_clients")
+        .update({
+          property_facts: merged,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", client.id);
+      // Mutate locally so step 7's renderer sees the image_url.
+      (client as { property_facts: typeof merged }).property_facts = merged;
+    });
+
     // 6. Mint the landing-page token + unsubscribe token; persist the
     //    delivery row in `pending` state so the row exists before the
     //    ESP send attempts (engagement webhooks can correlate by token).
