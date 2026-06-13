@@ -50,20 +50,27 @@ export function LandingPage({
   agent,
   prior,
   unsubscribeUrl,
+  previewMode = false,
 }: {
-  delivery: CmaClientDelivery;
+  /** Live delivery row when rendered via /cma/[token]; omitted in
+   *  preview mode where there's no real delivery yet. */
+  delivery?: CmaClientDelivery | null;
   client: CmaClient;
   run: CmaRunData | null;
   agent: PlatformProfile | null;
   prior: PriorDelivery | null;
-  unsubscribeUrl: string;
+  /** Compliance footer link; "#" in preview mode (link disabled). */
+  unsubscribeUrl?: string;
+  /** When true, render the in-app preview banner + suppress engagement
+   *  links so the agent can review without triggering anything. */
+  previewMode?: boolean;
 }) {
   const recommended =
-    delivery.recommended_price_cents ?? run?.recommended_price_cents ?? null;
+    delivery?.recommended_price_cents ?? run?.recommended_price_cents ?? null;
   const estimated =
-    delivery.estimated_value_cents ?? run?.appraised_value_cents ?? null;
+    delivery?.estimated_value_cents ?? run?.appraised_value_cents ?? null;
   const marketable =
-    delivery.marketable_value_cents ?? run?.marketable_value_cents ?? null;
+    delivery?.marketable_value_cents ?? run?.marketable_value_cents ?? null;
 
   const comps = (run?.comps as AdjustedComp[] | null) ?? [];
 
@@ -93,6 +100,12 @@ export function LandingPage({
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-100">
+      {previewMode && (
+        <div className="border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-200">
+          <strong>Preview</strong> — this is exactly what your client will see.
+          Links are inactive.
+        </div>
+      )}
       {/* Header */}
       <header className="border-b border-slate-800 bg-slate-950">
         <div className="container max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-4 flex-wrap">
@@ -122,7 +135,9 @@ export function LandingPage({
           <div className="text-xs text-slate-400 text-right">
             <div>Report date</div>
             <div className="text-slate-200 font-medium">
-              {formatDate(delivery.delivered_at ?? run?.generated_at ?? null)}
+              {formatDate(
+                delivery?.delivered_at ?? run?.generated_at ?? null,
+              )}
             </div>
           </div>
         </div>
@@ -171,7 +186,10 @@ export function LandingPage({
         <CtaCard agent={agent} accent={accent} primary={primary} />
 
         {/* Compliance footer */}
-        <ComplianceFooter agent={agent} unsubscribeUrl={unsubscribeUrl} />
+        <ComplianceFooter
+          agent={agent}
+          unsubscribeUrl={unsubscribeUrl ?? "#"}
+        />
       </main>
     </div>
   );

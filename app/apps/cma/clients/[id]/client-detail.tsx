@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import { useConfirm } from "@/components/ui/confirm";
+import { CmaPreviewPanel } from "./CmaPreviewPanel";
 import type { CmaClient, CmaClientDelivery } from "@/types/cma";
 
 const DEFAULT_CADENCE_DAYS = 90;
@@ -202,6 +203,10 @@ export function ClientDetail({
             recent delivery so the agent acts (fix the address, drop
             the client) before the next cadence cycle. */}
         <EngagementBanner deliveries={deliveries} />
+
+        {/* CMA preview — agents can see exactly what the past client
+            will receive before the cadence fires. */}
+        <CmaPreviewPanel client={client} />
 
         {/* Cadence + meta panel */}
         <CadencePanel
