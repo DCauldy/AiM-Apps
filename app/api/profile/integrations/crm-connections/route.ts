@@ -1,8 +1,12 @@
 import { NextRequest } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { encrypt } from "@/lib/hyperlocal/encryption";
 import { getActiveProfile } from "@/lib/profiles/server";
+import type { CrmPlatform } from "@/types/hyperlocal";
 import type {
   AppSlug,
+  CmaCrmFilterConfig,
+  HlCrmFilterConfig,
   PlatformCrmConnectionPublic,
 } from "@/types/platform-connections";
 
@@ -88,20 +92,175 @@ export async function GET() {
   return Response.json({ connections: response });
 }
 
+const ALLOWED_PLATFORMS: ReadonlySet<CrmPlatform> = new Set([
+  "followupboss",
+  "lofty",
+  "sierra",
+  "boldtrail",
+  "cinc",
+  "cloze",
+  "gohighlevel",
+  "csv",
+]);
+
+const ALLOWED_APPS: ReadonlySet<AppSlug> = new Set([
+  "hyperlocal",
+  "listing_studio",
+]);
+
+interface PerAppFilterInput {
+  app: AppSlug;
+  filter_config: HlCrmFilterConfig | CmaCrmFilterConfig;
+}
+
 /**
  * POST /api/profile/integrations/crm-connections
  *
- * Creation isn't supported here — the connect flow needs app context
- * (which filter the user wants configured + which app picks up the
- * webhook). To add a new connection, the agent goes to the relevant
- * app's settings.
+ * Creates ONE platform_crm_connection + one app_crm_connection_state
+ * per selected app in a single round trip. The whole point of the
+ * shared connection layer: one auth setup, multiple apps using it.
+ *
+ * Body:
+ *   {
+ *     platform: CrmPlatform,
+ *     label?: string,
+ *     api_key?: string,
+ *     base_url?: string,
+ *     apps: [
+ *       { app: "listing_studio", filter_config: { past_client_source, past_client_value } },
+ *       { app: "hyperlocal",    filter_config: { search_area_source, ... } },
+ *     ]
+ *   }
+ *
+ * At least one app is required — a connection with no app_state rows
+ * is dead weight. Each app_state insert is independent; partial
+ * failure rolls back the platform row.
  */
-export async function POST(_req: NextRequest) {
-  return Response.json(
-    {
-      error:
-        "Profile-level creation isn't supported — connect a CRM from the app that will use it (Hyperlocal or CMA settings).",
-    },
-    { status: 501 },
-  );
+export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const profile = await getActiveProfile(user.id);
+  if (!profile) {
+    return Response.json(
+      { error: "An active profile is required to add a CRM connection." },
+      { status: 400 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const {
+    platform,
+    label,
+    api_key,
+    base_url,
+    apps,
+  } = (body ?? {}) as {
+    platform?: string;
+    label?: string;
+    api_key?: string;
+    base_url?: string;
+    apps?: PerAppFilterInput[];
+  };
+
+  if (!platform || !ALLOWED_PLATFORMS.has(platform as CrmPlatform)) {
+    return Response.json(
+      { error: `Invalid platform: ${platform}` },
+      { status: 400 },
+    );
+  }
+  if (!Array.isArray(apps) || apps.length === 0) {
+    return Response.json(
+      { error: "apps[] is required and must contain at least one entry" },
+      { status: 400 },
+    );
+  }
+  for (const a of apps) {
+    if (!ALLOWED_APPS.has(a.app)) {
+      return Response.json(
+        { error: `Invalid app: ${a.app}` },
+        { status: 400 },
+      );
+    }
+    if (!a.filter_config || typeof a.filter_config !== "object") {
+      return Response.json(
+        { error: `filter_config required for ${a.app}` },
+        { status: 400 },
+      );
+    }
+  }
+
+  const service = createServiceRoleClient();
+
+  // 1. Create the platform row.
+  const platformInsert: Record<string, unknown> = {
+    user_id: user.id,
+    profile_id: profile.id,
+    platform,
+    label: label?.trim() || null,
+    base_url: base_url?.trim() || null,
+  };
+  if (api_key && api_key.trim().length > 0) {
+    platformInsert.api_key_encrypted = encrypt(api_key.trim());
+  }
+
+  const { data: conn, error: connErr } = await service
+    .from("platform_crm_connections")
+    .insert(platformInsert)
+    .select(PLATFORM_CRM_PUBLIC)
+    .single();
+  if (connErr || !conn) {
+    return Response.json(
+      { error: connErr?.message ?? "Failed to create connection" },
+      { status: 500 },
+    );
+  }
+
+  // 2. Create one app_state row per selected app. On any failure,
+  //    roll back the platform row + any already-created states so a
+  //    retry doesn't see half-attached orphans.
+  const createdStateIds: string[] = [];
+  for (const a of apps) {
+    const { data: stateRow, error: stateErr } = await service
+      .from("app_crm_connection_state")
+      .insert({
+        connection_id: (conn as PlatformCrmConnectionPublic).id,
+        app: a.app,
+        filter_config: a.filter_config as object,
+      })
+      .select("id")
+      .single();
+    if (stateErr || !stateRow) {
+      // Roll back
+      if (createdStateIds.length > 0) {
+        await service
+          .from("app_crm_connection_state")
+          .delete()
+          .in("id", createdStateIds);
+      }
+      await service
+        .from("platform_crm_connections")
+        .delete()
+        .eq("id", (conn as PlatformCrmConnectionPublic).id);
+      return Response.json(
+        { error: `Failed to attach ${a.app}: ${stateErr?.message}` },
+        { status: 500 },
+      );
+    }
+    createdStateIds.push((stateRow as { id: string }).id);
+  }
+
+  return Response.json({
+    connection: conn,
+    attached_apps: apps.map((a) => a.app),
+  });
 }

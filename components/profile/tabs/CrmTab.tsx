@@ -71,7 +71,10 @@ export function ProfileCrmTab() {
   const { addToast } = useToast();
   const [conns, setConns] = useState<CrmConnEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [connectKind, setConnectKind] = useState<AppSlug | null>(null);
+  // "__multi__" opens the new multi-app modal. Kept as a string flag
+  // rather than a boolean so we can grow other modal variants later
+  // without changing state shape.
+  const [connectKind, setConnectKind] = useState<"__multi__" | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -107,27 +110,17 @@ export function ProfileCrmTab() {
             below each connection.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setConnectKind("listing_studio")}
-            className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-3 py-1.5 transition-opacity hover:opacity-90"
-            style={{
-              background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
-            }}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Connect for CMA
-          </button>
-          <button
-            type="button"
-            onClick={() => setConnectKind("hyperlocal")}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Connect for Hyperlocal
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setConnectKind("__multi__")}
+          className="inline-flex items-center gap-1.5 rounded-md text-xs font-medium text-white px-3 py-1.5 transition-opacity hover:opacity-90"
+          style={{
+            background: "linear-gradient(135deg, #1E293B 0%, #D4A35C 100%)",
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Connect CRM
+        </button>
       </div>
 
       {loading ? (
@@ -136,7 +129,7 @@ export function ProfileCrmTab() {
           Loading…
         </div>
       ) : conns.length === 0 ? (
-        <EmptyState onAdd={() => setConnectKind("listing_studio")} />
+        <EmptyState onAdd={() => setConnectKind("__multi__")} />
       ) : (
         <div className="space-y-3">
           {conns.map((entry) => (
@@ -156,7 +149,6 @@ export function ProfileCrmTab() {
 
       {connectKind && (
         <ConnectModal
-          app={connectKind}
           onClose={() => setConnectKind(null)}
           onSaved={() => {
             setConnectKind(null);
@@ -661,28 +653,29 @@ function HlFilterEditor({
 // ---------------------------------------------------------------------------
 
 function ConnectModal({
-  app,
   onClose,
   onSaved,
 }: {
-  app: AppSlug;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const platforms = useMemo(
-    () => (app === "hyperlocal" ? HL_PLATFORMS : CMA_PLATFORMS),
-    [app],
-  );
-  const [platform, setPlatform] = useState<CrmPlatform>(platforms[0]);
+  // Multi-app connect — one platform_crm_connection serves any subset
+  // of apps. Each selected app gets its own filter_config section.
+  const [platform, setPlatform] = useState<CrmPlatform>("followupboss");
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
-  // CMA-specific filter defaults
+  // App selection — CMA default on (most common entry point).
+  const [appsSelected, setAppsSelected] = useState<Record<AppSlug, boolean>>({
+    listing_studio: true,
+    hyperlocal: false,
+  });
+  // CMA filter
   const [pastClientSource, setPastClientSource] = useState<
     "stage" | "tag" | "all"
   >("stage");
   const [pastClientValue, setPastClientValue] = useState("Closed");
-  // Hyperlocal filter defaults
+  // Hyperlocal filter
   const [searchAreaSource, setSearchAreaSource] = useState<
     "field" | "tag-pattern" | "none"
   >("none");
@@ -691,6 +684,33 @@ function ConnectModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Which platforms each app supports — narrow the dropdown to the
+  // intersection of all selected apps so the agent can't pick a
+  // platform that won't work for one of them.
+  const availablePlatforms = useMemo<CrmPlatform[]>(() => {
+    const sels = (Object.keys(appsSelected) as AppSlug[]).filter(
+      (k) => appsSelected[k],
+    );
+    if (sels.length === 0) return CMA_PLATFORMS;
+    let result: CrmPlatform[] = sels.includes("hyperlocal")
+      ? HL_PLATFORMS
+      : CMA_PLATFORMS;
+    for (const a of sels) {
+      const allowed = a === "hyperlocal" ? HL_PLATFORMS : CMA_PLATFORMS;
+      result = result.filter((p) => allowed.includes(p));
+    }
+    return result.length > 0 ? result : CMA_PLATFORMS;
+  }, [appsSelected]);
+
+  // Drop the chosen platform back to the first valid one if it falls
+  // out of the intersection (e.g. user added Hyperlocal and the CMA-
+  // only CSV option disappears).
+  useEffect(() => {
+    if (!availablePlatforms.includes(platform)) {
+      setPlatform(availablePlatforms[0] ?? "followupboss");
+    }
+  }, [availablePlatforms, platform]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -698,44 +718,50 @@ function ConnectModal({
       setError("API key is required.");
       return;
     }
+    const selectedApps = (Object.keys(appsSelected) as AppSlug[]).filter(
+      (k) => appsSelected[k],
+    );
+    if (selectedApps.length === 0) {
+      setError("Pick at least one app to wire this connection into.");
+      return;
+    }
     setSubmitting(true);
     try {
-      // Connect via the app-scoped POST. CMA + Hyperlocal accept
-      // slightly different bodies — gate by app.
-      let endpoint: string;
-      let body: Record<string, unknown>;
-      if (app === "listing_studio") {
-        endpoint = "/api/apps/listing-studio/crm-connections";
-        body = {
-          platform,
-          label: label.trim() || null,
-          api_key: apiKey.trim(),
-          base_url: baseUrl.trim() || null,
-          past_client_source: pastClientSource,
-          past_client_value:
-            pastClientSource === "all" ? null : pastClientValue.trim(),
+      const apps = selectedApps.map((a) => {
+        if (a === "listing_studio") {
+          return {
+            app: a,
+            filter_config: {
+              past_client_source: pastClientSource,
+              past_client_value:
+                pastClientSource === "all" ? null : pastClientValue.trim(),
+            },
+          };
+        }
+        return {
+          app: a,
+          filter_config: {
+            search_area_source: searchAreaSource,
+            search_area_column:
+              searchAreaSource === "field" ? searchAreaColumn.trim() : null,
+            search_area_tag_pattern:
+              searchAreaSource === "tag-pattern"
+                ? searchAreaTagPattern.trim()
+                : null,
+          },
         };
-      } else {
-        endpoint = "/api/apps/hyperlocal/crm-connections";
-        body = {
-          platform,
-          label: label.trim() || null,
-          api_key: apiKey.trim(),
-          base_url: baseUrl.trim() || null,
-          search_area_source: searchAreaSource,
-          search_area_column:
-            searchAreaSource === "field" ? searchAreaColumn.trim() : null,
-          search_area_tag_pattern:
-            searchAreaSource === "tag-pattern"
-              ? searchAreaTagPattern.trim()
-              : null,
-        };
-      }
+      });
 
-      const res = await fetch(endpoint, {
+      const res = await fetch("/api/profile/integrations/crm-connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          platform,
+          label: label.trim() || null,
+          api_key: apiKey.trim(),
+          base_url: baseUrl.trim() || null,
+          apps,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -750,6 +776,9 @@ function ConnectModal({
     }
   };
 
+  const toggleApp = (a: AppSlug) =>
+    setAppsSelected((prev) => ({ ...prev, [a]: !prev[a] }));
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -760,23 +789,36 @@ function ConnectModal({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-border bg-card p-6 shadow-2xl"
       >
-        <h2 className="text-base font-semibold">
-          Connect CRM for {APP_LABELS[app]}
-        </h2>
+        <h2 className="text-base font-semibold">Connect CRM</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          {app === "listing_studio"
-            ? "CMA pulls past clients from this CRM on the agent's chosen cadence."
-            : "Hyperlocal pulls contacts from this CRM for campaign segments."}
+          One CRM connection can power any number of apps. Pick which
+          apps should use it; each app gets its own filter config below.
         </p>
 
         <div className="mt-5 space-y-4">
+          <FormField label="Wire this CRM into">
+            <div className="space-y-2">
+              <AppCheckbox
+                label={APP_LABELS.listing_studio}
+                description="CMA pulls past clients on the agent's cadence"
+                checked={appsSelected.listing_studio}
+                onChange={() => toggleApp("listing_studio")}
+              />
+              <AppCheckbox
+                label={APP_LABELS.hyperlocal}
+                description="Hyperlocal builds campaign segments from contacts"
+                checked={appsSelected.hyperlocal}
+                onChange={() => toggleApp("hyperlocal")}
+              />
+            </div>
+          </FormField>
           <FormField label="Platform">
             <select
               value={platform}
               onChange={(e) => setPlatform(e.target.value as CrmPlatform)}
               className="block w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-[#D4A35C]/40"
             >
-              {platforms.map((p) => (
+              {availablePlatforms.map((p) => (
                 <option key={p} value={p}>
                   {CRM_PLATFORM_LABELS[p]}
                 </option>
@@ -815,8 +857,11 @@ function ConnectModal({
             </FormField>
           )}
 
-          {app === "listing_studio" ? (
-            <>
+          {appsSelected.listing_studio && (
+            <fieldset className="rounded-md border border-border bg-background/30 p-3 space-y-3">
+              <legend className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-1">
+                {APP_LABELS.listing_studio} filter
+              </legend>
               <FormField label="Past-client filter">
                 <select
                   value={pastClientSource}
@@ -834,7 +879,9 @@ function ConnectModal({
               </FormField>
               {pastClientSource !== "all" && (
                 <FormField
-                  label={pastClientSource === "stage" ? "Stage value" : "Tag value"}
+                  label={
+                    pastClientSource === "stage" ? "Stage value" : "Tag value"
+                  }
                 >
                   <input
                     type="text"
@@ -847,9 +894,13 @@ function ConnectModal({
                   />
                 </FormField>
               )}
-            </>
-          ) : (
-            <>
+            </fieldset>
+          )}
+          {appsSelected.hyperlocal && (
+            <fieldset className="rounded-md border border-border bg-background/30 p-3 space-y-3">
+              <legend className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium px-1">
+                {APP_LABELS.hyperlocal} filter
+              </legend>
               <FormField label="Search-area filter">
                 <select
                   value={searchAreaSource}
@@ -887,7 +938,7 @@ function ConnectModal({
                   />
                 </FormField>
               )}
-            </>
+            </fieldset>
           )}
         </div>
 
@@ -927,6 +978,40 @@ function ConnectModal({
         </div>
       </form>
     </div>
+  );
+}
+
+function AppCheckbox({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex items-start gap-3 cursor-pointer rounded-md border px-3 py-2 transition-colors",
+        checked
+          ? "border-[#D4A35C]/60 bg-[#D4A35C]/5"
+          : "border-border hover:bg-accent",
+      )}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="mt-0.5 h-4 w-4 cursor-pointer rounded border-border"
+      />
+      <div className="min-w-0">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-[11px] text-muted-foreground">{description}</div>
+      </div>
+    </label>
   );
 }
 
