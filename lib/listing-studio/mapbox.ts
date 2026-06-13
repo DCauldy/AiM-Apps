@@ -9,12 +9,12 @@
 // Mapbox token is NEXT_PUBLIC_* so this can run on the client.
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-// dark-v11 = Mapbox's dark cartographic style. Streets, blocks, parks,
-// neighborhood labels — readable at a glance, matches the slate base of
-// the Listing Studio theme, and shows the surrounding context an agent
-// cares about (cul-de-sac shape, nearby arterials, school districts).
-// Satellite-streets-v12 was too photo-busy at the hero size.
-const STYLE = "dark-v11";
+// Default to the light cartographic style for legibility — street
+// names, neighborhood labels, and cul-de-sac shape all show up
+// clearly against the gold pin. dark-v11 was too dim under any
+// gradient overlay; callers can opt into a different style via the
+// `style` option below.
+const DEFAULT_STYLE = "light-v11";
 const ZOOM = 16;
 
 /**
@@ -25,7 +25,15 @@ const ZOOM = 16;
 export function listingStudioStaticMapUrl(
   lat: number | null | undefined,
   lon: number | null | undefined,
-  opts: { width?: number; height?: number; zoom?: number } = {},
+  opts: {
+    width?: number;
+    height?: number;
+    zoom?: number;
+    /** Mapbox style id (without the username prefix). Defaults to
+     *  light-v11. Useful overrides: dark-v11, streets-v12,
+     *  satellite-streets-v12. */
+    style?: string;
+  } = {},
 ): string | null {
   if (!TOKEN) return null;
   if (typeof lat !== "number" || typeof lon !== "number") return null;
@@ -34,11 +42,12 @@ export function listingStudioStaticMapUrl(
   const width = Math.min(Math.max(opts.width ?? 640, 64), 1280);
   const height = Math.min(Math.max(opts.height ?? 360, 64), 1280);
   const zoom = opts.zoom ?? ZOOM;
+  const style = opts.style ?? DEFAULT_STYLE;
 
   // Pin color matches the Listing Studio warm-gold accent (#D4A35C).
   const pin = `pin-l+d4a35c(${lon},${lat})`;
   return (
-    `https://api.mapbox.com/styles/v1/mapbox/${STYLE}/static/` +
+    `https://api.mapbox.com/styles/v1/mapbox/${style}/static/` +
     `${pin}/${lon},${lat},${zoom},0/${width}x${height}@2x` +
     `?access_token=${TOKEN}`
   );

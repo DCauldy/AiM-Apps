@@ -76,11 +76,14 @@ export function LandingPage({
 
   const facts = client.property_facts ?? {};
   const heroImage = facts.image_url ?? null;
+  // Map inset is taller than wide to match the right-column proportions
+  // of the new hero. Light style + opt-in light tiles render street
+  // names + neighborhood labels clearly under the gold pin.
   const heroMap =
     facts.latitude && facts.longitude
       ? listingStudioStaticMapUrl(facts.latitude, facts.longitude, {
-          width: 1200,
-          height: 420,
+          width: 600,
+          height: 600,
         })
       : null;
 
@@ -212,41 +215,96 @@ function SubjectHero({
   facts: CmaClient["property_facts"];
   accent: string;
 }) {
-  // Composite design: Mapbox neighborhood map as the wide backdrop
-  // (gold pin marks the property), property photo as a floating card
-  // overlay in the bottom-right. When the map is missing, the photo
-  // becomes the backdrop. When both are missing, fall back to the
-  // brand gradient.
-  const backdrop = heroMap ?? heroImage;
-  const showPhotoCard = !!(heroMap && heroImage);
+  // Two-pane hero: property photo dominant on the left (65% on desktop),
+  // map inset with explicit "Location" label on the right (35%). A
+  // clean info band below carries address + fact pills against the
+  // slate card surface — text never sits on imagery, so legibility
+  // doesn't depend on gradient overlays.
+  //
+  // Degrades gracefully: photo-only spans full width; map-only
+  // becomes the hero with a "Location" label. No assets → brand
+  // gradient fallback.
+  const hasPhoto = !!heroImage;
+  const hasMap = !!heroMap;
+
+  // Pick the imagery row based on what's available — keeps the grid
+  // template simple instead of trying to span cells conditionally.
+  const imageryRow =
+    hasPhoto && hasMap && heroImage && heroMap ? (
+      // Both: photo left ~65%, map inset right ~35%.
+      <div className="grid grid-cols-1 sm:grid-cols-[1.65fr_1fr]">
+        <div className="relative bg-slate-950 sm:min-h-[360px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={heroImage}
+            alt={address}
+            className="block h-64 sm:h-full w-full object-cover"
+          />
+        </div>
+        <div className="relative flex flex-col bg-white border-t sm:border-t-0 sm:border-l border-slate-800">
+          <div className="px-4 py-2.5 border-b border-slate-200 flex items-center gap-2 bg-slate-50">
+            <MapPin className="h-3.5 w-3.5" style={{ color: accent }} />
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-600">
+              Location
+            </span>
+          </div>
+          <div className="flex-1 min-h-[200px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={heroMap}
+              alt={`Map of ${address}`}
+              className="block h-full w-full object-cover"
+            />
+          </div>
+        </div>
+      </div>
+    ) : hasPhoto && heroImage ? (
+      // Photo only — full bleed.
+      <div className="bg-slate-950">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={heroImage}
+          alt={address}
+          className="block h-64 sm:h-[360px] w-full object-cover"
+        />
+      </div>
+    ) : hasMap && heroMap ? (
+      // Map only — full bleed, white background to match the
+      // light-style tiles.
+      <div className="bg-white">
+        <div className="px-4 py-2.5 border-b border-slate-200 flex items-center gap-2 bg-slate-50">
+          <MapPin className="h-3.5 w-3.5" style={{ color: accent }} />
+          <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-600">
+            Location
+          </span>
+        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={heroMap}
+          alt={`Map of ${address}`}
+          className="block h-64 sm:h-[320px] w-full object-cover"
+        />
+      </div>
+    ) : (
+      // Neither — brand gradient placeholder.
+      <div
+        className="h-48 sm:h-[280px]"
+        style={{
+          background: `linear-gradient(135deg, #1E293B 0%, ${accent} 100%)`,
+        }}
+      />
+    );
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 min-h-[360px] sm:min-h-[420px]">
-      {backdrop ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={backdrop}
-          alt={address}
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      ) : (
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `linear-gradient(135deg, #1E293B 0%, ${accent} 100%)`,
-          }}
-        />
-      )}
-      {/* Gradient overlay — readability for the text block on top
-          of the map; lighter at the top so the map stays visible. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/85 via-slate-950/40 to-slate-950/85" />
+    <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+      {imageryRow}
 
-      {/* Top text block — address + fact pills */}
-      <div className="relative px-6 pt-6 pb-32 sm:px-10 sm:pt-8 sm:pb-40">
+      {/* Info band — address + facts */}
+      <div className="px-5 py-4 sm:px-6 sm:py-5 border-t border-slate-800 bg-slate-900">
         <div
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold backdrop-blur"
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold border"
           style={{
-            background: `${accent}33`,
+            background: `${accent}1F`,
             color: accent,
             borderColor: `${accent}55`,
           }}
@@ -254,10 +312,10 @@ function SubjectHero({
           <MapPin className="h-3 w-3" />
           Subject property
         </div>
-        <h1 className="mt-3 text-2xl sm:text-4xl font-semibold tracking-tight">
+        <h1 className="mt-2.5 text-xl sm:text-2xl font-semibold tracking-tight text-slate-100">
           {address}
         </h1>
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-slate-200">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm text-slate-300">
           {facts.beds != null && (
             <span className="inline-flex items-center gap-1.5">
               <Bed className="h-4 w-4" /> {facts.beds} bd
@@ -286,20 +344,6 @@ function SubjectHero({
           )}
         </div>
       </div>
-
-      {/* Floating property-photo card — anchored bottom-right when
-          both map + photo exist. Sized down on mobile so it doesn't
-          dominate the cramped vertical space. */}
-      {showPhotoCard && heroImage && (
-        <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-40 sm:w-64 rounded-xl overflow-hidden border border-slate-700/80 shadow-2xl ring-1 ring-black/30">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={heroImage}
-            alt={address}
-            className="block h-24 sm:h-40 w-full object-cover"
-          />
-        </div>
-      )}
     </section>
   );
 }
