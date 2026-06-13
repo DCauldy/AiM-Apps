@@ -17,16 +17,10 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
-import type { CmaEmailConnection, CmaEmailProvider } from "@/types/cma";
+import type { CmaEmailProvider } from "@/types/cma";
+import type { AppEmailConnection } from "@/types/platform-connections";
 
-type EspConn = Omit<
-  CmaEmailConnection,
-  | "resend_api_key_encrypted"
-  | "resend_webhook_secret_encrypted"
-  | "provider_api_key_encrypted"
-  | "provider_oauth_access_token_encrypted"
-  | "provider_oauth_refresh_token_encrypted"
->;
+type EspConn = AppEmailConnection<"listing_studio">;
 
 interface DnsRecord {
   type?: string;
@@ -113,18 +107,25 @@ export function EspTab({
         <div className="space-y-3">
           {connections.map((c) => (
             <ConnectionCard
-              key={c.id}
+              key={c.connection.id}
               connection={c}
               onAfterAction={refreshList}
               onDeleted={() =>
-                setConnections((prev) => prev.filter((x) => x.id !== c.id))
+                setConnections((prev) =>
+                  prev.filter(
+                    (x) => x.connection.id !== c.connection.id,
+                  ),
+                )
               }
               onSetDefault={(updated) =>
                 setConnections((prev) =>
                   prev.map((x) =>
-                    x.id === updated.id
+                    x.connection.id === updated.connection.id
                       ? updated
-                      : { ...x, is_default: false },
+                      : {
+                          ...x,
+                          state: { ...x.state, is_default: false },
+                        },
                   ),
                 )
               }
@@ -198,11 +199,16 @@ function ConnectionCard({
   const { addToast } = useToast();
   const [busy, setBusy] = useState<"default" | "delete" | "check" | null>(null);
 
+  const connectionId = connection.connection.id;
+  const provider = connection.connection.provider;
+  const emailAddress = connection.connection.email_address;
+  const isDefault = connection.state.is_default;
+
   const handleSetDefault = async () => {
     setBusy("default");
     try {
       const res = await fetch(
-        `/api/apps/listing-studio/email-connections/${connection.id}`,
+        `/api/apps/listing-studio/email-connections/${connectionId}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -228,14 +234,14 @@ function ConnectionCard({
   const handleDelete = async () => {
     if (
       !confirm(
-        `Disconnect ${connection.email_address}? Deliveries already sent stay; future cadence sends will need another connection set as default.`,
+        `Disconnect ${emailAddress}? Deliveries already sent stay; future cadence sends will need another connection set as default.`,
       )
     )
       return;
     setBusy("delete");
     try {
       const res = await fetch(
-        `/api/apps/listing-studio/email-connections/${connection.id}`,
+        `/api/apps/listing-studio/email-connections/${connectionId}`,
         { method: "DELETE" },
       );
       const data = await res.json();
@@ -259,7 +265,7 @@ function ConnectionCard({
     setBusy("check");
     try {
       const res = await fetch(
-        `/api/apps/listing-studio/email-connections/resend/check-domain?connection_id=${connection.id}`,
+        `/api/apps/listing-studio/email-connections/resend/check-domain?connection_id=${connectionId}`,
       );
       const data = await res.json();
       if (!res.ok) {
@@ -279,6 +285,9 @@ function ConnectionCard({
     }
   };
 
+  const showWebhookWarning =
+    provider === "resend" && connection.state.webhook_secret_set === false;
+
   return (
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="flex items-start gap-4 flex-wrap">
@@ -288,66 +297,80 @@ function ConnectionCard({
         <div className="flex-1 min-w-[200px]">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold">
-              {PROVIDER_LABELS[connection.provider]}
+              {PROVIDER_LABELS[provider]}
             </h3>
             <span className="text-xs text-muted-foreground">
-              {connection.email_address}
+              {emailAddress}
             </span>
-            {connection.is_default && (
+            {isDefault && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-[#D4A35C]/40 text-[#D4A35C] bg-[#D4A35C]/5">
                 <Star className="h-2.5 w-2.5 fill-current" />
                 Default
               </span>
             )}
-            <DkimBadge status={connection.resend_dkim_status} />
+            <DkimBadge status={connection.connection.resend_dkim_status} />
           </div>
           <div className="mt-1 text-xs text-muted-foreground space-y-0.5">
-            {connection.resend_domain && (
-              <div>Domain: {connection.resend_domain}</div>
+            {connection.connection.resend_domain && (
+              <div>Domain: {connection.connection.resend_domain}</div>
             )}
             <div>
               Last send:{" "}
-              {connection.last_send_at
-                ? new Date(connection.last_send_at).toLocaleString()
+              {connection.state.last_send_at
+                ? new Date(connection.state.last_send_at).toLocaleString()
                 : "never"}
             </div>
-            {connection.last_error && (
+            {connection.state.last_error && (
               <div className="text-rose-400">
-                Last error: {connection.last_error}
+                Last error: {connection.state.last_error}
+              </div>
+            )}
+            {showWebhookWarning && (
+              <div className="text-amber-400">
+                Webhook not configured — engagement events won&apos;t track
+                until you re-run setup.
               </div>
             )}
           </div>
         </div>
-        <div className="flex gap-1">
-          {connection.provider === "resend" && (
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex gap-1">
+            {provider === "resend" && (
+              <CardBtn
+                onClick={handleCheckDomain}
+                disabled={busy !== null}
+                busy={busy === "check"}
+                Icon={CheckCircle2}
+              >
+                Re-check
+              </CardBtn>
+            )}
+            {!isDefault && (
+              <CardBtn
+                onClick={handleSetDefault}
+                disabled={busy !== null || !connection.connection.is_active}
+                busy={busy === "default"}
+                Icon={Star}
+              >
+                Set default
+              </CardBtn>
+            )}
             <CardBtn
-              onClick={handleCheckDomain}
+              onClick={handleDelete}
               disabled={busy !== null}
-              busy={busy === "check"}
-              Icon={CheckCircle2}
+              busy={busy === "delete"}
+              Icon={Trash2}
+              danger
             >
-              Re-check
+              Delete
             </CardBtn>
-          )}
-          {!connection.is_default && (
-            <CardBtn
-              onClick={handleSetDefault}
-              disabled={busy !== null || !connection.is_active}
-              busy={busy === "default"}
-              Icon={Star}
-            >
-              Set default
-            </CardBtn>
-          )}
-          <CardBtn
-            onClick={handleDelete}
-            disabled={busy !== null}
-            busy={busy === "delete"}
-            Icon={Trash2}
-            danger
+          </div>
+          <a
+            href={`/apps/profile/integrations?conn=${connectionId}`}
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
-            Delete
-          </CardBtn>
+            Edit auth in profile →
+          </a>
         </div>
       </div>
     </div>

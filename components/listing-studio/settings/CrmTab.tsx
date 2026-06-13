@@ -17,19 +17,19 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
 import type {
-  CmaCrmConnection,
   CmaCrmPlatform,
   CmaCrmSyncResponse,
   PastClientSource,
 } from "@/types/cma";
+import { CRM_PLATFORM_LABELS } from "@/types/hyperlocal";
+import type { AppCrmConnection } from "@/types/platform-connections";
 
-type CrmConn = Omit<
-  CmaCrmConnection,
-  | "api_key_encrypted"
-  | "oauth_access_token_encrypted"
-  | "oauth_refresh_token_encrypted"
->;
+type CrmConn = AppCrmConnection<"listing_studio">;
 
+// CMA only offers a subset of the platform-wide CRM list for new
+// connections (no CSV / GHL / etc.), but existing rows can still hold
+// any CrmPlatform value, so card display falls back to the shared
+// label map.
 const PLATFORM_LABELS: Record<CmaCrmPlatform, string> = {
   followupboss: "Follow Up Boss",
   lofty: "Lofty",
@@ -70,7 +70,9 @@ export function CrmTab({
 
   const handleSaved = (updated: CrmConn) => {
     setConnections((prev) => {
-      const idx = prev.findIndex((c) => c.id === updated.id);
+      const idx = prev.findIndex(
+        (c) => c.connection.id === updated.connection.id,
+      );
       if (idx === -1) return [updated, ...prev];
       const next = prev.slice();
       next[idx] = updated;
@@ -79,7 +81,7 @@ export function CrmTab({
   };
 
   const handleDelete = (id: string) => {
-    setConnections((prev) => prev.filter((c) => c.id !== id));
+    setConnections((prev) => prev.filter((c) => c.connection.id !== id));
   };
 
   return (
@@ -114,11 +116,11 @@ export function CrmTab({
         <div className="space-y-3">
           {connections.map((c) => (
             <ConnectionCard
-              key={c.id}
+              key={c.connection.id}
               connection={c}
               onEdit={() => setModal({ kind: "edit", connection: c })}
               onAfterAction={refreshList}
-              onDeleted={() => handleDelete(c.id)}
+              onDeleted={() => handleDelete(c.connection.id)}
             />
           ))}
         </div>
@@ -203,12 +205,15 @@ function ConnectionCard({
   >(null);
   const [syncResult, setSyncResult] = useState<CmaCrmSyncResponse | null>(null);
 
+  const platform = connection.connection.platform;
+  const connectionId = connection.connection.id;
+
   const handleTest = async () => {
     setBusy("test");
     setTestResult(null);
     try {
       const res = await fetch(
-        `/api/apps/listing-studio/crm-connections/${connection.id}/test`,
+        `/api/apps/listing-studio/crm-connections/${connectionId}/test`,
         { method: "POST" },
       );
       const data = await res.json();
@@ -237,7 +242,7 @@ function ConnectionCard({
     setSyncResult(null);
     try {
       const res = await fetch(
-        `/api/apps/listing-studio/crm-connections/${connection.id}/sync`,
+        `/api/apps/listing-studio/crm-connections/${connectionId}/sync`,
         { method: "POST" },
       );
       const data = await res.json();
@@ -263,14 +268,14 @@ function ConnectionCard({
   const handleDelete = async () => {
     if (
       !confirm(
-        `Disconnect ${PLATFORM_LABELS[connection.platform]}? Clients pulled from this CRM stay, but won't re-sync.`,
+        `Disconnect ${CRM_PLATFORM_LABELS[platform]}? Clients pulled from this CRM stay, but won't re-sync.`,
       )
     )
       return;
     setBusy("delete");
     try {
       const res = await fetch(
-        `/api/apps/listing-studio/crm-connections/${connection.id}`,
+        `/api/apps/listing-studio/crm-connections/${connectionId}`,
         { method: "DELETE" },
       );
       if (!res.ok) {
@@ -289,11 +294,13 @@ function ConnectionCard({
     }
   };
 
+  const filterConfig = connection.state.filter_config;
   const filterDescription = (() => {
-    if (!connection.past_client_source) return "No filter set";
-    if (connection.past_client_source === "all") return "All contacts";
-    const label = SOURCE_LABELS[connection.past_client_source];
-    return `${label}: ${connection.past_client_value ?? "—"}`;
+    const source = filterConfig.past_client_source;
+    if (!source) return "No filter set";
+    if (source === "all") return "All contacts";
+    const label = SOURCE_LABELS[source];
+    return `${label}: ${filterConfig.past_client_value ?? "—"}`;
   })();
 
   return (
@@ -305,14 +312,14 @@ function ConnectionCard({
         <div className="flex-1 min-w-[200px]">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="text-sm font-semibold">
-              {PLATFORM_LABELS[connection.platform]}
+              {CRM_PLATFORM_LABELS[platform]}
             </h3>
-            {connection.label && (
+            {connection.connection.label && (
               <span className="text-xs text-muted-foreground">
-                · {connection.label}
+                · {connection.connection.label}
               </span>
             )}
-            {!connection.is_active && (
+            {!connection.connection.is_active && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border border-amber-500/40 text-amber-400 bg-amber-500/5">
                 Inactive
               </span>
@@ -322,51 +329,59 @@ function ConnectionCard({
             <div>{filterDescription}</div>
             <div>
               Last synced:{" "}
-              {connection.last_synced_at
-                ? new Date(connection.last_synced_at).toLocaleString()
+              {connection.state.last_synced_at
+                ? new Date(connection.state.last_synced_at).toLocaleString()
                 : "never"}
             </div>
-            {connection.last_error && (
+            {connection.state.last_error && (
               <div className="text-rose-400">
-                Last error: {connection.last_error}
+                Last error: {connection.state.last_error}
               </div>
             )}
           </div>
         </div>
-        <div className="flex gap-1">
-          <CardBtn
-            onClick={handleTest}
-            disabled={busy !== null}
-            busy={busy === "test"}
-            Icon={CheckCircle2}
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex gap-1">
+            <CardBtn
+              onClick={handleTest}
+              disabled={busy !== null}
+              busy={busy === "test"}
+              Icon={CheckCircle2}
+            >
+              Test
+            </CardBtn>
+            <CardBtn
+              onClick={handleSync}
+              disabled={busy !== null}
+              busy={busy === "sync"}
+              Icon={RefreshCw}
+            >
+              Sync
+            </CardBtn>
+            <CardBtn
+              onClick={onEdit}
+              disabled={busy !== null}
+              busy={false}
+              Icon={Pencil}
+            >
+              Edit
+            </CardBtn>
+            <CardBtn
+              onClick={handleDelete}
+              disabled={busy !== null}
+              busy={busy === "delete"}
+              Icon={Trash2}
+              danger
+            >
+              Delete
+            </CardBtn>
+          </div>
+          <a
+            href={`/apps/profile/integrations?conn=${connectionId}`}
+            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
           >
-            Test
-          </CardBtn>
-          <CardBtn
-            onClick={handleSync}
-            disabled={busy !== null}
-            busy={busy === "sync"}
-            Icon={RefreshCw}
-          >
-            Sync
-          </CardBtn>
-          <CardBtn
-            onClick={onEdit}
-            disabled={busy !== null}
-            busy={false}
-            Icon={Pencil}
-          >
-            Edit
-          </CardBtn>
-          <CardBtn
-            onClick={handleDelete}
-            disabled={busy !== null}
-            busy={busy === "delete"}
-            Icon={Trash2}
-            danger
-          >
-            Delete
-          </CardBtn>
+            Edit auth in profile →
+          </a>
         </div>
       </div>
 
@@ -471,16 +486,19 @@ function ConnectionFormModal({
   onSaved: (conn: CrmConn) => void;
 }) {
   const [platform, setPlatform] = useState<CmaCrmPlatform>(
-    existing?.platform ?? "followupboss",
+    // Existing rows always hold a CMA-subset platform — only those
+    // can be created through this UI. Cast is safe.
+    (existing?.connection.platform as CmaCrmPlatform | undefined) ??
+      "followupboss",
   );
-  const [label, setLabel] = useState(existing?.label ?? "");
+  const [label, setLabel] = useState(existing?.connection.label ?? "");
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState(existing?.base_url ?? "");
+  const [baseUrl, setBaseUrl] = useState(existing?.connection.base_url ?? "");
   const [pastClientSource, setPastClientSource] = useState<PastClientSource>(
-    existing?.past_client_source ?? "stage",
+    existing?.state.filter_config.past_client_source ?? "stage",
   );
   const [pastClientValue, setPastClientValue] = useState(
-    existing?.past_client_value ?? "",
+    existing?.state.filter_config.past_client_value ?? "",
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -515,7 +533,7 @@ function ConnectionFormModal({
       if (apiKey.trim()) body.api_key = apiKey.trim();
 
       const url = isEdit
-        ? `/api/apps/listing-studio/crm-connections/${existing.id}`
+        ? `/api/apps/listing-studio/crm-connections/${existing.connection.id}`
         : "/api/apps/listing-studio/crm-connections";
       const res = await fetch(url, {
         method: isEdit ? "PATCH" : "POST",

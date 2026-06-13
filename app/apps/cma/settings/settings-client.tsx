@@ -15,28 +15,16 @@ import { UpgradeTab } from "@/components/listing-studio/settings/UpgradeTab";
 import { CadenceTab } from "@/components/listing-studio/settings/CadenceTab";
 import { CrmTab } from "@/components/listing-studio/settings/CrmTab";
 import { EspTab } from "@/components/listing-studio/settings/EspTab";
+import type { CmaAgentSettings } from "@/types/cma";
 import type {
-  CmaAgentSettings,
-  CmaCrmConnection,
-  CmaEmailConnection,
-} from "@/types/cma";
+  AppCrmConnection,
+  AppEmailConnection,
+} from "@/types/platform-connections";
 
 type Tab = "cadence" | "crm" | "esp" | "upgrade";
 
-type CrmConnPublic = Omit<
-  CmaCrmConnection,
-  | "api_key_encrypted"
-  | "oauth_access_token_encrypted"
-  | "oauth_refresh_token_encrypted"
->;
-type EspConnPublic = Omit<
-  CmaEmailConnection,
-  | "resend_api_key_encrypted"
-  | "resend_webhook_secret_encrypted"
-  | "provider_api_key_encrypted"
-  | "provider_oauth_access_token_encrypted"
-  | "provider_oauth_refresh_token_encrypted"
->;
+type CmaCrmConn = AppCrmConnection<"listing_studio">;
+type CmaEspConn = AppEmailConnection<"listing_studio">;
 
 const TABS: {
   id: Tab;
@@ -59,8 +47,8 @@ export function SettingsClient({
   activePackId: string | null;
   hasSubscription: boolean;
   agentSettings: CmaAgentSettings;
-  crmConnections: CrmConnPublic[];
-  espConnections: EspConnPublic[];
+  crmConnections: CmaCrmConn[];
+  espConnections: CmaEspConn[];
 }) {
   const searchParams = useSearchParams();
   // ?tab=integrations alias points at the CRM tab — Wave 3's empty
