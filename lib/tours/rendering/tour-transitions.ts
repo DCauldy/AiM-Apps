@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { RenderableTourProject, RenderableTourScene, TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
 import type { VoiceoverTranscript } from "./tour-voiceover";
 
-export const DEFAULT_TOUR_TRANSITION_DETECTION_MODEL = "google/gemma-4-26b-a4b-it:free";
+export const DEFAULT_TOUR_TRANSITION_DETECTION_MODEL = "google/gemini-2.5-flash";
 export const TOUR_TRANSITION_DETECTION_PROMPT_VERSION = "tour-transition-detection-v1";
 
 export type TranscriptChunk = {
@@ -141,7 +141,7 @@ export class TourTransitionDetectionError extends Error {
 
 const DEFAULT_DURATION_SETTINGS: Required<TransitionDurationSettings> = {
   minDurationSeconds: 0.2,
-  roundingIncrementSeconds: 0.1,
+  roundingIncrementSeconds: 0.001,
 };
 
 type OpenRouterChatCompletionResponse = {
@@ -593,6 +593,7 @@ export function createOpenRouterTransitionDetectionProvider(options: {
                 "Return only valid JSON.",
                 "Return exactly one transition for each supplied scene, in supplied scene order.",
                 "Use exact sceneId values from the user input.",
+                "Transcript chunks are word-level; choose the exact first word chunk where each scene's narration starts.",
                 "Use chunkId 0 for the first scene and strictly increasing chunkId values after that.",
                 "Do not include markdown, comments, labels, or text outside the JSON object.",
                 "Respond with schema: {\"transitions\":[{\"sceneId\":\"...\",\"chunkId\":0,\"text\":\"...\"}]}",

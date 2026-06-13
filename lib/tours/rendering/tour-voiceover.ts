@@ -138,8 +138,8 @@ const DEFAULT_VOICE_SETTINGS: ElevenLabsVoiceSettings = {
 };
 
 const DEFAULT_TRANSCRIPT_OPTIONS: Required<ElevenLabsTranscriptOptions> = {
-  phraseMode: "sentence",
-  wordsPerPhrase: 8,
+  phraseMode: "word-count",
+  wordsPerPhrase: 1,
   useNormalizedAlignment: true,
 };
 

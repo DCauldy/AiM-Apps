@@ -296,40 +296,11 @@ Use Supabase for product status and durable asset reuse.
 
 ### Local no-op proof
 
-Before product render rows exist, the local proof path is intentionally separate
-from end-user render actions:
-
-- Task: `triggers/tours-render-noop-proof.ts`
-- Endpoint: `POST /api/apps/tours/projects/:projectId/render-proof/noop`
-- Payload shape:
-
-```json
-{
-  "renderRunId": "proof-render-run-id",
-  "options": {
-    "renderMode": "ken_burns_ffmpeg",
-    "reuseExistingAssets": true
-  }
-}
-```
-
-The endpoint requires normal Tours project access, adds the authenticated
-`userId`, forces `options.proofOnly = true`, and triggers
-`tours-render-noop-proof` with Trigger.dev tags and metadata. The task logs the
-received payload, writes `toursRenderNoopProof` run metadata, flushes metadata,
-and returns `{ ok: true, proof }`.
-
-Local caveats for agents:
-
-- Start the app on port 6060 by the repo's normal process; do not expose this
-  proof endpoint in UI.
-- Start Trigger.dev local development in a separate terminal with the project's
-  Trigger.dev credentials configured, then open the local Trigger.dev dev
-  dashboard.
-- Call the endpoint as an authenticated Tours user against an open Tour Project.
-  A successful response includes `triggerRunId`; the matching run should appear
-  in the dashboard with task id `tours-render-noop-proof`, tags, logs, metadata,
-  and successful output.
+The earlier Trigger.dev no-op proof endpoint and task were removed after product
+render rows and the real `render-tour-project` task became the only supported
+end-user render path. Do not add UI or test flows that create synthetic render
+runs or advance render status from polling. Local validation should exercise the
+real render-run endpoints and the real Trigger.dev task.
 
 Treat Trigger.dev metadata as operational, not authoritative. Metadata updates
 are flushed in the background, so `metadata.set(...)` is synchronous. Only call

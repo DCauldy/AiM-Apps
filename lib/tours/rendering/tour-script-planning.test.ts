@@ -256,7 +256,7 @@ describe("planTourScriptStage", () => {
         storagePath: "new/script-plan.json",
         reusable: true,
         fingerprint: expect.objectContaining({
-          modelId: "google/gemma-4-26b-a4b-it:free",
+          modelId: "google/gemini-2.5-flash",
           scenes: [
             expect.objectContaining({
               id: "scene-1",

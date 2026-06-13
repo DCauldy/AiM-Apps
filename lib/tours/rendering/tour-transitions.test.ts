@@ -335,6 +335,36 @@ describe("tour transition detection", () => {
     ]);
   });
 
+  it("keeps millisecond-level duration precision by default", () => {
+    const durations = deriveSceneDurations({
+      transitions: [
+        { sceneId: "scene-1", chunkId: 0 },
+        { sceneId: "scene-2", chunkId: 2 },
+      ],
+      scenes: scenes(),
+      transcriptChunks: [
+        { id: 0, text: "Welcome", offsets: { from: 0, to: 900 } },
+        { id: 1, text: "inside", offsets: { from: 900, to: 2587 } },
+        { id: 2, text: "outside", offsets: { from: 2587, to: 5123 } },
+      ],
+    });
+
+    expect(durations).toEqual([
+      {
+        sceneId: "scene-1",
+        title: "Kitchen",
+        durationSeconds: 2.587,
+        offsets: { from: 0, to: 2587 },
+      },
+      {
+        sceneId: "scene-2",
+        title: "Patio",
+        durationSeconds: 2.536,
+        offsets: { from: 2587, to: 5123 },
+      },
+    ]);
+  });
+
   it("selects reusable transition and duration assets when fingerprints match", async () => {
     const repository = createRepository({
       findReusableAsset: vi

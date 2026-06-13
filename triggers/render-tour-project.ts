@@ -9,6 +9,7 @@ import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/op
 import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/tour-transitions";
 import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/tour-render.repository";
 import { createHeyGenAvatarProvider } from "@/lib/tours/rendering/tour-avatar";
+import { createOpenRouterImageToVideoProvider } from "@/lib/tours/rendering/tour-scene-clips";
 
 export type RenderTourProjectPayload = Omit<GenerateTourProjectVideoInput, "progress">;
 
@@ -31,6 +32,9 @@ export const renderTourProjectTask = task({
       projectId: payload.projectId,
       renderRunId: payload.renderRunId,
       triggerRunId: ctx.run.id,
+      renderMode: payload.options?.renderMode ?? "ken_burns_ffmpeg",
+      sceneClipProviderModelId: payload.options?.sceneClipProviderModelId ?? null,
+      reuseExistingAssets: payload.options?.reuseExistingAssets,
     });
 
     const isAvatarRender = payload.options?.tourType === "tour_video_avatar";
@@ -53,11 +57,32 @@ export const renderTourProjectTask = task({
         transitionDetectionProvider: createOpenRouterTransitionDetectionProvider({
           apiKey: process.env.OPENROUTER_API_KEY ?? "",
         }),
+        imageToVideoProvider: createOpenRouterImageToVideoProvider({
+          apiKey: process.env.OPENROUTER_API_KEY ?? "",
+        }),
         ...(isAvatarRender ? { avatarProvider: createHeyGenAvatarProvider() } : {}),
       }
     );
 
     metadata.set("status", run?.status ?? "failed");
+    if (run?.status === "failed") {
+      logger.error("Tours render task finished failed.", {
+        projectId: payload.projectId,
+        renderRunId: payload.renderRunId,
+        triggerRunId: ctx.run.id,
+        step: run.currentStep,
+        label: run.currentStepLabel,
+        errorMessage: run.errorMessage,
+      });
+    } else {
+      logger.log("Tours render task finished.", {
+        projectId: payload.projectId,
+        renderRunId: payload.renderRunId,
+        triggerRunId: ctx.run.id,
+        status: run?.status ?? "failed",
+        resultAssetId: run?.resultAssetId ?? null,
+      });
+    }
     await metadata.flush();
 
     return {

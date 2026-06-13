@@ -41,6 +41,12 @@ function createRepository(project: TourRenderPreflightProject | null = baseProje
     getTourRenderPreflightProject: vi.fn().mockResolvedValue(project),
     canReadListingMedia: vi.fn().mockResolvedValue(true),
     canWriteGeneratedMedia: vi.fn().mockResolvedValue(true),
+    createSignedSourcePhotoUrls: vi.fn().mockResolvedValue([
+      {
+        storagePath: "user-1/project-1/kitchen.jpg",
+        signedUrl: "https://provider.example.test/storage/v1/object/sign/kitchen.jpg",
+      },
+    ]),
   } as Partial<TourRenderRepository> as TourRenderRepository;
 }
 
@@ -57,6 +63,7 @@ async function runPreflight(
     },
     {
       repository,
+      fetcher: vi.fn().mockResolvedValue(new Response(null, { status: 206 })),
       getProviderKeyStatusMap: vi.fn().mockResolvedValue(providerKeys),
     }
   );
@@ -65,6 +72,7 @@ async function runPreflight(
 describe("preflightTourRender", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.ELEVENLABS_VOICE_ID = "voice-1";
   });
 
   test("returns a summary when the project is renderable", async () => {
@@ -153,6 +161,19 @@ describe("preflightTourRender", () => {
     });
   });
 
+  test("requires an ElevenLabs voice id for voice-over tours", async () => {
+    delete process.env.ELEVENLABS_VOICE_ID;
+    const repository = createRepository({
+      ...baseProject,
+      project: { ...baseProject.project, tourType: "tour_video_voice_over" },
+    });
+
+    await expect(runPreflight(repository, {}, { elevenlabs: true })).resolves.toMatchObject({
+      ok: false,
+      issues: [{ code: "missing_elevenlabs_voice_id", severity: "blocking" }],
+    });
+  });
+
   test("requires ElevenLabs and HeyGen for avatar tours", async () => {
     const repository = createRepository({
       ...baseProject,
@@ -197,14 +218,16 @@ describe("preflightTourRender", () => {
     });
   });
 
-  test("blocks provider image-to-video until the production adapter is enabled", async () => {
+  test("allows provider image-to-video when the project is otherwise renderable", async () => {
     const repository = createRepository();
 
     await expect(
       runPreflight(repository, { renderMode: "provider_image_to_video" })
-    ).resolves.toMatchObject({
-      ok: false,
-      issues: [{ code: "unsupported_render_mode", severity: "blocking" }],
+    ).resolves.toEqual({
+      ok: true,
+      summary: expect.objectContaining({
+        renderMode: "provider_image_to_video",
+      }),
     });
   });
 
@@ -220,5 +243,72 @@ describe("preflightTourRender", () => {
         { code: "generated_media_unwritable", severity: "blocking" },
       ],
     });
+  });
+
+  test("checks provider-facing signed media URL when a provider Supabase origin is configured", async () => {
+    const previous = process.env.TOURS_PROVIDER_SUPABASE_URL;
+    process.env.TOURS_PROVIDER_SUPABASE_URL = "https://provider.example.test";
+    const repository = createRepository();
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 206 }));
+
+    await expect(
+      preflightTourRender(
+        {
+          projectId: "project-1",
+          userId: "user-1",
+          options: {},
+        },
+        {
+          repository,
+          fetcher,
+          getProviderKeyStatusMap: vi.fn().mockResolvedValue({}),
+        }
+      )
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(repository.createSignedSourcePhotoUrls).toHaveBeenCalledWith({
+      storagePaths: ["user-1/project-1/kitchen.jpg"],
+      expiresInSeconds: 60,
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://provider.example.test/storage/v1/object/sign/kitchen.jpg",
+      expect.objectContaining({
+        headers: { Range: "bytes=0-0" },
+      })
+    );
+    if (previous === undefined) {
+      delete process.env.TOURS_PROVIDER_SUPABASE_URL;
+    } else {
+      process.env.TOURS_PROVIDER_SUPABASE_URL = previous;
+    }
+  });
+
+  test("blocks when provider-facing signed media URL is unreachable", async () => {
+    const previous = process.env.TOURS_PROVIDER_SUPABASE_URL;
+    process.env.TOURS_PROVIDER_SUPABASE_URL = "https://provider.example.test";
+    const repository = createRepository();
+
+    await expect(
+      preflightTourRender(
+        {
+          projectId: "project-1",
+          userId: "user-1",
+          options: {},
+        },
+        {
+          repository,
+          fetcher: vi.fn().mockResolvedValue(new Response(null, { status: 404 })),
+          getProviderKeyStatusMap: vi.fn().mockResolvedValue({}),
+        }
+      )
+    ).resolves.toMatchObject({
+      ok: false,
+      issues: [{ code: "provider_media_unreachable", severity: "blocking" }],
+    });
+    if (previous === undefined) {
+      delete process.env.TOURS_PROVIDER_SUPABASE_URL;
+    } else {
+      process.env.TOURS_PROVIDER_SUPABASE_URL = previous;
+    }
   });
 });

@@ -168,8 +168,27 @@ function buildOpenRouterContent(
 
   for (const [index, scene] of input.scenes.entries()) {
     content.push({ type: "text", text: `Scene ${index + 1}: ${scene.title} (${scene.id})` });
-    content.push({ type: "image_url", image_url: { url: scene.imageUrl } });
+    if (isRemoteFetchableUrl(scene.imageUrl)) {
+      content.push({ type: "image_url", image_url: { url: scene.imageUrl } });
+    }
   }
 
   return content;
+}
+
+function isRemoteFetchableUrl(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+
+    return !["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
 }

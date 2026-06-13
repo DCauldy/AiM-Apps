@@ -1,7 +1,8 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
+import { CheckCircle2, Download, LoaderCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { isTourRenderRunActive, type TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
 
 const FALLBACK_STEPS = [
@@ -52,15 +53,19 @@ function getVisibleSteps(run: TourRenderRunStatusResponse) {
 
 export function TourRenderStatusPanel({
   run,
+  onDone,
 }: {
   run: TourRenderRunStatusResponse;
+  onDone?: () => void;
 }) {
   const active = isTourRenderRunActive(run);
+  const completed = run.status === "completed";
   const steps = run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
-  const activeStep =
-    steps.find((step) => step.key === run.step) ??
-    steps.find((step) => step.key === "rendering_scene_clips") ??
-    steps[0];
+  const activeStep = completed
+    ? { key: "completed", label: "Done", detail: "Your tour video is ready to download." }
+    : steps.find((step) => step.key === run.step) ??
+      steps.find((step) => step.key === "rendering_scene_clips") ??
+      steps[0];
   const clipText =
     run.sceneClipCounts.total > 0
       ? `${run.sceneClipCounts.completed}/${run.sceneClipCounts.total} scene clips`
@@ -70,7 +75,7 @@ export function TourRenderStatusPanel({
   return (
     <section
       className="mt-5 min-h-[calc(100vh-14rem)] text-foreground"
-      aria-live={active ? "polite" : "off"}
+      aria-live={active || completed ? "polite" : "off"}
     >
       <div className="w-full">
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/70 pb-6">
@@ -98,12 +103,14 @@ export function TourRenderStatusPanel({
 
         <div className="mt-8 rounded-md border border-border/70 bg-background/45 p-5 shadow-sm backdrop-blur-xl">
           <div className="flex items-start gap-4">
-            {active && (
+            {active ? (
               <LoaderCircle className="mt-1 h-6 w-6 shrink-0 animate-spin stroke-[2.5] text-primary" />
-            )}
-            <div className="min-w-0">
+            ) : completed ? (
+              <CheckCircle2 className="mt-1 h-6 w-6 shrink-0 stroke-[2.5] text-primary" />
+            ) : null}
+            <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                Current Step
+                {completed ? "Render Complete" : "Current Step"}
               </p>
               <h3 className="mt-2 text-2xl font-semibold tracking-normal text-foreground">
                 {activeStep.label}
@@ -112,12 +119,32 @@ export function TourRenderStatusPanel({
             </div>
           </div>
 
-          <div className="mt-5 h-2 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-all duration-500"
-              style={{ width: `${run.progressPercent}%` }}
-            />
-          </div>
+          {completed && (run.result?.downloadUrl || onDone) && (
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              {run.result?.downloadUrl && (
+                <Button asChild className="h-11 sm:w-auto">
+                  <a href={run.result.downloadUrl} target="_blank" rel="noreferrer" download>
+                    <Download className="h-4 w-4" />
+                    Download video
+                  </a>
+                </Button>
+              )}
+              {onDone && (
+                <Button type="button" variant="outline" className="h-11 sm:w-auto" onClick={onDone}>
+                  Back to workspace
+                </Button>
+              )}
+            </div>
+          )}
+
+          {!completed && (
+            <div className="mt-5 h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-500"
+                style={{ width: `${run.progressPercent}%` }}
+              />
+            </div>
+          )}
         </div>
 
         <ol className="mt-8 w-full space-y-3">

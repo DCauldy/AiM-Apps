@@ -4,9 +4,10 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { Mic2, ShieldCheck, UserRound, Video } from "lucide-react";
+import { Download, Mic2, RefreshCw, ShieldCheck, UserRound, Video } from "lucide-react";
 import { TOUR_PROJECT_TYPE_LABELS } from "@/lib/tours/project-types";
 import type { TourProjectType } from "@/lib/tours/project-types";
+import { isTourRenderRunActive } from "@/lib/tours/rendering/tour-render.contract";
 import type { TourProjectWorkspaceViewModel, TourScene } from "@/lib/tours/workspace";
 import { PageFrame } from "@/components/app-shell/PagePrimitives";
 import { Badge } from "@/components/ui/badge";
@@ -136,6 +137,7 @@ export function TourProjectWorkspace({
   const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<string | null>(null);
   const [replacementPhoto, setReplacementPhoto] = useState<File | null>(null);
   const [replacementPhotoPreviewUrl, setReplacementPhotoPreviewUrl] = useState<string | null>(null);
+  const [foregroundRenderRunId, setForegroundRenderRunId] = useState<string | null>(null);
 
   const authorization = viewModel.listingMediaAuthorization;
   const canUseSceneMediaTools = authorization.hasAcknowledged;
@@ -143,6 +145,12 @@ export function TourProjectWorkspace({
   const renderRuns = useTourRenderRuns(viewModel.project.id);
   const isProjectRendering =
     renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
+  const showForegroundCompletedRender =
+    renderRuns.currentRun?.status === "completed" && renderRuns.currentRun.id === foregroundRenderRunId;
+  const shouldShowRenderStatusPanel = Boolean(
+    renderRuns.currentRun && (isProjectRendering || showForegroundCompletedRender)
+  );
+  const latestDownloadUrl = renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
 
   const invalidateWorkspace = useCallback(() => {
     queryClient.invalidateQueries({
@@ -254,6 +262,12 @@ export function TourProjectWorkspace({
   const replacingScene = sceneToReplacePhoto
     ? tourScenes.items.find((scene) => scene.id === sceneToReplacePhoto.id) ?? sceneToReplacePhoto
     : null;
+
+  useEffect(() => {
+    if (renderRuns.currentRun && isTourRenderRunActive(renderRuns.currentRun)) {
+      setForegroundRenderRunId(renderRuns.currentRun.id);
+    }
+  }, [renderRuns.currentRun]);
 
   useEffect(() => {
     if (tourScenes.items.length === 0) {
@@ -383,8 +397,11 @@ export function TourProjectWorkspace({
           />
         </header>
 
-        {isProjectRendering && renderRuns.currentRun ? (
-          <TourRenderStatusPanel run={renderRuns.currentRun} />
+        {shouldShowRenderStatusPanel && renderRuns.currentRun ? (
+          <TourRenderStatusPanel
+            run={renderRuns.currentRun}
+            onDone={() => setForegroundRenderRunId(null)}
+          />
         ) : !canUseSceneMediaTools ? (
           <div className="mt-4 space-y-4 rounded-md border border-border bg-muted/30 p-4">
             <div className="flex gap-3">
@@ -527,14 +544,39 @@ export function TourProjectWorkspace({
               </div>
             )}
 
-            <Button
-              type="button"
-              className="mt-4 h-14 w-full text-base lg:ml-auto lg:block lg:max-w-sm"
-              disabled={sceneCount === 0 || renderRuns.isCreatingRenderRun}
-              onClick={() => renderRuns.createRenderRun()}
-            >
-              {renderRuns.isCreatingRenderRun ? "Starting render..." : "Approve all and generate"}
-            </Button>
+            <div className="mt-4 grid gap-3 lg:ml-auto lg:max-w-sm">
+              <Button
+                type="button"
+                className="h-14 w-full text-base"
+                disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun}
+                onClick={() => renderRuns.createRenderRun()}
+              >
+                {renderRuns.isCreatingRenderRun ? "Starting render..." : "Approve all and generate"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 w-full text-base"
+                disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun}
+                onClick={() => renderRuns.createFreshRenderRun()}
+              >
+                <RefreshCw className="h-4 w-4" />
+                {renderRuns.isCreatingFreshRenderRun ? "Starting fresh render..." : "Generate fresh"}
+              </Button>
+            </div>
+
+            {latestDownloadUrl && (
+              <Button
+                asChild
+                variant="outline"
+                className="mt-3 h-12 w-full text-base lg:ml-auto lg:flex lg:max-w-sm"
+              >
+                <a href={latestDownloadUrl} target="_blank" rel="noreferrer" download>
+                  <Download className="h-4 w-4" />
+                  Download latest render
+                </a>
+              </Button>
+            )}
 
             {renderRuns.error && (
               <div className="mt-4">

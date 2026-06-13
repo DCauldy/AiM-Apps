@@ -24,7 +24,6 @@ export type TourRenderOptions = {
     sceneClips?: boolean;
     finalVideo?: boolean;
   };
-  fakeRenderRun?: boolean;
   tourType?: TourProjectType;
   scriptPlanningModelId?: string;
   scriptPlanningFallbackDurationSeconds?: number;
@@ -76,10 +75,12 @@ export type TourRenderPreflightIssueCode =
   | "no_included_scenes"
   | "missing_authoritative_source_photo"
   | "missing_elevenlabs_key"
+  | "missing_elevenlabs_voice_id"
   | "missing_heygen_key"
   | "missing_heygen_avatar_id"
   | "unsupported_render_mode"
   | "listing_media_unreadable"
+  | "provider_media_unreachable"
   | "generated_media_unwritable";
 
 export type TourRenderPreflightIssue = {
@@ -107,6 +108,7 @@ type ProviderKeyStatusMap = Partial<Record<"elevenlabs" | "heygen", boolean>>;
 
 type PreflightTourRenderServiceOptions = {
   repository?: TourRenderRepository;
+  fetcher?: typeof fetch;
   getProviderKeyStatusMap?: (
     userId: string,
     serviceKeys: readonly ("elevenlabs" | "heygen")[]
@@ -155,6 +157,7 @@ export async function preflightTourRender(
   serviceOptions: PreflightTourRenderServiceOptions = {}
 ): Promise<TourRenderPreflightResult> {
   const repository = serviceOptions.repository ?? (await createTourRenderRepository());
+  const fetcher = serviceOptions.fetcher ?? fetch;
   const getStatusMap = serviceOptions.getProviderKeyStatusMap ?? getUserApiKeyStatusMap;
   const options = input.options ?? {};
   const issues: TourRenderPreflightIssue[] = [];
@@ -179,15 +182,6 @@ export async function preflightTourRender(
   if (project.project.status !== "open") {
     issues.push(
       issue("project_archived", "Archived Tour Projects cannot be rendered.")
-    );
-  }
-
-  if (options.renderMode === "provider_image_to_video") {
-    issues.push(
-      issue(
-        "unsupported_render_mode",
-        "Provider image-to-video rendering is not enabled for production tours yet."
-      )
     );
   }
 
@@ -240,6 +234,18 @@ export async function preflightTourRender(
   }
 
   if (
+    needsVoiceover(project.project.tourType) &&
+    !(options.elevenLabsVoiceId ?? process.env.ELEVENLABS_VOICE_ID ?? "").trim()
+  ) {
+    issues.push(
+      issue(
+        "missing_elevenlabs_voice_id",
+        "Configure an ElevenLabs voice id before rendering a voice-over tour."
+      )
+    );
+  }
+
+  if (
     project.project.tourType === "tour_video_avatar" &&
     !(options.heyGenAvatarId ?? process.env.HEYGEN_AVATAR_ID ?? "").trim()
   ) {
@@ -267,6 +273,19 @@ export async function preflightTourRender(
     );
   }
 
+  if (
+    readableSourcePaths.length > 0 &&
+    process.env.TOURS_PROVIDER_SUPABASE_URL?.trim() &&
+    !(await canReachProviderSignedUrl(repository, readableSourcePaths[0], fetcher))
+  ) {
+    issues.push(
+      issue(
+        "provider_media_unreachable",
+        "Provider media URL is not reachable. Check the local tunnel and try again."
+      )
+    );
+  }
+
   if (!(await repository.canWriteGeneratedMedia({ userId: input.userId, projectId: input.projectId }))) {
     issues.push(
       issue(
@@ -284,4 +303,32 @@ export async function preflightTourRender(
     ok: true,
     summary: summarizePreflightProject(project, options, requiredProviderKeys),
   };
+}
+
+function needsVoiceover(tourType: TourProjectType): boolean {
+  return tourType === "tour_video_voice_over" || tourType === "tour_video_avatar";
+}
+
+async function canReachProviderSignedUrl(
+  repository: TourRenderRepository,
+  storagePath: string,
+  fetcher: typeof fetch
+): Promise<boolean> {
+  const [signed] = await repository.createSignedSourcePhotoUrls({
+    storagePaths: [storagePath],
+    expiresInSeconds: 60,
+  });
+  if (!signed?.signedUrl) {
+    return false;
+  }
+
+  try {
+    const response = await fetcher(signed.signedUrl, {
+      headers: { Range: "bytes=0-0" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    return response.ok || response.status === 206;
+  } catch {
+    return false;
+  }
 }

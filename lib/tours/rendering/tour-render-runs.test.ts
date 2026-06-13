@@ -104,6 +104,7 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     createAsset: vi.fn(),
     recordRunAssetUsage: vi.fn(),
     findReusableAsset: vi.fn(),
+    markProjectAssetsNonReusable: vi.fn().mockResolvedValue(true),
     ...overrides,
   } as TourRenderRepository;
 }
@@ -159,6 +160,77 @@ describe("createTourRenderRun", () => {
       userId: "user-1",
       triggerRunId: "trigger-run-1",
     });
+  });
+
+  it("marks existing project assets non-reusable before creating a fresh run", async () => {
+    const repository = createRepository();
+    const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
+
+    await createTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: {
+          reuseExistingAssets: false,
+          reuse: {
+            scriptPlan: false,
+            voiceover: false,
+            avatar: false,
+            sceneClips: false,
+            finalVideo: false,
+          },
+        },
+      },
+      {
+        repository,
+        triggerTask,
+        skipPreflight: true,
+      }
+    );
+
+    expect(repository.markProjectAssetsNonReusable).toHaveBeenCalledWith({
+      projectId: "project-1",
+    });
+    expect(repository.getRenderableTourProject).toHaveBeenCalled();
+    expect(repository.createRenderRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          reuseExistingAssets: false,
+          reuse: {
+            scriptPlan: false,
+            voiceover: false,
+            avatar: false,
+            sceneClips: false,
+            finalVideo: false,
+          },
+          tourType: "tour_video",
+        }),
+      })
+    );
+  });
+
+  it("does not enqueue a fresh run when existing assets cannot be invalidated", async () => {
+    const repository = createRepository({
+      markProjectAssetsNonReusable: vi.fn().mockResolvedValue(false),
+    });
+    const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
+
+    const run = await createTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: { reuseExistingAssets: false },
+      },
+      {
+        repository,
+        triggerTask,
+        skipPreflight: true,
+      }
+    );
+
+    expect(run).toBeNull();
+    expect(repository.createRenderRun).not.toHaveBeenCalled();
+    expect(triggerTask).not.toHaveBeenCalled();
   });
 
   it("marks the product run failed when Trigger cannot enqueue the real render task", async () => {

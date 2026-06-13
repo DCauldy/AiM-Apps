@@ -15,6 +15,22 @@ type RenderRunResponse = {
   run: TourRenderRunStatusResponse;
 };
 
+type CreateRenderRunInput = {
+  fresh?: boolean;
+};
+
+const FRESH_RENDER_OPTIONS = {
+  renderMode: "ken_burns_ffmpeg",
+  reuseExistingAssets: false,
+  reuse: {
+    scriptPlan: false,
+    voiceover: false,
+    avatar: false,
+    sceneClips: false,
+    finalVideo: false,
+  },
+} as const;
+
 async function readJsonResponse<T>(response: Response, fallbackError: string): Promise<T> {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -44,9 +60,14 @@ async function fetchRenderRunStatus(
   return payload.run;
 }
 
-async function createRenderRun(projectId: string): Promise<TourRenderRunStatusResponse> {
+async function createRenderRun(
+  projectId: string,
+  input: CreateRenderRunInput = {}
+): Promise<TourRenderRunStatusResponse> {
   const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input.fresh ? { options: FRESH_RENDER_OPTIONS } : {}),
   });
   const payload = await readJsonResponse<RenderRunResponse>(
     response,
@@ -57,6 +78,14 @@ async function createRenderRun(projectId: string): Promise<TourRenderRunStatusRe
 
 function pickDisplayRun(runs: TourRenderRunStatusResponse[]): TourRenderRunStatusResponse | null {
   return runs.find(isTourRenderRunActive) ?? runs[0] ?? null;
+}
+
+export function pickLatestDownloadableRenderRun(
+  runs: TourRenderRunStatusResponse[]
+): TourRenderRunStatusResponse | null {
+  return (
+    runs.find((run) => run.status === "completed" && Boolean(run.result?.downloadUrl)) ?? null
+  );
 }
 
 export function useTourRenderRuns(projectId: string) {
@@ -72,7 +101,8 @@ export function useTourRenderRuns(projectId: string) {
     refetchOnWindowFocus: false,
   });
 
-  const displayRun = pickDisplayRun(recentRunsQuery.data ?? []);
+  const recentRuns = recentRunsQuery.data ?? [];
+  const displayRun = pickDisplayRun(recentRuns);
   const activeRunId = displayRun && isTourRenderRunActive(displayRun) ? displayRun.id : null;
 
   const activeRunQuery = useQuery({
@@ -99,7 +129,7 @@ export function useTourRenderRuns(projectId: string) {
 
   const currentRun = activeRunQuery.data ?? displayRun;
   const createRenderRunMutation = useMutation({
-    mutationFn: () => createRenderRun(projectId),
+    mutationFn: (input: CreateRenderRunInput = {}) => createRenderRun(projectId, input),
     onSuccess: (run) => {
       queryClient.setQueryData<TourRenderRunStatusResponse[]>(recentRunsQueryKey, (runs = []) => [
         run,
@@ -110,11 +140,17 @@ export function useTourRenderRuns(projectId: string) {
 
   return {
     currentRun,
-    recentRuns: recentRunsQuery.data ?? [],
+    recentRuns,
+    latestDownloadableRun: pickLatestDownloadableRenderRun(recentRuns),
     isLoadingRecentRuns: recentRunsQuery.isLoading,
     isPollingActiveRun: activeRunQuery.fetchStatus === "fetching" && Boolean(activeRunId),
     error: recentRunsQuery.error ?? activeRunQuery.error ?? createRenderRunMutation.error,
-    createRenderRun: createRenderRunMutation.mutate,
-    isCreatingRenderRun: createRenderRunMutation.isPending,
+    createRenderRun: () => createRenderRunMutation.mutate({ fresh: false }),
+    createFreshRenderRun: () => createRenderRunMutation.mutate({ fresh: true }),
+    isCreatingRenderRun:
+      createRenderRunMutation.isPending && !createRenderRunMutation.variables?.fresh,
+    isCreatingFreshRenderRun:
+      createRenderRunMutation.isPending && Boolean(createRenderRunMutation.variables?.fresh),
+    isCreatingAnyRenderRun: createRenderRunMutation.isPending,
   };
 }

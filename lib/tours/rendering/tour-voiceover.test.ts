@@ -240,6 +240,44 @@ describe("generateVoiceoverStage", () => {
     );
   });
 
+  it("uses word-level transcript chunks by default for transition alignment", async () => {
+    const repository = createRepository();
+    const provider = createProvider();
+
+    await generateVoiceoverStage({
+      projectId: "project-1",
+      runId: "run-1",
+      userId: "user-1",
+      scriptPlan,
+      repository,
+      provider,
+      getApiKey: vi.fn().mockResolvedValue("elevenlabs-key"),
+      options: { voiceId: "voice-1" },
+    });
+
+    expect(provider.generateVoiceover).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcript: {
+          phraseMode: "word-count",
+          wordsPerPhrase: 1,
+          useNormalizedAlignment: true,
+        },
+      })
+    );
+    expect(repository.createAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "voiceover_audio",
+        fingerprint: expect.objectContaining({
+          transcript: {
+            phraseMode: "word-count",
+            wordsPerPhrase: 1,
+            useNormalizedAlignment: true,
+          },
+        }),
+      })
+    );
+  });
+
   it("does not persist assets when the provider fails", async () => {
     const repository = createRepository();
     const provider = createProvider({

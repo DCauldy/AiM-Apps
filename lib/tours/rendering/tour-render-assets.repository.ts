@@ -12,7 +12,11 @@ export function createTourRenderAssetsRepository(
   supabase: SupabaseClient
 ): Pick<
   TourRenderRepository,
-  "getAsset" | "createAsset" | "recordRunAssetUsage" | "findReusableAsset"
+  | "getAsset"
+  | "createAsset"
+  | "recordRunAssetUsage"
+  | "findReusableAsset"
+  | "markProjectAssetsNonReusable"
 > {
   return {
     async getAsset(input) {
@@ -96,6 +100,16 @@ export function createTourRenderAssetsRepository(
       }
 
       return mapRenderAsset(data);
+    },
+
+    async markProjectAssetsNonReusable(input) {
+      const { error } = await supabase
+        .from("tour_render_assets")
+        .update({ reusable: false })
+        .eq("project_id", input.projectId)
+        .eq("reusable", true);
+
+      return !error;
     },
   };
 }

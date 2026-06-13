@@ -72,7 +72,7 @@ export function createTourRenderStorageRepository(
 
         signedUrls.push({
           storagePath,
-          signedUrl: data.signedUrl,
+          signedUrl: rewriteProviderUrlOrigin(data.signedUrl),
         });
       }
 
@@ -174,8 +174,26 @@ export function createTourRenderStorageRepository(
       return {
         storageBucket: input.storageBucket,
         storagePath: input.storagePath,
-        signedUrl: data.signedUrl,
+        signedUrl: rewriteProviderUrlOrigin(data.signedUrl),
       };
     },
   };
+}
+
+function rewriteProviderUrlOrigin(signedUrl: string): string {
+  const providerOrigin = process.env.TOURS_PROVIDER_SUPABASE_URL?.trim();
+  if (!providerOrigin) {
+    return signedUrl;
+  }
+
+  try {
+    const source = new URL(signedUrl);
+    const target = new URL(providerOrigin);
+    source.protocol = target.protocol;
+    source.hostname = target.hostname;
+    source.port = target.port;
+    return source.toString();
+  } catch {
+    return signedUrl;
+  }
 }

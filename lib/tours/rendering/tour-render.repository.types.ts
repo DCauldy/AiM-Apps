@@ -355,4 +355,7 @@ export type TourRenderRepository = {
     fingerprintHash: string;
     sceneId?: string | null;
   }): Promise<TourRenderAsset | null>;
+  markProjectAssetsNonReusable(input: {
+    projectId: string;
+  }): Promise<boolean>;
 };

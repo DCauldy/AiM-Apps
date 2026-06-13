@@ -14,11 +14,13 @@ import {
 import {
   DEFAULT_TOUR_SCRIPT_PLANNING_MODEL,
   planTourScriptStage,
+  TourScriptPlanningError,
   type TourScriptPlanningProvider,
 } from "./tour-script-planning";
 import { getUserApiKey } from "@/lib/user-api-keys/service";
 import {
   generateVoiceoverStage,
+  TourVoiceoverError,
   type VoiceoverProvider,
 } from "./tour-voiceover";
 import {
@@ -79,6 +81,21 @@ type GenerateTourProjectVideoOptions = {
 };
 
 function safeErrorMessage(_error: unknown): string {
+  if (_error instanceof TourScriptPlanningError) {
+    if (_error.code === "PROVIDER_RESPONSE_INVALID") {
+      return _error.message;
+    }
+    if (_error.code === "SIGNED_IMAGE_URL_MISSING") {
+      return "Source photo URLs could not be signed for script planning.";
+    }
+    if (_error.code === "SCRIPT_PLAN_UPLOAD_FAILED") {
+      return "Script plan upload failed.";
+    }
+    if (_error.code === "SCRIPT_PLAN_ASSET_CREATE_FAILED") {
+      return "Script plan asset could not be recorded.";
+    }
+    return "Script planning failed.";
+  }
   if (_error instanceof TourTransitionDetectionError) {
     if (_error.code === "PROVIDER_RESPONSE_INVALID") {
       return "Scene transition detection returned an invalid response.";
@@ -86,6 +103,32 @@ function safeErrorMessage(_error: unknown): string {
     if (_error.code === "TRANSITION_TIMING_INVALID" || _error.code === "TRANSCRIPT_INVALID") {
       return "Scene transition timing could not be validated.";
     }
+  }
+  if (_error instanceof TourVoiceoverError) {
+    if (_error.code === "MISSING_ELEVENLABS_API_KEY") {
+      return "ElevenLabs API key is not configured for voiceover generation.";
+    }
+    if (_error.code === "MISSING_ELEVENLABS_VOICE_ID") {
+      return "ElevenLabs voice id is not configured for voiceover generation.";
+    }
+    if (_error.code === "ELEVENLABS_TTS_FAILED") {
+      return "ElevenLabs voiceover generation failed.";
+    }
+    if (_error.code === "ELEVENLABS_TTS_RESPONSE_INVALID") {
+      return "ElevenLabs voiceover response was invalid.";
+    }
+    if (
+      _error.code === "VOICEOVER_AUDIO_UPLOAD_FAILED" ||
+      _error.code === "VOICEOVER_TRANSCRIPT_UPLOAD_FAILED" ||
+      _error.code === "VOICEOVER_AUDIO_ASSET_CREATE_FAILED" ||
+      _error.code === "VOICEOVER_TRANSCRIPT_ASSET_CREATE_FAILED"
+    ) {
+      return "Voiceover assets could not be persisted.";
+    }
+    if (_error.code === "TRANSCRIPT_ALIGNMENT_FAILED") {
+      return "Voiceover transcript timing could not be aligned.";
+    }
+    return "Voiceover generation failed.";
   }
   if (_error instanceof TourSceneClipRenderError) {
     if (_error.code === "SCENE_CLIP_UPLOAD_FAILED") {
@@ -746,6 +789,18 @@ export async function generateTourProjectVideo(
 
     return completed;
   } catch (error) {
+    console.error("Tour render failed with internal error.", {
+      projectId: input.projectId,
+      renderRunId: input.renderRunId,
+      safeMessage: safeErrorMessage(error),
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorCode:
+        error && typeof error === "object" && "code" in error
+          ? String(error.code)
+          : null,
+      stack: error instanceof Error ? error.stack : null,
+    });
     return markShellFailed(repository, input, safeErrorMessage(error));
   }
 }

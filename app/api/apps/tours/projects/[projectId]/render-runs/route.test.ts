@@ -22,9 +22,13 @@ const mocks = vi.hoisted(() => ({
     Response.json({ error: access.error }, { status: access.status })
   ),
   createTourRenderRun: vi.fn(),
+  getTourRenderRunResultUrl: vi.fn(),
   listRecentTourRenderRuns: vi.fn(),
   preflightTourRenderRun: vi.fn(),
   toTourRenderRunStatusResponse: vi.fn((value) => value),
+  toTourRenderRunStatusResponseWithResultUrl: vi.fn((value, resultUrl) =>
+    resultUrl ? { ...value, result: { assetId: value.resultAssetId, ...resultUrl } } : value
+  ),
 }));
 
 vi.mock("@/lib/tours/access.server", () => ({
@@ -34,9 +38,11 @@ vi.mock("@/lib/tours/access.server", () => ({
 
 vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
   createTourRenderRun: mocks.createTourRenderRun,
+  getTourRenderRunResultUrl: mocks.getTourRenderRunResultUrl,
   listRecentTourRenderRuns: mocks.listRecentTourRenderRuns,
   preflightTourRenderRun: mocks.preflightTourRenderRun,
   toTourRenderRunStatusResponse: mocks.toTourRenderRunStatusResponse,
+  toTourRenderRunStatusResponseWithResultUrl: mocks.toTourRenderRunStatusResponseWithResultUrl,
 }));
 
 import { GET, POST } from "./route";
@@ -102,9 +108,56 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
   });
 
+  it("passes fresh render options through to preflight and run creation", async () => {
+    const options = {
+      renderMode: "ken_burns_ffmpeg",
+      reuseExistingAssets: false,
+      reuse: {
+        scriptPlan: false,
+        voiceover: false,
+        avatar: false,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    };
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.preflightTourRenderRun.mockResolvedValue({
+      ok: true,
+      summary: { projectId: "project-1" },
+    });
+    mocks.createTourRenderRun.mockResolvedValue(run);
+
+    const response = await POST(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ options }),
+      }),
+      {
+        params: Promise.resolve({ projectId: "project-1" }),
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      options,
+    });
+    expect(mocks.createTourRenderRun).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options,
+      },
+      { skipPreflight: true }
+    );
+  });
+
   it("returns recent render runs for polling from product state", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
     mocks.listRecentTourRenderRuns.mockResolvedValue([run]);
+    mocks.getTourRenderRunResultUrl.mockResolvedValue(null);
 
     const response = await GET(new Request("http://localhost/api"), {
       params: Promise.resolve({ projectId: "project-1" }),
@@ -116,6 +169,51 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       projectId: "project-1",
       userId: "user-1",
       limit: 5,
+    });
+    expect(mocks.getTourRenderRunResultUrl).toHaveBeenCalledWith({
+      projectId: "project-1",
+      runId: "run-1",
+      userId: "user-1",
+      resultAssetId: undefined,
+    });
+  });
+
+  it("includes signed download URLs for completed recent render runs", async () => {
+    const completedRun = {
+      ...run,
+      status: "completed",
+      progressPercent: 100,
+      resultAssetId: "asset-final-video",
+    };
+    const resultUrl = {
+      downloadUrl: "https://storage.example.test/signed-final-video",
+      storagePath: "user-1/project-1/run-1/final.mp4",
+    };
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.listRecentTourRenderRuns.mockResolvedValue([completedRun]);
+    mocks.getTourRenderRunResultUrl.mockResolvedValue(resultUrl);
+
+    const response = await GET(new Request("http://localhost/api"), {
+      params: Promise.resolve({ projectId: "project-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      runs: [
+        {
+          ...completedRun,
+          result: {
+            assetId: "asset-final-video",
+            ...resultUrl,
+          },
+        },
+      ],
+    });
+    expect(mocks.getTourRenderRunResultUrl).toHaveBeenCalledWith({
+      projectId: "project-1",
+      runId: "run-1",
+      userId: "user-1",
+      resultAssetId: "asset-final-video",
     });
   });
 

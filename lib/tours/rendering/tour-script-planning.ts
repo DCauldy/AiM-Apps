@@ -6,7 +6,7 @@ import type {
   TourRenderRepository,
 } from "./tour-render.repository";
 
-export const DEFAULT_TOUR_SCRIPT_PLANNING_MODEL = "google/gemma-4-26b-a4b-it:free";
+export const DEFAULT_TOUR_SCRIPT_PLANNING_MODEL = "google/gemini-2.5-flash";
 export const TOUR_SCRIPT_PLANNING_PROMPT_VERSION = "tour-script-plan-v1";
 
 export type TourScriptSceneTiming = {

@@ -2,9 +2,7 @@ import "server-only";
 
 import { tasks } from "@trigger.dev/sdk/v3";
 import type { renderTourProjectTask } from "@/triggers/render-tour-project";
-import type { toursRenderNoopProofTask } from "@/triggers/tours-render-noop-proof";
 import {
-  isTourRenderRunActive,
   type TourRenderTimelineStep,
   type TourRenderRunStatusResponse,
 } from "./tour-render.contract";
@@ -21,19 +19,10 @@ import {
   type TourRenderPreflightResult,
 } from "./tour-render-preflight";
 
-type CreateFakeTourRenderRunInput = {
+type CreateTourRenderRunInput = {
   projectId: string;
   userId: string;
-};
-
-type CreateTourRenderRunInput = CreateFakeTourRenderRunInput & {
   options?: TourRenderOptions;
-};
-
-type FakeRenderRunServiceOptions = {
-  repository?: TourRenderRepository;
-  triggerTask?: typeof tasks.trigger<typeof toursRenderNoopProofTask>;
-  skipPreflight?: boolean;
 };
 
 type RenderRunServiceOptions = {
@@ -45,12 +34,6 @@ type CreateTourRenderRunServiceOptions = RenderRunServiceOptions & {
   skipPreflight?: boolean;
 };
 
-const FAKE_RENDER_OPTIONS = {
-  fakeRenderRun: true,
-  renderMode: "ken_burns_ffmpeg",
-  reuseExistingAssets: true,
-} as const;
-
 const DEFAULT_RENDER_OPTIONS: TourRenderOptions = {
   renderMode: "ken_burns_ffmpeg",
   reuseExistingAssets: true,
@@ -59,15 +42,6 @@ const DEFAULT_RENDER_OPTIONS: TourRenderOptions = {
 const TRIGGER_ATTACH_TIMEOUT_MS = 3_000;
 const RENDER_TASK_ENQUEUE_FAILED_MESSAGE =
   "Could not start the render task. Try again.";
-
-type FakeRenderStage = {
-  elapsedMs: number;
-  step: TourRenderStep;
-  label: string;
-  progressPercent: number;
-  sceneClipCompletedCount: number;
-  complete?: boolean;
-};
 
 const TIMELINE_STEP_DETAILS: Record<TourRenderStep, TourRenderTimelineStep> = {
   queued: {
@@ -127,7 +101,7 @@ const TIMELINE_STEP_DETAILS: Record<TourRenderStep, TourRenderTimelineStep> = {
   },
 };
 
-function getFakeRenderTourType(run: TourRenderRun): TourProjectType {
+function getRenderTourType(run: TourRenderRun): TourProjectType {
   return run.options.tourType === "tour_video_voice_over" || run.options.tourType === "tour_video_avatar"
     ? run.options.tourType
     : "tour_video";
@@ -153,49 +127,11 @@ function getPipelineStepsForTourType(tourType: TourProjectType): TourRenderTimel
   return getPipelineStepKeys(tourType).map((step) => TIMELINE_STEP_DETAILS[step]);
 }
 
-function getFakeRenderStages(tourType: TourProjectType): FakeRenderStage[] {
-  const stepKeys = getPipelineStepKeys(tourType);
-  const stageCount = stepKeys.length + 1;
-  const stageDurationMs = 3_500;
-
-  const stages: FakeRenderStage[] = stepKeys.map((step, index) => ({
-    elapsedMs: index * stageDurationMs,
-    step,
-    label: TIMELINE_STEP_DETAILS[step].label,
-    progressPercent: Math.min(94, Math.round((index / stageCount) * 100)),
-    sceneClipCompletedCount:
-      step === "joining_video" || step === "uploading_final"
-        ? 2
-        : step === "rendering_scene_clips"
-          ? 0
-          : 0,
-  }));
-
-  const renderingIndex = stepKeys.indexOf("rendering_scene_clips");
-  if (renderingIndex >= 0) {
-    stages.splice(renderingIndex + 1, 0, {
-      elapsedMs: renderingIndex * stageDurationMs + Math.round(stageDurationMs * 0.65),
-      step: "rendering_scene_clips",
-      label: TIMELINE_STEP_DETAILS.rendering_scene_clips.label,
-      progressPercent: Math.min(86, Math.round(((renderingIndex + 0.65) / stageCount) * 100)),
-      sceneClipCompletedCount: 1,
-    });
-  }
-
-  stages.push({
-    elapsedMs: stageKeysDuration(stepKeys.length, stageDurationMs),
-    step: "completed",
-    label: TIMELINE_STEP_DETAILS.completed.label,
-    progressPercent: 100,
-    sceneClipCompletedCount: 2,
-    complete: true,
-  });
-
-  return stages.sort((a, b) => a.elapsedMs - b.elapsedMs);
-}
-
-function stageKeysDuration(stepCount: number, stageDurationMs: number): number {
-  return stepCount * stageDurationMs;
+function shouldInvalidateReusableAssets(options: TourRenderOptions): boolean {
+  return (
+    options.reuseExistingAssets === false ||
+    Object.values(options.reuse ?? {}).some((reuse) => reuse === false)
+  );
 }
 
 export function toTourRenderRunStatusResponse(run: TourRenderRun): TourRenderRunStatusResponse {
@@ -204,7 +140,7 @@ export function toTourRenderRunStatusResponse(run: TourRenderRun): TourRenderRun
     status: run.status,
     step: run.currentStep,
     label: run.currentStepLabel,
-    timelineSteps: getPipelineStepsForTourType(getFakeRenderTourType(run)),
+    timelineSteps: getPipelineStepsForTourType(getRenderTourType(run)),
     progressPercent: run.progressPercent,
     sceneClipCounts: {
       completed: run.sceneClipCompletedCount,
@@ -236,194 +172,6 @@ export function toTourRenderRunStatusResponseWithResultUrl(
   };
 }
 
-function isFakeRenderRun(run: TourRenderRun): boolean {
-  return run.options.fakeRenderRun === true;
-}
-
-function pickFakeStage(run: TourRenderRun, nowMs = Date.now()) {
-  const elapsedMs = Math.max(0, nowMs - new Date(run.createdAt).getTime());
-  const stages = getFakeRenderStages(getFakeRenderTourType(run));
-  return [...stages].reverse().find((stage) => elapsedMs >= stage.elapsedMs) ?? stages[0];
-}
-
-async function advanceFakeRunIfNeeded(
-  repository: TourRenderRepository,
-  run: TourRenderRun
-): Promise<TourRenderRun> {
-  if (!isFakeRenderRun(run) || !isTourRenderRunActive(run)) {
-    return run;
-  }
-
-  const stage = pickFakeStage(run);
-  if (stage.complete) {
-    const existingResult = run.resultAssetId
-      ? run
-      : await createFakeFinalAssetAndComplete(repository, run, stage.label);
-    return existingResult ?? run;
-  }
-
-  if (
-    run.currentStep === stage.step &&
-    run.progressPercent === stage.progressPercent &&
-    run.sceneClipCompletedCount === stage.sceneClipCompletedCount
-  ) {
-    return run;
-  }
-
-  return (
-    (await repository.updateProgress({
-      runId: run.id,
-      projectId: run.projectId,
-      userId: run.userId,
-      step: stage.step,
-      label: stage.label,
-      progressPercent: stage.progressPercent,
-      sceneClipCompletedCount: stage.sceneClipCompletedCount,
-      sceneClipTotalCount: 2,
-    })) ?? run
-  );
-}
-
-async function createFakeFinalAssetAndComplete(
-  repository: TourRenderRepository,
-  run: TourRenderRun,
-  label: string
-): Promise<TourRenderRun | null> {
-  const asset = await repository.createAsset({
-    projectId: run.projectId,
-    createdByRunId: run.id,
-    kind: "final_video",
-    fingerprintHash: `fake-render:${run.id}`,
-    fingerprint: {
-      fakeRenderRun: true,
-      runId: run.id,
-    },
-    reusable: false,
-    metadata: {
-      label,
-    },
-  });
-
-  if (!asset) {
-    return repository.markFailed({
-      runId: run.id,
-      projectId: run.projectId,
-      userId: run.userId,
-      step: "failed",
-      label: "Failed",
-      safeMessage: "Could not create the generated video record.",
-    });
-  }
-
-  await repository.recordRunAssetUsage({
-    runId: run.id,
-    assetId: asset.id,
-    usage: "result",
-  });
-
-  return repository.markCompleted({
-    runId: run.id,
-    projectId: run.projectId,
-    userId: run.userId,
-    resultAssetId: asset.id,
-  });
-}
-
-export async function createFakeTourRenderRun(
-  input: CreateFakeTourRenderRunInput,
-  options: FakeRenderRunServiceOptions = {}
-): Promise<TourRenderRun | null> {
-  const repository = options.repository ?? (await createTourRenderRepository());
-  if (!options.skipPreflight) {
-    const preflight = await preflightTourRender(
-      {
-        projectId: input.projectId,
-        userId: input.userId,
-        options: FAKE_RENDER_OPTIONS,
-      },
-      { repository }
-    );
-
-    if (!preflight.ok) {
-      return null;
-    }
-  }
-
-  const renderableProject = await repository.getRenderableTourProject(input);
-  if (!renderableProject) {
-    return null;
-  }
-
-  const run = await repository.createRenderRun({
-    projectId: input.projectId,
-    userId: input.userId,
-    sceneClipTotalCount: 2,
-    options: {
-      ...FAKE_RENDER_OPTIONS,
-      tourType: renderableProject.project.tourType,
-    },
-  });
-
-  if (!run) {
-    return null;
-  }
-
-  const triggerTask = options.triggerTask ?? tasks.trigger<typeof toursRenderNoopProofTask>;
-  const handle = await Promise.race([
-    triggerTask(
-      "tours-render-noop-proof",
-      {
-        projectId: input.projectId,
-        userId: input.userId,
-        renderRunId: run.id,
-        options: {
-          proofOnly: true,
-          renderMode: FAKE_RENDER_OPTIONS.renderMode,
-          reuseExistingAssets: FAKE_RENDER_OPTIONS.reuseExistingAssets,
-        },
-      },
-      {
-        tags: [`user:${input.userId}`, `tour-project:${input.projectId}`, "tours-render-fake-progress"],
-        metadata: {
-          product: "tours",
-          fakeRenderRun: true,
-          projectId: input.projectId,
-          renderRunId: run.id,
-        },
-      },
-    ).catch(() => null),
-    new Promise<null>((resolve) => {
-      setTimeout(() => resolve(null), TRIGGER_ATTACH_TIMEOUT_MS);
-    }),
-  ]);
-
-  if (!handle?.id) {
-    return run;
-  }
-
-  return (await repository.attachTriggerRunId({
-    runId: run.id,
-    projectId: input.projectId,
-    userId: input.userId,
-    triggerRunId: handle.id,
-  })) ?? run;
-}
-
-export async function preflightFakeTourRenderRun(
-  input: CreateFakeTourRenderRunInput,
-  options: Pick<FakeRenderRunServiceOptions, "repository"> = {}
-): Promise<TourRenderPreflightResult> {
-  const repository = options.repository ?? (await createTourRenderRepository());
-  return preflightTourRender(
-    {
-      projectId: input.projectId,
-      userId: input.userId,
-      options: FAKE_RENDER_OPTIONS,
-    },
-    { repository }
-  );
-}
-
 export async function createTourRenderRun(
   input: CreateTourRenderRunInput,
   options: CreateTourRenderRunServiceOptions = {}
@@ -445,6 +193,15 @@ export async function createTourRenderRun(
     );
 
     if (!preflight.ok) {
+      return null;
+    }
+  }
+
+  if (shouldInvalidateReusableAssets(renderOptions)) {
+    const invalidated = await repository.markProjectAssetsNonReusable({
+      projectId: input.projectId,
+    });
+    if (!invalidated) {
       return null;
     }
   }
@@ -558,12 +315,7 @@ export async function getTourRenderRunStatus(
   options: RenderRunServiceOptions = {}
 ): Promise<TourRenderRun | null> {
   const repository = options.repository ?? (await createTourRenderRepository());
-  const run = await repository.getRenderRun(input);
-  if (!run) {
-    return null;
-  }
-
-  return advanceFakeRunIfNeeded(repository, run);
+  return repository.getRenderRun(input);
 }
 
 export async function getTourRenderRunResultUrl(
@@ -618,6 +370,5 @@ export async function listRecentTourRenderRuns(
   options: RenderRunServiceOptions = {}
 ): Promise<TourRenderRun[]> {
   const repository = options.repository ?? (await createTourRenderRepository());
-  const runs = await repository.listRecentRenderRuns(input);
-  return Promise.all(runs.map((run) => advanceFakeRunIfNeeded(repository, run)));
+  return repository.listRecentRenderRuns(input);
 }

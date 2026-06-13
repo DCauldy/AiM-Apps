@@ -6,6 +6,7 @@ vi.mock("server-only", () => ({}));
 import {
   TourSceneClipRenderError,
   buildSceneClipFingerprint,
+  createOpenRouterImageToVideoProvider,
   renderSceneClipsStage,
   type ImageToVideoProvider,
   type SceneClipRenderer,
@@ -395,7 +396,9 @@ describe("renderSceneClipsStage", () => {
         modelId: "openrouter/kling",
       })
     );
-    expect(fetcher).toHaveBeenCalledWith("https://provider.example/output.mp4");
+    expect(fetcher).toHaveBeenCalledWith("https://provider.example/output.mp4", {
+      headers: undefined,
+    });
     expect(repository.createAsset).toHaveBeenCalledWith(
       expect.objectContaining({
         storageBucket: "tours-generated-media",
@@ -410,6 +413,110 @@ describe("renderSceneClipsStage", () => {
     expect(repository.createAsset).not.toHaveBeenCalledWith(
       expect.objectContaining({
         storagePath: "https://provider.example/output.mp4",
+      })
+    );
+  });
+
+  it("uses provider download headers when importing authenticated image-to-video output", async () => {
+    const repository = createRepository();
+    const provider: ImageToVideoProvider = {
+      renderSceneClip: vi.fn().mockResolvedValue({
+        outputUrl: "https://openrouter.ai/api/v1/videos/job-1/content?index=0",
+        downloadHeaders: { Authorization: "Bearer openrouter-key" },
+      }),
+    };
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(Buffer.from("provider-mp4"), {
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+      })
+    );
+
+    await renderSceneClipsStage({
+      project,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      durations,
+      provider,
+      fetcher,
+      options: {
+        renderMode: "provider_image_to_video",
+        providerModelId: "openrouter/kling",
+        reuseExistingAssets: false,
+      },
+    });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://openrouter.ai/api/v1/videos/job-1/content?index=0",
+      {
+        headers: { Authorization: "Bearer openrouter-key" },
+      }
+    );
+  });
+
+  it("submits and polls OpenRouter image-to-video jobs", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: "video-job-1", status: "queued" }), {
+          status: 200,
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "video-job-1",
+            status: "completed",
+            unsigned_urls: ["https://provider.example/video.mp4"],
+          }),
+          { status: 200 }
+        )
+      );
+    const provider = createOpenRouterImageToVideoProvider({
+      apiKey: "openrouter-key",
+      fetcher,
+      pollIntervalMs: 0,
+      maxPollAttempts: 1,
+    });
+
+    const result = await provider.renderSceneClip({
+      scene: project.scenes[0]!,
+      sourceImageUrl: "https://signed.example/kitchen.jpg",
+      durationSeconds: 4.25,
+      modelId: "kwaivgi/kling-v3.0-std",
+      settings: {
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        crf: 18,
+        fadeSeconds: 0.25,
+        cropMode: "cover",
+      },
+    });
+
+    expect(result.outputUrl).toBe("https://provider.example/video.mp4");
+    expect(fetcher).toHaveBeenNthCalledWith(
+      1,
+      "https://openrouter.ai/api/v1/videos",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer openrouter-key",
+        }),
+        body: expect.stringContaining("\"model\":\"kwaivgi/kling-v3.0-std\""),
+      })
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual(
+      expect.objectContaining({
+        duration: 4,
+      })
+    );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      new URL("https://openrouter.ai/api/v1/videos/video-job-1"),
+      expect.objectContaining({
+        headers: { Authorization: "Bearer openrouter-key" },
       })
     );
   });

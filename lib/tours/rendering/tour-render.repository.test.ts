@@ -140,6 +140,16 @@ function createInsertBuilder(result: { data: unknown; error: unknown } = { data:
   return chain;
 }
 
+function createUpdateBuilder(result: { error: unknown } = { error: null }) {
+  const chain: Record<string, unknown> = {};
+  chain.update = vi.fn(() => chain);
+  chain.eq = vi
+    .fn()
+    .mockReturnValueOnce(chain)
+    .mockResolvedValueOnce(result);
+  return chain;
+}
+
 describe("tour render repository", () => {
   test("loads a renderable project view scoped by project id and user id", async () => {
     const projectQuery = createQueryBuilder({ data: projectRow(), error: null });
@@ -352,12 +362,14 @@ describe("tour render repository", () => {
     const createAssetQuery = createInsertBuilder({ data: assetRow(), error: null });
     const usageQuery = createInsertBuilder({ data: { run_id: "run-1" }, error: null });
     const reusableQuery = createQueryBuilder({ data: assetRow({ id: "asset-reused" }), error: null });
+    const invalidateAssetsQuery = createUpdateBuilder({ error: null });
     const from = vi
       .fn()
       .mockReturnValueOnce(eventQuery)
       .mockReturnValueOnce(createAssetQuery)
       .mockReturnValueOnce(usageQuery)
-      .mockReturnValueOnce(reusableQuery);
+      .mockReturnValueOnce(reusableQuery)
+      .mockReturnValueOnce(invalidateAssetsQuery);
     const repository = createTourRenderRepositoryFromSupabase({ from } as never);
 
     const eventCreated = await repository.appendEvent({
@@ -390,11 +402,15 @@ describe("tour render repository", () => {
       fingerprintHash: "fingerprint-1",
       sceneId: null,
     });
+    const invalidated = await repository.markProjectAssetsNonReusable({
+      projectId: "project-1",
+    });
 
     expect(eventCreated).toBe(true);
     expect(asset?.id).toBe("asset-1");
     expect(usageCreated).toBe(true);
     expect(reusable?.id).toBe("asset-reused");
+    expect(invalidated).toBe(true);
     expect(eventQuery.insert).toHaveBeenCalledWith({
       run_id: "run-1",
       project_id: "project-1",
@@ -420,5 +436,8 @@ describe("tour render repository", () => {
     expect(reusableQuery.eq).toHaveBeenCalledWith("fingerprint_hash", "fingerprint-1");
     expect(reusableQuery.eq).toHaveBeenCalledWith("reusable", true);
     expect(reusableQuery.is).toHaveBeenCalledWith("scene_id", null);
+    expect(invalidateAssetsQuery.update).toHaveBeenCalledWith({ reusable: false });
+    expect(invalidateAssetsQuery.eq).toHaveBeenCalledWith("project_id", "project-1");
+    expect(invalidateAssetsQuery.eq).toHaveBeenCalledWith("reusable", true);
   });
 });
