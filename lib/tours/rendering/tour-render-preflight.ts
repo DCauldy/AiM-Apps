@@ -12,6 +12,12 @@ export type TourRenderMode = "ken_burns_ffmpeg" | "provider_image_to_video";
 export type TourRenderOptions = {
   renderMode?: TourRenderMode;
   reuseExistingAssets?: boolean;
+  reuse?: {
+    scriptPlan?: boolean;
+    voiceover?: boolean;
+    sceneClips?: boolean;
+    finalVideo?: boolean;
+  };
   fakeRenderRun?: boolean;
   tourType?: TourProjectType;
   scriptPlanningModelId?: string;
@@ -42,6 +48,7 @@ export type TourRenderOptions = {
     fadeSeconds?: number;
     cropMode?: "cover" | "contain";
   };
+  sceneClipConcurrencyLimit?: number;
   finalMuxSettings?: {
     width?: number;
     height?: number;

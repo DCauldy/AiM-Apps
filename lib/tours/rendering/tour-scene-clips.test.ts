@@ -56,6 +56,53 @@ const durations: SceneDuration[] = [
   },
 ];
 
+const multiSceneProject: RenderableTourProject = {
+  ...project,
+  scenes: [
+    project.scenes[0]!,
+    {
+      ...project.scenes[0]!,
+      id: "scene-2",
+      title: "Patio",
+      sortOrder: 2,
+      authoritativePhoto: {
+        ...project.scenes[0]!.authoritativePhoto,
+        id: "photo-2",
+        storagePath: "user-1/project-1/patio.jpg",
+        fileName: "patio.jpg",
+      },
+    },
+    {
+      ...project.scenes[0]!,
+      id: "scene-3",
+      title: "Bedroom",
+      sortOrder: 3,
+      authoritativePhoto: {
+        ...project.scenes[0]!.authoritativePhoto,
+        id: "photo-3",
+        storagePath: "user-1/project-1/bedroom.jpg",
+        fileName: "bedroom.jpg",
+      },
+    },
+  ],
+};
+
+const multiSceneDurations: SceneDuration[] = [
+  durations[0]!,
+  {
+    sceneId: "scene-2",
+    title: "Patio",
+    durationSeconds: 5,
+    offsets: { from: 4000, to: 9000 },
+  },
+  {
+    sceneId: "scene-3",
+    title: "Bedroom",
+    durationSeconds: 6,
+    offsets: { from: 9000, to: 15000 },
+  },
+];
+
 const sceneClipAsset: TourRenderAsset = {
   id: "asset-clip",
   createdByRunId: "run-1",
@@ -145,6 +192,69 @@ describe("renderSceneClipsStage", () => {
     expect(onClipCompleted).toHaveBeenCalledWith({ completedCount: 1, totalCount: 1 });
   });
 
+  it("records mixed reused and created scene clip assets in one run", async () => {
+    const reusedScene2Asset: TourRenderAsset = {
+      ...sceneClipAsset,
+      id: "asset-scene-2-reused",
+      createdByRunId: "older-run",
+      sceneId: "scene-2",
+    };
+    const repository = createRepository({
+      findReusableAsset: vi.fn((input) =>
+        Promise.resolve(input.sceneId === "scene-2" ? reusedScene2Asset : null)
+      ),
+      createAsset: vi.fn((input) =>
+        Promise.resolve({
+          ...sceneClipAsset,
+          id: `asset-${input.sceneId}-created`,
+          sceneId: input.sceneId ?? null,
+          storagePath: input.storagePath ?? null,
+          fingerprintHash: input.fingerprintHash,
+          fingerprint: input.fingerprint,
+        })
+      ),
+    });
+    const renderer: SceneClipRenderer = {
+      renderSceneClip: vi.fn(async (input) => {
+        await writeFile(input.outputVideoPath, Buffer.from(`mp4-${input.scene.id}`));
+        return {};
+      }),
+    };
+
+    const result = await renderSceneClipsStage({
+      project: multiSceneProject,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      durations: multiSceneDurations,
+      renderer,
+      options: { reuseExistingAssets: true, concurrencyLimit: 2 },
+    });
+
+    expect(result.clips.map((clip) => ({ sceneId: clip.sceneId, reused: clip.reused }))).toEqual([
+      { sceneId: "scene-1", reused: false },
+      { sceneId: "scene-2", reused: true },
+      { sceneId: "scene-3", reused: false },
+    ]);
+    expect(renderer.renderSceneClip).toHaveBeenCalledTimes(2);
+    expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
+      runId: "run-1",
+      assetId: "asset-scene-2-reused",
+      usage: "reused",
+    });
+    expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
+      runId: "run-1",
+      assetId: "asset-scene-1-created",
+      usage: "created",
+    });
+    expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
+      runId: "run-1",
+      assetId: "asset-scene-3-created",
+      usage: "created",
+    });
+    expect(reusedScene2Asset.createdByRunId).toBe("older-run");
+  });
+
   it("renders Ken Burns clips from downloaded source photos and records assets after upload", async () => {
     const repository = createRepository();
     let sourceImagePath = "";
@@ -198,6 +308,55 @@ describe("renderSceneClipsStage", () => {
     );
     await expect(access(sourceImagePath)).rejects.toThrow();
     await expect(access(outputVideoPath)).rejects.toThrow();
+  });
+
+  it("renders missing scene clips with bounded concurrency", async () => {
+    const repository = createRepository({
+      uploadRenderAssetBytes: vi.fn((input) =>
+        Promise.resolve({
+          storageBucket: "tours-generated-media" as const,
+          storagePath: `user-1/project-1/run-1/${input.kind}.mp4`,
+          contentType: input.contentType,
+        })
+      ),
+      createAsset: vi.fn((input) =>
+        Promise.resolve({
+          ...sceneClipAsset,
+          id: `asset-${input.sceneId}`,
+          sceneId: input.sceneId ?? null,
+          storagePath: input.storagePath ?? null,
+          fingerprintHash: input.fingerprintHash,
+          fingerprint: input.fingerprint,
+        })
+      ),
+    });
+    let activeRenderCount = 0;
+    let maxActiveRenderCount = 0;
+    const renderer: SceneClipRenderer = {
+      renderSceneClip: vi.fn(async (input) => {
+        activeRenderCount += 1;
+        maxActiveRenderCount = Math.max(maxActiveRenderCount, activeRenderCount);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        await writeFile(input.outputVideoPath, Buffer.from(`mp4-${input.scene.id}`));
+        activeRenderCount -= 1;
+        return {};
+      }),
+    };
+
+    const result = await renderSceneClipsStage({
+      project: multiSceneProject,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      durations: multiSceneDurations,
+      renderer,
+      options: { reuseExistingAssets: false, concurrencyLimit: 2 },
+    });
+
+    expect(maxActiveRenderCount).toBeLessThanOrEqual(2);
+    expect(result.clips.map((clip) => clip.sceneId)).toEqual(["scene-1", "scene-2", "scene-3"]);
+    expect(result.completedCount).toBe(3);
+    expect(renderer.renderSceneClip).toHaveBeenCalledTimes(3);
   });
 
   it("imports provider output into generated media without persisting provider URLs", async () => {

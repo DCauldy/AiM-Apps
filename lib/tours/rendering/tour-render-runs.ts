@@ -482,6 +482,7 @@ export async function createTourRenderRun(
       },
       {
         idempotencyKey: `tour-render:${run.id}`,
+        concurrencyKey: `tour-project:${input.projectId}`,
         tags: [`user:${input.userId}`, `tour-project:${input.projectId}`, "render-tour-project"],
         metadata: {
           product: "tours",

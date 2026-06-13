@@ -20,6 +20,7 @@ export type FinalRenderSettings = {
 export type ResolvedFinalRenderSettings = Required<FinalRenderSettings>;
 
 export type FinalRenderStageOptions = {
+  reuseExistingAssets?: boolean;
   concatSettings?: {
     safe?: 0 | 1;
     copyCodec?: boolean;
@@ -81,12 +82,13 @@ export type FinalVideoRenderer = {
 };
 
 export type FinalRenderStageResult = {
-  joinedScenesAsset: TourRenderAsset;
+  joinedScenesAsset: TourRenderAsset | null;
   finalVideoAsset: TourRenderAsset;
   joinedScenesFingerprint: JoinedScenesFingerprint;
   joinedScenesFingerprintHash: string;
   finalVideoFingerprint: FinalVideoFingerprint;
   finalVideoFingerprintHash: string;
+  reusedFinalVideo: boolean;
 };
 
 export class TourFinalRenderError extends Error {
@@ -122,6 +124,7 @@ const DEFAULT_FINAL_RENDER_SETTINGS: ResolvedFinalRenderSettings = {
 
 export function resolveFinalRenderStageOptions(options: FinalRenderStageOptions = {}) {
   return {
+    reuseExistingAssets: options.reuseExistingAssets !== false,
     concatSettings: {
       safe: options.concatSettings?.safe ?? 0,
       copyCodec: options.concatSettings?.copyCodec ?? true,
@@ -207,6 +210,32 @@ export async function renderFinalVideoStage(input: {
     outputPreset: resolvedOptions.outputPreset,
   });
   const finalVideoFingerprintHash = hashFinalRenderFingerprint(finalVideoFingerprint);
+
+  if (resolvedOptions.reuseExistingAssets) {
+    const reusableFinalVideo = await input.repository.findReusableAsset({
+      projectId: input.projectId,
+      kind: "final_video",
+      fingerprintHash: finalVideoFingerprintHash,
+    });
+
+    if (reusableFinalVideo) {
+      await input.repository.recordRunAssetUsage({
+        runId: input.runId,
+        assetId: reusableFinalVideo.id,
+        usage: "reused",
+      });
+
+      return {
+        joinedScenesAsset: null,
+        finalVideoAsset: reusableFinalVideo,
+        joinedScenesFingerprint,
+        joinedScenesFingerprintHash,
+        finalVideoFingerprint,
+        finalVideoFingerprintHash,
+        reusedFinalVideo: true,
+      };
+    }
+  }
 
   const scratchDir = path.join(tmpdir(), "aim-tours-render", input.runId, "final-render");
   const joinedScenesPath = path.join(scratchDir, "joined-scenes.mp4");
@@ -362,6 +391,7 @@ export async function renderFinalVideoStage(input: {
       joinedScenesFingerprintHash,
       finalVideoFingerprint,
       finalVideoFingerprintHash,
+      reusedFinalVideo: false,
     };
   } catch (error) {
     if (error instanceof TourFinalRenderError) {

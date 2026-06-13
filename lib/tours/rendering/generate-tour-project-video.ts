@@ -123,6 +123,16 @@ function needsVoiceover(tourType: string): boolean {
   return tourType === "tour_video_voice_over" || tourType === "tour_video_avatar";
 }
 
+function shouldReuseAsset(
+  options: TourRenderOptions | undefined,
+  asset: "scriptPlan" | "voiceover" | "sceneClips" | "finalVideo"
+): boolean {
+  if (typeof options?.reuse?.[asset] === "boolean") {
+    return options.reuse[asset];
+  }
+  return options?.reuseExistingAssets !== false;
+}
+
 function scriptTimingsToDurations(scriptPlan: {
   sceneTimings: Array<{ sceneId: string; scriptText: string; durationSeconds: number }>;
 }): SceneDuration[] {
@@ -304,7 +314,7 @@ export async function generateTourProjectVideo(
       provider: scriptPlanningProvider,
       options: {
         modelId: input.options?.scriptPlanningModelId,
-        reuseExistingAssets: input.options?.reuseExistingAssets,
+        reuseExistingAssets: shouldReuseAsset(input.options, "scriptPlan"),
         fallbackDurationSeconds: input.options?.scriptPlanningFallbackDurationSeconds,
         minDurationSeconds: input.options?.scriptPlanningMinDurationSeconds,
         maxDurationSeconds: input.options?.scriptPlanningMaxDurationSeconds,
@@ -356,7 +366,7 @@ export async function generateTourProjectVideo(
         provider: voiceoverProvider,
         getApiKey: options.getApiKey,
         options: {
-          reuseExistingAssets: input.options?.reuseExistingAssets,
+          reuseExistingAssets: shouldReuseAsset(input.options, "voiceover"),
           voiceId: input.options?.elevenLabsVoiceId,
           modelId: input.options?.elevenLabsModelId,
           voiceSettings: input.options?.elevenLabsVoiceSettings,
@@ -439,7 +449,7 @@ export async function generateTourProjectVideo(
         provider: transitionDetectionProvider,
         options: {
           modelId: input.options?.transitionDetectionModelId,
-          reuseExistingAssets: input.options?.reuseExistingAssets,
+          reuseExistingAssets: shouldReuseAsset(input.options, "voiceover"),
           minDurationSeconds: input.options?.transitionMinimumDurationSeconds,
           roundingIncrementSeconds: input.options?.transitionDurationRoundingIncrementSeconds,
         },
@@ -490,9 +500,10 @@ export async function generateTourProjectVideo(
       provider: options.imageToVideoProvider,
       options: {
         renderMode: input.options?.renderMode ?? preflightResult.summary.renderMode,
-        reuseExistingAssets: input.options?.reuseExistingAssets,
+        reuseExistingAssets: shouldReuseAsset(input.options, "sceneClips"),
         providerModelId: input.options?.sceneClipProviderModelId,
         renderSettings: input.options?.sceneClipRenderSettings,
+        concurrencyLimit: input.options?.sceneClipConcurrencyLimit,
       },
       onClipCompleted: async ({ completedCount, totalCount }) => {
         await recordProgress(repository, input, {
@@ -549,6 +560,7 @@ export async function generateTourProjectVideo(
       renderer: options.finalVideoRenderer,
       options: {
         muxSettings: input.options?.finalMuxSettings,
+        reuseExistingAssets: shouldReuseAsset(input.options, "finalVideo"),
       },
     });
 
@@ -560,10 +572,11 @@ export async function generateTourProjectVideo(
       sceneClipTotalCount: sceneClipResult.totalCount,
       message: "Final video was uploaded and persisted.",
       metadata: {
-        joinedScenesAssetId: finalRenderResult.joinedScenesAsset.id,
+        joinedScenesAssetId: finalRenderResult.joinedScenesAsset?.id ?? null,
         finalVideoAssetId: finalRenderResult.finalVideoAsset.id,
         joinedScenesFingerprintHash: finalRenderResult.joinedScenesFingerprintHash,
         finalVideoFingerprintHash: finalRenderResult.finalVideoFingerprintHash,
+        reusedFinalVideo: finalRenderResult.reusedFinalVideo,
       },
     });
 

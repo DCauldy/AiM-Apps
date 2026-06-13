@@ -205,6 +205,66 @@ describe("renderFinalVideoStage", () => {
     });
   });
 
+  it("reuses a matching final video fingerprint without changing original provenance", async () => {
+    const reusedFinalVideoAsset: TourRenderAsset = {
+      ...finalVideoAsset,
+      id: "asset-final-reused",
+      createdByRunId: "older-run",
+    };
+    const repository = createRepository({
+      findReusableAsset: vi.fn().mockResolvedValue(reusedFinalVideoAsset),
+    });
+    const renderer = createRenderer();
+
+    const result = await renderFinalVideoStage({
+      projectId: "project-1",
+      userId: "user-1",
+      runId: "run-final",
+      repository,
+      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      voiceoverAsset,
+      renderer,
+      options: { reuseExistingAssets: true },
+    });
+
+    expect(result.reusedFinalVideo).toBe(true);
+    expect(result.finalVideoAsset).toBe(reusedFinalVideoAsset);
+    expect(result.joinedScenesAsset).toBeNull();
+    expect(reusedFinalVideoAsset.createdByRunId).toBe("older-run");
+    expect(renderer.joinSceneClips).not.toHaveBeenCalled();
+    expect(renderer.muxFinalVideo).not.toHaveBeenCalled();
+    expect(repository.uploadRenderAssetBytes).not.toHaveBeenCalled();
+    expect(repository.createAsset).not.toHaveBeenCalled();
+    expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
+      runId: "run-final",
+      assetId: "asset-final-reused",
+      usage: "reused",
+    });
+  });
+
+  it("does not reuse the final video when reuse is disabled", async () => {
+    const repository = createRepository({
+      findReusableAsset: vi.fn().mockResolvedValue(finalVideoAsset),
+    });
+    const renderer = createRenderer();
+
+    const result = await renderFinalVideoStage({
+      projectId: "project-1",
+      userId: "user-1",
+      runId: "run-final",
+      repository,
+      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      voiceoverAsset,
+      renderer,
+      options: { reuseExistingAssets: false },
+    });
+
+    expect(result.reusedFinalVideo).toBe(false);
+    expect(repository.findReusableAsset).not.toHaveBeenCalled();
+    expect(renderer.joinSceneClips).toHaveBeenCalled();
+    expect(renderer.muxFinalVideo).toHaveBeenCalled();
+  });
+
   it("fails before upload when concat fails", async () => {
     const repository = createRepository();
 

@@ -32,6 +32,7 @@ export type SceneClipStageOptions = {
   reuseExistingAssets?: boolean;
   providerModelId?: string;
   renderSettings?: SceneClipRenderSettings;
+  concurrencyLimit?: number;
 };
 
 export type SceneClipRendererInput = {
@@ -132,6 +133,15 @@ const DEFAULT_RENDER_SETTINGS: ResolvedSceneClipRenderSettings = {
   fadeSeconds: 0.25,
   cropMode: "cover",
 };
+const DEFAULT_SCENE_CLIP_CONCURRENCY_LIMIT = 2;
+const MAX_SCENE_CLIP_CONCURRENCY_LIMIT = 4;
+
+function normalizeConcurrencyLimit(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return DEFAULT_SCENE_CLIP_CONCURRENCY_LIMIT;
+  }
+  return Math.max(1, Math.min(MAX_SCENE_CLIP_CONCURRENCY_LIMIT, Math.floor(value)));
+}
 
 export function resolveSceneClipStageOptions(
   options: SceneClipStageOptions = {}
@@ -140,6 +150,7 @@ export function resolveSceneClipStageOptions(
   reuseExistingAssets: boolean;
   providerModelId: string;
   renderSettings: ResolvedSceneClipRenderSettings;
+  concurrencyLimit: number;
 } {
   return {
     renderMode: options.renderMode ?? "ken_burns_ffmpeg",
@@ -149,6 +160,7 @@ export function resolveSceneClipStageOptions(
       ...DEFAULT_RENDER_SETTINGS,
       ...(options.renderSettings ?? {}),
     },
+    concurrencyLimit: normalizeConcurrencyLimit(options.concurrencyLimit),
   };
 }
 
@@ -221,140 +233,171 @@ export async function renderSceneClipsStage(input: {
   const durationBySceneId = new Map(input.durations.map((duration) => [duration.sceneId, duration]));
   const totalCount = scenes.length;
   let completedCount = 0;
-  const clips: SceneClipStageResult["clips"] = [];
-
-  for (const scene of scenes) {
-    const duration = durationBySceneId.get(scene.id);
-    if (!duration) {
-      throw new TourSceneClipRenderError(
-        `Scene "${scene.title}" is missing a derived duration.`,
-        "SCENE_DURATION_MISSING"
-      );
-    }
-
-    const fingerprint = buildSceneClipFingerprint({
-      scene,
-      durationSeconds: duration.durationSeconds,
-      renderMode: resolvedOptions.renderMode,
-      providerModelId: resolvedOptions.providerModelId,
-      renderSettings: resolvedOptions.renderSettings,
-    });
-    const fingerprintHash = hashSceneClipFingerprint(fingerprint);
-
-    if (resolvedOptions.reuseExistingAssets) {
-      const reusableAsset = await input.repository.findReusableAsset({
-        projectId: input.project.project.id,
-        kind: "scene_clip",
-        fingerprintHash,
-        sceneId: scene.id,
+  const indexedClips = await mapWithConcurrency(
+    scenes.map((scene, index) => ({ scene, index })),
+    resolvedOptions.concurrencyLimit,
+    async ({ scene, index }) => {
+      const clip = await renderOrReuseSceneClip({
+        scene,
+        durationBySceneId,
+        project: input.project,
+        repository: input.repository,
+        runId: input.runId,
+        userId: input.userId,
+        renderer: input.renderer,
+        provider: input.provider,
+        fetcher: input.fetcher,
+        options: resolvedOptions,
       });
-
-      if (reusableAsset) {
-        await input.repository.recordRunAssetUsage({
-          runId: input.runId,
-          assetId: reusableAsset.id,
-          usage: "reused",
-        });
-        completedCount += 1;
-        await input.onClipCompleted?.({ completedCount, totalCount });
-        clips.push({
-          sceneId: scene.id,
-          durationSeconds: duration.durationSeconds,
-          asset: reusableAsset,
-          reused: true,
-          fingerprintHash,
-          fingerprint,
-        });
-        continue;
-      }
+      completedCount += 1;
+      await input.onClipCompleted?.({ completedCount, totalCount });
+      return { index, clip };
     }
+  );
 
-    const rendered =
-      resolvedOptions.renderMode === "provider_image_to_video"
-        ? await renderProviderSceneClip({
-            scene,
-            durationSeconds: duration.durationSeconds,
-            repository: input.repository,
-            provider: input.provider,
-            fetcher: input.fetcher,
-            userId: input.userId,
-            projectId: input.project.project.id,
-            runId: input.runId,
-            modelId: resolvedOptions.providerModelId,
-            settings: resolvedOptions.renderSettings,
-          })
-        : await renderKenBurnsSceneClip({
-            scene,
-            durationSeconds: duration.durationSeconds,
-            repository: input.repository,
-            renderer: input.renderer ?? createKenBurnsSceneClipRenderer(),
-            runId: input.runId,
-            settings: resolvedOptions.renderSettings,
-          });
-
-    const upload = await input.repository.uploadRenderAssetBytes({
-      userId: input.userId,
-      projectId: input.project.project.id,
-      runId: input.runId,
-      kind: "scene_clip",
-      content: rendered.content,
-      contentType: rendered.contentType,
-      extension: "mp4",
-    });
-    if (!upload) {
-      throw new TourSceneClipRenderError(
-        "Could not upload scene clip asset.",
-        "SCENE_CLIP_UPLOAD_FAILED"
-      );
-    }
-
-    const asset = await input.repository.createAsset({
-      projectId: input.project.project.id,
-      sceneId: scene.id,
-      createdByRunId: input.runId,
-      kind: "scene_clip",
-      storageBucket: upload.storageBucket,
-      storagePath: upload.storagePath,
-      contentType: upload.contentType,
-      fingerprintHash,
-      fingerprint,
-      reusable: true,
-      metadata: {
-        sceneId: scene.id,
-        durationSeconds: duration.durationSeconds,
-        renderMode: resolvedOptions.renderMode,
-        providerModelId:
-          resolvedOptions.renderMode === "provider_image_to_video"
-            ? resolvedOptions.providerModelId
-            : null,
-        ...(rendered.metadata ?? {}),
-      },
-    });
-    if (!asset) {
-      throw new TourSceneClipRenderError(
-        "Could not create scene clip asset record.",
-        "SCENE_CLIP_ASSET_CREATE_FAILED"
-      );
-    }
-
-    await input.repository.recordRunAssetUsage({
-      runId: input.runId,
-      assetId: asset.id,
-      usage: "created",
-    });
-    completedCount += 1;
-    await input.onClipCompleted?.({ completedCount, totalCount });
-    clips.push({
-      sceneId: scene.id,
-      durationSeconds: duration.durationSeconds,
-      asset,
-      reused: false,
-      fingerprintHash,
-      fingerprint,
-    });
-  }
+  const clips = indexedClips
+    .sort((a, b) => a.index - b.index)
+    .map(({ clip }) => clip);
 
   return { clips, completedCount, totalCount };
+}
+
+async function renderOrReuseSceneClip(input: {
+  scene: RenderableTourScene;
+  durationBySceneId: Map<string, SceneDuration>;
+  project: RenderableTourProject;
+  repository: TourRenderRepository;
+  runId: string;
+  userId: string;
+  renderer?: SceneClipRenderer;
+  provider?: ImageToVideoProvider;
+  fetcher?: typeof fetch;
+  options: ReturnType<typeof resolveSceneClipStageOptions>;
+}): Promise<SceneClipStageResult["clips"][number]> {
+  const duration = input.durationBySceneId.get(input.scene.id);
+  if (!duration) {
+    throw new TourSceneClipRenderError(
+      `Scene "${input.scene.title}" is missing a derived duration.`,
+      "SCENE_DURATION_MISSING"
+    );
+  }
+
+  const fingerprint = buildSceneClipFingerprint({
+    scene: input.scene,
+    durationSeconds: duration.durationSeconds,
+    renderMode: input.options.renderMode,
+    providerModelId: input.options.providerModelId,
+    renderSettings: input.options.renderSettings,
+  });
+  const fingerprintHash = hashSceneClipFingerprint(fingerprint);
+
+  if (input.options.reuseExistingAssets) {
+    const reusableAsset = await input.repository.findReusableAsset({
+      projectId: input.project.project.id,
+      kind: "scene_clip",
+      fingerprintHash,
+      sceneId: input.scene.id,
+    });
+
+    if (reusableAsset) {
+      await input.repository.recordRunAssetUsage({
+        runId: input.runId,
+        assetId: reusableAsset.id,
+        usage: "reused",
+      });
+      return {
+        sceneId: input.scene.id,
+        durationSeconds: duration.durationSeconds,
+        asset: reusableAsset,
+        reused: true,
+        fingerprintHash,
+        fingerprint,
+      };
+    }
+  }
+
+  const rendered =
+    input.options.renderMode === "provider_image_to_video"
+      ? await renderProviderSceneClip({
+          scene: input.scene,
+          durationSeconds: duration.durationSeconds,
+          repository: input.repository,
+          provider: input.provider,
+          fetcher: input.fetcher,
+          userId: input.userId,
+          projectId: input.project.project.id,
+          runId: input.runId,
+          modelId: input.options.providerModelId,
+          settings: input.options.renderSettings,
+        })
+      : await renderKenBurnsSceneClip({
+          scene: input.scene,
+          durationSeconds: duration.durationSeconds,
+          repository: input.repository,
+          renderer: input.renderer ?? createKenBurnsSceneClipRenderer(),
+          runId: input.runId,
+          settings: input.options.renderSettings,
+        });
+
+  const upload = await input.repository.uploadRenderAssetBytes({
+    userId: input.userId,
+    projectId: input.project.project.id,
+    runId: input.runId,
+    kind: "scene_clip",
+    content: rendered.content,
+    contentType: rendered.contentType,
+    extension: "mp4",
+  });
+  if (!upload) {
+    throw new TourSceneClipRenderError(
+      "Could not upload scene clip asset.",
+      "SCENE_CLIP_UPLOAD_FAILED"
+    );
+  }
+
+  const asset = await input.repository.createAsset({
+    projectId: input.project.project.id,
+    sceneId: input.scene.id,
+    createdByRunId: input.runId,
+    kind: "scene_clip",
+    storageBucket: upload.storageBucket,
+    storagePath: upload.storagePath,
+    contentType: upload.contentType,
+    fingerprintHash,
+    fingerprint,
+    reusable: true,
+    metadata: {
+      sceneId: input.scene.id,
+      durationSeconds: duration.durationSeconds,
+      renderMode: input.options.renderMode,
+      providerModelId:
+        input.options.renderMode === "provider_image_to_video"
+          ? input.options.providerModelId
+          : null,
+      ...(rendered.metadata ?? {}),
+    },
+  });
+  if (!asset) {
+    throw new TourSceneClipRenderError(
+      "Could not create scene clip asset record.",
+      "SCENE_CLIP_ASSET_CREATE_FAILED"
+    );
+  }
+
+  await input.repository.recordRunAssetUsage({
+    runId: input.runId,
+    assetId: asset.id,
+    usage: "created",
+  });
+
+  return {
+    sceneId: input.scene.id,
+    durationSeconds: duration.durationSeconds,
+    asset,
+    reused: false,
+    fingerprintHash,
+    fingerprint,
+  };
 }
 
 export function createKenBurnsSceneClipRenderer(): SceneClipRenderer {
@@ -537,6 +580,28 @@ async function runProcess(command: string, args: string[]): Promise<void> {
       reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
     });
   });
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrencyLimit: number,
+  worker: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index]!);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrencyLimit, items.length) }, () => runWorker())
+  );
+  return results;
 }
 
 function stableStringify(value: unknown): string {

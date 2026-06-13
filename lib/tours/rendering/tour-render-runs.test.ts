@@ -149,6 +149,7 @@ describe("createTourRenderRun", () => {
       }),
       expect.objectContaining({
         idempotencyKey: "tour-render:run-1",
+        concurrencyKey: "tour-project:project-1",
         tags: ["user:user-1", "tour-project:project-1", "render-tour-project"],
       })
     );

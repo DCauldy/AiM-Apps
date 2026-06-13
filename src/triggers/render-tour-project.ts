@@ -13,6 +13,10 @@ export type RenderTourProjectPayload = Omit<GenerateTourProjectVideoInput, "prog
 
 export const renderTourProjectTask = task({
   id: "render-tour-project",
+  queue: {
+    name: "tour-project-renders",
+    concurrencyLimit: 1,
+  },
   maxDuration: 60 * 60,
   run: async (payload: RenderTourProjectPayload, { ctx }) => {
     metadata.set("product", "tours");
