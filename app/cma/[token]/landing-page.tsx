@@ -212,13 +212,20 @@ function SubjectHero({
   facts: CmaClient["property_facts"];
   accent: string;
 }) {
-  const bg = heroImage ?? heroMap;
+  // Composite design: Mapbox neighborhood map as the wide backdrop
+  // (gold pin marks the property), property photo as a floating card
+  // overlay in the bottom-right. When the map is missing, the photo
+  // becomes the backdrop. When both are missing, fall back to the
+  // brand gradient.
+  const backdrop = heroMap ?? heroImage;
+  const showPhotoCard = !!(heroMap && heroImage);
+
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
-      {bg ? (
+    <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 min-h-[360px] sm:min-h-[420px]">
+      {backdrop ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={bg}
+          src={backdrop}
           alt={address}
           className="absolute inset-0 h-full w-full object-cover"
         />
@@ -230,11 +237,19 @@ function SubjectHero({
           }}
         />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/20 to-transparent" />
-      <div className="relative px-6 pt-32 pb-6 sm:px-10 sm:pt-44 sm:pb-8">
+      {/* Gradient overlay — readability for the text block on top
+          of the map; lighter at the top so the map stays visible. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-slate-950/85 via-slate-950/40 to-slate-950/85" />
+
+      {/* Top text block — address + fact pills */}
+      <div className="relative px-6 pt-6 pb-32 sm:px-10 sm:pt-8 sm:pb-40">
         <div
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold backdrop-blur"
-          style={{ background: `${accent}33`, color: accent, borderColor: `${accent}55` }}
+          style={{
+            background: `${accent}33`,
+            color: accent,
+            borderColor: `${accent}55`,
+          }}
         >
           <MapPin className="h-3 w-3" />
           Subject property
@@ -271,6 +286,20 @@ function SubjectHero({
           )}
         </div>
       </div>
+
+      {/* Floating property-photo card — anchored bottom-right when
+          both map + photo exist. Sized down on mobile so it doesn't
+          dominate the cramped vertical space. */}
+      {showPhotoCard && heroImage && (
+        <div className="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-40 sm:w-64 rounded-xl overflow-hidden border border-slate-700/80 shadow-2xl ring-1 ring-black/30">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={heroImage}
+            alt={address}
+            className="block h-24 sm:h-40 w-full object-cover"
+          />
+        </div>
+      )}
     </section>
   );
 }
