@@ -1,7 +1,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { getActiveProfile } from "@/lib/profiles/server";
 import { SettingsClient } from "./settings-client";
-import type { HlEmailConnection } from "@/types/hyperlocal";
 
 export const dynamic = "force-dynamic";
 
@@ -15,22 +15,12 @@ export default async function HyperlocalSettingsPage() {
   // hl_user_packs is only readable via the service-role client (RLS scope).
   const service = createServiceRoleClient();
 
-  const [
-    { data: crmConnections },
-    { data: emailConnections },
-    { data: suppressions },
-    { data: userPack },
-  ] = await Promise.all([
-    supabase
-      .from("hl_crm_connections")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("hl_email_connections")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("is_default", { ascending: false }),
+  // Wave 12: CRM + email connections moved to /apps/profile/[id]?tab=
+  // {crm|mail}. This page only loads what the remaining Suppression +
+  // History + Upgrade tabs (and the integrations callout) actually need.
+  const profile = await getActiveProfile(user.id);
+
+  const [{ data: suppressions }, { data: userPack }] = await Promise.all([
     supabase
       .from("hl_suppressions")
       .select("*")
@@ -49,26 +39,12 @@ export default async function HyperlocalSettingsPage() {
   const hasSubscription =
     !!userPack?.stripe_subscription_id && userPack.status !== "canceled";
 
-  // Reshape: never send the encrypted webhook secret to the client. Replace
-  // it with a boolean indicator so the UI can show "configured / not".
-  const shapedEmailConnections: HlEmailConnection[] = (emailConnections ?? []).map(
-    (c) => {
-      const row = c as HlEmailConnection;
-      const { resend_webhook_secret_encrypted, ...rest } = row;
-      return {
-        ...rest,
-        webhook_secret_set: !!resend_webhook_secret_encrypted,
-      } as HlEmailConnection;
-    },
-  );
-
   return (
     <SettingsClient
-      crmConnections={crmConnections ?? []}
-      emailConnections={shapedEmailConnections}
       suppressions={suppressions ?? []}
       activePackId={activePackId}
       hasSubscription={hasSubscription}
+      profileId={profile?.id ?? null}
     />
   );
 }

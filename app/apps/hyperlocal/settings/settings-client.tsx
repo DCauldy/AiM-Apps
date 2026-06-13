@@ -1,67 +1,87 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { PlugZap } from "lucide-react";
+
 import { cn } from "@/lib/utils";
-import { CrmTab } from "@/components/hyperlocal/settings/CrmTab";
-import { EmailTab } from "@/components/hyperlocal/settings/EmailTab";
 import { SuppressionTab } from "@/components/hyperlocal/settings/SuppressionTab";
 import { HistoryTab } from "@/components/hyperlocal/settings/HistoryTab";
 import { UpgradeTab } from "@/components/hyperlocal/settings/UpgradeTab";
 import { ProfileFieldsBanner } from "@/components/profile/ProfileFieldsBanner";
-import type {
-  PlatformSenderProfile,
-  PlatformBrandingProfile,
-  HlCrmConnection,
-  HlEmailConnection,
-  HlSuppression,
-} from "@/types/hyperlocal";
+import type { HlSuppression } from "@/types/hyperlocal";
 
-type Tab = "crm" | "email" | "suppression" | "history" | "upgrade";
+type Tab = "history" | "suppression" | "upgrade";
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: "crm", label: "CRMs" },
-  { id: "email", label: "Email" },
   { id: "history", label: "Historical data" },
   { id: "suppression", label: "Suppression" },
   { id: "upgrade", label: "Upgrade" },
 ];
 
 export function SettingsClient({
-  crmConnections,
-  emailConnections,
   suppressions,
   activePackId,
   hasSubscription,
+  profileId,
 }: {
-  /** Accepted for backwards compatibility — sender + branding now live on /apps/profile. */
-  senderProfiles?: PlatformSenderProfile[];
-  brandingProfiles?: PlatformBrandingProfile[];
-  crmConnections: HlCrmConnection[];
-  emailConnections: HlEmailConnection[];
   suppressions: HlSuppression[];
   activePackId: string | null;
   hasSubscription: boolean;
+  /** Drives the "Manage integrations" deep-link. Null = no active
+   *  profile yet; callout points at /apps/profile/new instead. */
+  profileId: string | null;
 }) {
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get("tab") as Tab) ?? "crm";
-  const [activeTab, setActiveTab] = useState<Tab>(
-    TABS.find((t) => t.id === initialTab) ? initialTab : "crm"
-  );
+  // Wave 12: ?tab=crm / ?tab=email aliases redirect to History (the
+  // new default). Connection management moved to the profile editor.
+  const initial = searchParams.get("tab");
+  const aliasRedirect = initial === "crm" || initial === "email";
+  const resolvedInitial: Tab =
+    !aliasRedirect && TABS.find((t) => t.id === (initial as Tab))
+      ? (initial as Tab)
+      : "history";
+  const [activeTab, setActiveTab] = useState<Tab>(resolvedInitial);
+
+  const integrationsHref = profileId
+    ? `/apps/profile/${profileId}?tab=crm`
+    : "/apps/profile/new";
 
   return (
     <div className="container max-w-5xl mx-auto px-4 py-8">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Connected CRMs, email accounts, and global suppression list.
+          Historical data, suppression list, and your Hyperlocal pack.
+          CRM + email connections live on your profile so every app
+          shares them.
         </p>
       </div>
 
       <ProfileFieldsBanner what="Sender identity, brokerage, and brand visuals" />
 
-      {/* Tab nav */}
-      <div className="border-b border-border mb-6 -mx-4 sm:mx-0 overflow-x-auto">
+      {/* Integrations callout — points at the profile-level CRM tab.
+          Replaces the old CRM + Email tabs that lived here. */}
+      <Link
+        href={integrationsHref}
+        className="mt-3 flex items-center justify-between gap-3 rounded-md border border-border bg-card hover:bg-accent px-4 py-3 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-[#F43F5E]/10 text-[#F43F5E]">
+            <PlugZap className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="text-sm font-medium">Manage integrations</div>
+            <div className="text-xs text-muted-foreground">
+              CRM connections + email senders live on your profile
+            </div>
+          </div>
+        </div>
+        <span className="text-xs text-muted-foreground">Open profile →</span>
+      </Link>
+
+      <div className="border-b border-border my-6 -mx-4 sm:mx-0 overflow-x-auto">
         <nav className="flex gap-1 px-4 sm:px-0">
           {TABS.map((tab) => (
             <button
@@ -72,7 +92,7 @@ export function SettingsClient({
                 "relative px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap",
                 activeTab === tab.id
                   ? "text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
               {tab.label}
@@ -84,10 +104,6 @@ export function SettingsClient({
         </nav>
       </div>
 
-      {activeTab === "crm" && <CrmTab initialConnections={crmConnections} />}
-      {activeTab === "email" && (
-        <EmailTab initialConnections={emailConnections} />
-      )}
       {activeTab === "history" && <HistoryTab />}
       {activeTab === "suppression" && (
         <SuppressionTab initialSuppressions={suppressions} />
