@@ -384,6 +384,9 @@ export interface CreateAppEmailInput<App extends AppSlug> {
   resendDkimStatus?: "pending" | "verified" | "failed" | null;
   /** Generic provider key — non-Resend providers. */
   providerApiKey?: string | null;
+  /** OAuth access token (e.g., Mailchimp OAuth callback). Encrypted
+   *  before insert. Persisted alongside / instead of providerApiKey. */
+  providerOauthAccessToken?: string | null;
   /** App-state fields. */
   isActive?: boolean;
   isDefault?: boolean;
@@ -415,6 +418,14 @@ export async function createAppEmailConnection<App extends AppSlug>(
   }
   if (input.providerApiKey && input.providerApiKey.trim().length > 0) {
     connInsert.provider_api_key_encrypted = encrypt(input.providerApiKey.trim());
+  }
+  if (
+    input.providerOauthAccessToken &&
+    input.providerOauthAccessToken.trim().length > 0
+  ) {
+    connInsert.provider_oauth_access_token_encrypted = encrypt(
+      input.providerOauthAccessToken.trim(),
+    );
   }
 
   const { data: conn, error: connErr } = await service

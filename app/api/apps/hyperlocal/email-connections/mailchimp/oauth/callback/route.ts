@@ -1,9 +1,14 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
-import { encrypt } from "@/lib/hyperlocal/encryption";
 import { randomBytes } from "node:crypto";
 import { jwtVerify } from "jose";
 import { disconnectPriorConnection } from "@/lib/hyperlocal/email/disconnect";
+import {
+  createAppEmailConnection,
+  getAppEmailConnectionStateInternal,
+  listAppEmailConnections,
+} from "@/lib/platform/connections";
 import { getActiveProfile } from "@/lib/profiles/server";
+import type { HlEmailAppMetadata } from "@/types/platform-connections";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -239,73 +244,99 @@ export async function GET(req: NextRequest) {
 
   // ---- 6. Persist the connection ----
   const service = createServiceRoleClient();
-  const { data: profileMeta } = await service
-    .from("profiles")
-    .select("active_profile_id")
-    .eq("id", userId)
-    .maybeSingle();
-  if (!profileMeta?.active_profile_id) {
+  if (!activeProfileId) {
     return redirectToSettings(req, "mailchimp_error=no_active_profile", activeProfileId);
   }
-  const profileId = profileMeta.active_profile_id;
 
-  // Stash any prior connection so we can auto-disconnect it after the new
-  // Mailchimp connection is persisted. UI gates with a confirm modal.
-  const { data: priorConnection } = await service
-    .from("hl_email_connections")
-    .select("id, provider, resend_webhook_id, resend_domain_id, resend_api_key_encrypted, provider_api_key_encrypted, provider_oauth_access_token_encrypted, provider_metadata")
-    .eq("user_id", userId)
-    .eq("profile_id", profileId)
-    .limit(1)
-    .maybeSingle();
+  // Stash any prior Hyperlocal connection so we can auto-disconnect it
+  // after the new Mailchimp connection is persisted. Webhook id + per-app
+  // metadata live on the app_state row; the auth blobs live on the
+  // platform row — hydrate both for the disconnect helper.
+  const existing = await listAppEmailConnections(
+    service,
+    userId,
+    activeProfileId,
+    "hyperlocal",
+  );
+  const priorPair = existing[0] ?? null;
+  let priorRef: Parameters<typeof disconnectPriorConnection>[1] | null = null;
+  if (priorPair) {
+    const priorState = await getAppEmailConnectionStateInternal(
+      service,
+      "hyperlocal",
+      priorPair.connection.id,
+    );
+    const { data: priorPlatform } = await service
+      .from("platform_email_connections")
+      .select("*")
+      .eq("id", priorPair.connection.id)
+      .maybeSingle();
+    priorRef = priorPlatform
+      ? {
+          id: priorPlatform.id,
+          provider: priorPlatform.provider,
+          resend_webhook_id: priorState?.webhook_id ?? null,
+          resend_domain_id: priorPlatform.resend_domain_id,
+          resend_api_key_encrypted: priorPlatform.resend_api_key_encrypted,
+          provider_api_key_encrypted: priorPlatform.provider_api_key_encrypted,
+          provider_oauth_access_token_encrypted:
+            priorPlatform.provider_oauth_access_token_encrypted,
+          provider_metadata: (priorState?.provider_metadata ?? null) as Record<
+            string,
+            unknown
+          > | null,
+        }
+      : null;
+  }
 
-  const { count } = await service
-    .from("hl_email_connections")
-    .select("*", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("profile_id", profileId);
+  const providerMetadata: HlEmailAppMetadata = {
+    mailchimp: {
+      dc,
+      audience_id: audience.id,
+      server_prefix: dc,
+    },
+  };
+  // Audience name + webhook id are outside HlEmailAppMetadata's strict
+  // shape but the JSONB column is open-ended and downstream readers
+  // look them up by path.
+  (providerMetadata.mailchimp as Record<string, unknown>).audience_name =
+    audience.name;
+  (providerMetadata.mailchimp as Record<string, unknown>).webhook_id = webhookId;
+  (providerMetadata.mailchimp as Record<string, unknown>).webhook_error =
+    webhookError;
+  (providerMetadata.mailchimp as Record<string, unknown>).member_count =
+    audience.memberCount;
+  (providerMetadata.mailchimp as Record<string, unknown>).auth = "oauth";
+  (providerMetadata.mailchimp as Record<string, unknown>).login_name = loginName;
 
-  const { data: insertedRow, error: insertErr } = await service
-    .from("hl_email_connections")
-    .insert({
-      user_id: userId,
-      profile_id: profileId,
+  let createdConnectionId: string;
+  try {
+    const created = await createAppEmailConnection(service, "hyperlocal", {
+      userId,
+      profileId: activeProfileId,
       provider: "mailchimp",
-      email_address: accountEmail ?? `mailchimp:${audience.id}@${dc}`,
-      display_name: loginName ?? audience.name,
-      provider_oauth_access_token_encrypted: encrypt(accessToken),
-      // Webhook URL secret (Mailchimp doesn't sign payloads — verification
-      // is timing-safe compare against this stored value).
-      resend_webhook_secret_encrypted: encrypt(webhookSecret),
-      provider_metadata: {
-        mailchimp: {
-          dc,
-          audience_id: audience.id,
-          audience_name: audience.name,
-          member_count: audience.memberCount,
-          webhook_id: webhookId,
-          webhook_error: webhookError,
-          auth: "oauth",
-          login_name: loginName,
-        },
-      },
-      is_active: true,
-      is_default: (count ?? 0) === 0 || !!priorConnection,
-    })
-    .select("id")
-    .single();
-
-  if (insertErr) {
+      emailAddress: accountEmail ?? `mailchimp:${audience.id}@${dc}`,
+      displayName: loginName ?? audience.name,
+      providerOauthAccessToken: accessToken,
+      webhookSecret,
+      providerMetadata,
+      isActive: true,
+      // Single-default invariant: only promote when no prior connection
+      // existed. Replacing one keeps the same is_default slot anyway.
+      isDefault: existing.length === 0 || !!priorRef,
+    });
+    createdConnectionId = created.connection.id;
+  } catch (e) {
     return redirectToSettings(
       req,
-      `mailchimp_error=db_insert&detail=${encodeURIComponent(insertErr.message)}`,
+      `mailchimp_error=db_insert&detail=${encodeURIComponent(e instanceof Error ? e.message : "")}`,
       activeProfileId,
     );
   }
 
   // New connection persisted — auto-disconnect any prior one.
-  if (priorConnection && priorConnection.id !== insertedRow?.id) {
-    await disconnectPriorConnection(service, priorConnection);
+  if (priorRef && priorRef.id !== createdConnectionId) {
+    await disconnectPriorConnection(service, priorRef);
   }
 
   // No cookie cleanup needed — state lives entirely in the signed JWT,
