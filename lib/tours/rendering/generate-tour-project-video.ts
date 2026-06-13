@@ -38,8 +38,14 @@ import {
 import {
   renderFinalVideoStage,
   TourFinalRenderError,
+  type FinalRenderAvatarOverlay,
   type FinalVideoRenderer,
 } from "./tour-final-render";
+import {
+  prepareHeyGenAvatarStage,
+  TourAvatarError,
+  type HeyGenAvatarProvider,
+} from "./tour-avatar";
 
 export type TourRenderProgressUpdate = {
   step: TourRenderStep;
@@ -68,6 +74,7 @@ type GenerateTourProjectVideoOptions = {
   sceneClipRenderer?: SceneClipRenderer;
   finalVideoRenderer?: FinalVideoRenderer;
   imageToVideoProvider?: ImageToVideoProvider;
+  avatarProvider?: HeyGenAvatarProvider;
   getApiKey?: typeof getUserApiKey;
 };
 
@@ -110,6 +117,23 @@ function safeErrorMessage(_error: unknown): string {
     }
     return "Final video rendering failed.";
   }
+  if (_error instanceof TourAvatarError) {
+    if (_error.code === "MISSING_HEYGEN_API_KEY") {
+      return "HeyGen API key is not configured for avatar rendering.";
+    }
+    if (_error.code === "MISSING_HEYGEN_AVATAR_ID") {
+      return "HeyGen avatar id is not configured for avatar rendering.";
+    }
+    if (
+      _error.code === "AVATAR_VIDEO_UPLOAD_FAILED" ||
+      _error.code === "AVATAR_METADATA_UPLOAD_FAILED" ||
+      _error.code === "AVATAR_VIDEO_ASSET_CREATE_FAILED" ||
+      _error.code === "AVATAR_METADATA_ASSET_CREATE_FAILED"
+    ) {
+      return "Avatar render assets could not be persisted.";
+    }
+    return "Avatar rendering failed.";
+  }
 
   return "Tour render failed before rendering could complete.";
 }
@@ -123,9 +147,13 @@ function needsVoiceover(tourType: string): boolean {
   return tourType === "tour_video_voice_over" || tourType === "tour_video_avatar";
 }
 
+function needsAvatar(tourType: string): boolean {
+  return tourType === "tour_video_avatar";
+}
+
 function shouldReuseAsset(
   options: TourRenderOptions | undefined,
-  asset: "scriptPlan" | "voiceover" | "sceneClips" | "finalVideo"
+  asset: "scriptPlan" | "voiceover" | "avatar" | "sceneClips" | "finalVideo"
 ): boolean {
   if (typeof options?.reuse?.[asset] === "boolean") {
     return options.reuse[asset];
@@ -340,6 +368,10 @@ export async function generateTourProjectVideo(
     let transitionAssetIds:
       | { transitionsAssetId: string; durationsAssetId: string }
       | null = null;
+    let avatarAssetIds:
+      | { avatarVideoAssetId: string; avatarMetadataAssetId: string }
+      | null = null;
+    let avatarOverlay: FinalRenderAvatarOverlay | null = null;
     let sceneDurations = scriptTimingsToDurations(scriptPlanResult.plan);
     if (needsVoiceover(project.project.tourType)) {
       await recordProgress(repository, input, {
@@ -478,6 +510,100 @@ export async function generateTourProjectVideo(
       sceneDurations = transitionsResult.durations;
     }
 
+    if (needsAvatar(project.project.tourType)) {
+      if (!voiceoverAudioAsset) {
+        return markShellFailed(
+          repository,
+          input,
+          "Avatar rendering requires generated voiceover audio."
+        );
+      }
+      if (
+        voiceoverAudioAsset.storageBucket !== "tours-generated-media" ||
+        !voiceoverAudioAsset.storagePath
+      ) {
+        return markShellFailed(
+          repository,
+          input,
+          "Voiceover audio could not be loaded for avatar rendering."
+        );
+      }
+
+      const signedVoiceoverAudio = await repository.createSignedGeneratedMediaUrl({
+        storageBucket: voiceoverAudioAsset.storageBucket,
+        storagePath: voiceoverAudioAsset.storagePath,
+        expiresInSeconds: 60 * 60 * 4,
+      });
+      if (!signedVoiceoverAudio) {
+        return markShellFailed(
+          repository,
+          input,
+          "Voiceover audio could not be signed for avatar rendering."
+        );
+      }
+
+      await recordProgress(repository, input, {
+        step: "generating_avatar",
+        label: "Checking Avatar Reuse",
+        progressPercent: 66,
+        message: "Checking for a reusable HeyGen avatar overlay.",
+      });
+
+      const avatarResult = await prepareHeyGenAvatarStage({
+        projectId: input.projectId,
+        runId: input.renderRunId,
+        userId: input.userId,
+        source: {
+          mode: "generate",
+          title: project.project.name,
+          audioUrl: signedVoiceoverAudio.signedUrl,
+        },
+        repository,
+        provider: options.avatarProvider,
+        voiceoverAudioAsset,
+        getApiKey: options.getApiKey,
+        options: {
+          reuseExistingAssets: shouldReuseAsset(input.options, "avatar"),
+          avatarId: input.options?.heyGenAvatarId,
+          size: input.options?.heyGenAvatarSize,
+          positioning: input.options?.heyGenAvatarPositioning,
+          generation: input.options?.heyGenAvatarGeneration,
+        },
+      });
+
+      if (!avatarResult.metadata) {
+        return markShellFailed(
+          repository,
+          input,
+          "Stored avatar metadata could not be loaded for final compositing."
+        );
+      }
+
+      avatarAssetIds = {
+        avatarVideoAssetId: avatarResult.avatarAsset.id,
+        avatarMetadataAssetId: avatarResult.metadataAsset.id,
+      };
+      avatarOverlay = {
+        avatarAsset: avatarResult.avatarAsset,
+        metadataAsset: avatarResult.metadataAsset,
+        metadata: avatarResult.metadata,
+      };
+
+      await recordProgress(repository, input, {
+        step: "generating_avatar",
+        label: avatarResult.reused ? "Avatar Reused" : "Avatar Generated",
+        progressPercent: 67,
+        message: avatarResult.reused
+          ? "A matching reusable avatar overlay was selected."
+          : "Avatar video and compositing metadata were generated and persisted.",
+        metadata: {
+          ...avatarAssetIds,
+          fingerprintHash: avatarResult.fingerprintHash,
+          reused: avatarResult.reused,
+        },
+      });
+    }
+
     await recordProgress(repository, input, {
       step: "rendering_scene_clips",
       label: "Checking Scene Clip Reuse",
@@ -542,6 +668,7 @@ export async function generateTourProjectVideo(
         scriptPlanAssetId: scriptPlanResult.asset.id,
         ...(voiceoverAssetIds ?? {}),
         ...(transitionAssetIds ?? {}),
+        ...(avatarAssetIds ?? {}),
         sceneClipAssetIds: sceneClipResult.clips.map((clip) => clip.asset.id),
       },
     });
@@ -557,6 +684,7 @@ export async function generateTourProjectVideo(
         fingerprintHash: clip.fingerprintHash,
       })),
       voiceoverAsset: voiceoverAudioAsset,
+      avatarOverlay,
       renderer: options.finalVideoRenderer,
       options: {
         muxSettings: input.options?.finalMuxSettings,
@@ -577,6 +705,7 @@ export async function generateTourProjectVideo(
         joinedScenesFingerprintHash: finalRenderResult.joinedScenesFingerprintHash,
         finalVideoFingerprintHash: finalRenderResult.finalVideoFingerprintHash,
         reusedFinalVideo: finalRenderResult.reusedFinalVideo,
+        reusedJoinedScenes: finalRenderResult.reusedJoinedScenes,
       },
     });
 

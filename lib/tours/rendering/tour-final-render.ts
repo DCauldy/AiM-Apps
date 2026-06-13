@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import type { TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
+import type { HeyGenAvatarMetadata } from "./tour-avatar";
 
 export const FINAL_RENDERER_VERSION = "ffmpeg-final-render-v1";
 
@@ -35,6 +36,12 @@ export type FinalRenderSceneClip = {
   fingerprintHash: string;
 };
 
+export type FinalRenderAvatarOverlay = {
+  avatarAsset: TourRenderAsset;
+  metadataAsset: TourRenderAsset;
+  metadata: HeyGenAvatarMetadata;
+};
+
 export type JoinedScenesFingerprint = {
   kind: "joined_scenes";
   version: 1;
@@ -50,6 +57,16 @@ export type JoinedScenesFingerprint = {
   };
 };
 
+export type FinalVideoAvatarOverlayFingerprint = {
+  assetId: string;
+  fingerprintHash: string;
+  metadataAssetId: string;
+  metadataFingerprintHash: string;
+  placement: HeyGenAvatarMetadata["overlay"]["placement"];
+  canvas: HeyGenAvatarMetadata["overlay"]["canvas"];
+  size: HeyGenAvatarMetadata["overlay"]["size"];
+};
+
 export type FinalVideoFingerprint = {
   kind: "final_video";
   version: 1;
@@ -63,7 +80,7 @@ export type FinalVideoFingerprint = {
     | null;
   muxSettings: ResolvedFinalRenderSettings;
   outputPreset: "vertical_1080p_h264_aac";
-  avatarOverlay: null;
+  avatarOverlay: FinalVideoAvatarOverlayFingerprint | null;
 };
 
 export type FinalVideoRendererInput = {
@@ -72,6 +89,8 @@ export type FinalVideoRendererInput = {
   joinedScenesPath: string;
   finalVideoPath: string;
   voiceoverAudioPath?: string;
+  avatarVideoPath?: string;
+  avatarOverlay?: HeyGenAvatarMetadata["overlay"];
   settings: ResolvedFinalRenderSettings;
   ffmpegPath: string;
 };
@@ -89,6 +108,7 @@ export type FinalRenderStageResult = {
   finalVideoFingerprint: FinalVideoFingerprint;
   finalVideoFingerprintHash: string;
   reusedFinalVideo: boolean;
+  reusedJoinedScenes: boolean;
 };
 
 export class TourFinalRenderError extends Error {
@@ -100,6 +120,8 @@ export class TourFinalRenderError extends Error {
       | "SCENE_CLIP_DOWNLOAD_FAILED"
       | "VOICEOVER_STORAGE_MISSING"
       | "VOICEOVER_DOWNLOAD_FAILED"
+      | "AVATAR_STORAGE_MISSING"
+      | "AVATAR_DOWNLOAD_FAILED"
       | "CONCAT_FAILED"
       | "MUX_FAILED"
       | "JOINED_SCENES_UPLOAD_FAILED"
@@ -157,6 +179,7 @@ export function buildJoinedScenesFingerprint(input: {
 export function buildFinalVideoFingerprint(input: {
   joinedScenesFingerprintHash: string;
   voiceoverAsset?: TourRenderAsset | null;
+  avatarOverlay?: FinalRenderAvatarOverlay | null;
   muxSettings: ResolvedFinalRenderSettings;
   outputPreset: FinalVideoFingerprint["outputPreset"];
 }): FinalVideoFingerprint {
@@ -169,11 +192,21 @@ export function buildFinalVideoFingerprint(input: {
       ? {
           assetId: input.voiceoverAsset.id,
           fingerprintHash: input.voiceoverAsset.fingerprintHash,
-        }
+      }
       : null,
     muxSettings: input.muxSettings,
     outputPreset: input.outputPreset,
-    avatarOverlay: null,
+    avatarOverlay: input.avatarOverlay
+      ? {
+          assetId: input.avatarOverlay.avatarAsset.id,
+          fingerprintHash: input.avatarOverlay.avatarAsset.fingerprintHash,
+          metadataAssetId: input.avatarOverlay.metadataAsset.id,
+          metadataFingerprintHash: input.avatarOverlay.metadataAsset.fingerprintHash,
+          placement: input.avatarOverlay.metadata.overlay.placement,
+          canvas: input.avatarOverlay.metadata.overlay.canvas,
+          size: input.avatarOverlay.metadata.overlay.size,
+        }
+      : null,
   };
 }
 
@@ -190,6 +223,7 @@ export async function renderFinalVideoStage(input: {
   repository: TourRenderRepository;
   clips: FinalRenderSceneClip[];
   voiceoverAsset?: TourRenderAsset | null;
+  avatarOverlay?: FinalRenderAvatarOverlay | null;
   renderer?: FinalVideoRenderer;
   options?: FinalRenderStageOptions;
 }): Promise<FinalRenderStageResult> {
@@ -206,6 +240,7 @@ export async function renderFinalVideoStage(input: {
   const finalVideoFingerprint = buildFinalVideoFingerprint({
     joinedScenesFingerprintHash,
     voiceoverAsset: input.voiceoverAsset,
+    avatarOverlay: input.avatarOverlay,
     muxSettings: resolvedOptions.muxSettings,
     outputPreset: resolvedOptions.outputPreset,
   });
@@ -233,6 +268,7 @@ export async function renderFinalVideoStage(input: {
         finalVideoFingerprint,
         finalVideoFingerprintHash,
         reusedFinalVideo: true,
+        reusedJoinedScenes: false,
       };
     }
   }
@@ -245,11 +281,6 @@ export async function renderFinalVideoStage(input: {
 
   try {
     await mkdir(scratchDir, { recursive: true });
-    const sceneClipPaths = await writeSceneClipsToScratch({
-      repository: input.repository,
-      clips: input.clips,
-      scratchDir,
-    });
     const voiceoverAudioPath = input.voiceoverAsset
       ? await writeVoiceoverToScratch({
           repository: input.repository,
@@ -257,70 +288,60 @@ export async function renderFinalVideoStage(input: {
           scratchDir,
         })
       : undefined;
+    const avatarVideoPath = input.avatarOverlay
+      ? await writeAvatarToScratch({
+          repository: input.repository,
+          avatarAsset: input.avatarOverlay.avatarAsset,
+          scratchDir,
+        })
+      : undefined;
 
-    await writeFile(
-      concatFilePath,
-      `${sceneClipPaths.map((clipPath) => `file '${escapeConcatPath(clipPath)}'`).join("\n")}\n`
-    );
+    let sceneClipPaths: string[] = [];
+    let joinedScenes: { asset: TourRenderAsset; reused: boolean } | null =
+      await reuseJoinedScenesAsset({
+        projectId: input.projectId,
+        runId: input.runId,
+        repository: input.repository,
+        joinedScenesPath,
+        fingerprintHash: joinedScenesFingerprintHash,
+        reuseExistingAssets: resolvedOptions.reuseExistingAssets,
+      });
 
-    let joined: { metadata?: Record<string, unknown> };
-    try {
-      joined = await renderer.joinSceneClips({
+    if (!joinedScenes) {
+      sceneClipPaths = await writeSceneClipsToScratch({
+        repository: input.repository,
+        clips: input.clips,
+        scratchDir,
+      });
+      await writeFile(
+        concatFilePath,
+        `${sceneClipPaths.map((clipPath) => `file '${escapeConcatPath(clipPath)}'`).join("\n")}\n`
+      );
+      joinedScenes = await joinOrReuseJoinedScenes({
+        projectId: input.projectId,
+        userId: input.userId,
+        runId: input.runId,
+        repository: input.repository,
+        renderer,
         concatFilePath,
         sceneClipPaths,
         joinedScenesPath,
         finalVideoPath,
         voiceoverAudioPath,
+        avatarVideoPath,
+        avatarOverlay: input.avatarOverlay?.metadata.overlay,
         settings: resolvedOptions.muxSettings,
-        ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+        fingerprint: joinedScenesFingerprint,
+        fingerprintHash: joinedScenesFingerprintHash,
+        reuseExistingAssets: false,
       });
-    } catch {
-      throw new TourFinalRenderError("Scene clip concat failed.", "CONCAT_FAILED");
     }
-
-    const joinedUpload = await input.repository.uploadRenderAssetBytes({
-      userId: input.userId,
-      projectId: input.projectId,
-      runId: input.runId,
-      kind: "joined_scenes",
-      content: await readFile(joinedScenesPath),
-      contentType: "video/mp4",
-      extension: "mp4",
-    });
-    if (!joinedUpload) {
-      throw new TourFinalRenderError(
-        "Could not upload joined scene video.",
-        "JOINED_SCENES_UPLOAD_FAILED"
-      );
-    }
-
-    const joinedScenesAsset = await input.repository.createAsset({
-      projectId: input.projectId,
-      createdByRunId: input.runId,
-      kind: "joined_scenes",
-      storageBucket: joinedUpload.storageBucket,
-      storagePath: joinedUpload.storagePath,
-      contentType: joinedUpload.contentType,
-      fingerprintHash: joinedScenesFingerprintHash,
-      fingerprint: joinedScenesFingerprint,
-      reusable: true,
-      metadata: {
-        sceneClipAssetIds: input.clips.map((clip) => clip.asset.id),
-        ...(joined.metadata ?? {}),
-      },
-    });
-    if (!joinedScenesAsset) {
+    if (!joinedScenes) {
       throw new TourFinalRenderError(
         "Could not create joined scene asset record.",
         "JOINED_SCENES_ASSET_CREATE_FAILED"
       );
     }
-
-    await input.repository.recordRunAssetUsage({
-      runId: input.runId,
-      assetId: joinedScenesAsset.id,
-      usage: "created",
-    });
 
     let final: { metadata?: Record<string, unknown> };
     try {
@@ -330,6 +351,8 @@ export async function renderFinalVideoStage(input: {
         joinedScenesPath,
         finalVideoPath,
         voiceoverAudioPath,
+        avatarVideoPath,
+        avatarOverlay: input.avatarOverlay?.metadata.overlay,
         settings: resolvedOptions.muxSettings,
         ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
       });
@@ -364,10 +387,10 @@ export async function renderFinalVideoStage(input: {
       fingerprint: finalVideoFingerprint,
       reusable: true,
       metadata: {
-        joinedScenesAssetId: joinedScenesAsset.id,
+        joinedScenesAssetId: joinedScenes.asset.id,
         voiceoverAssetId: input.voiceoverAsset?.id ?? null,
         outputPreset: resolvedOptions.outputPreset,
-        avatarOverlay: null,
+        avatarOverlay: finalVideoFingerprint.avatarOverlay,
         ...(final.metadata ?? {}),
       },
     });
@@ -385,13 +408,14 @@ export async function renderFinalVideoStage(input: {
     });
 
     return {
-      joinedScenesAsset,
+      joinedScenesAsset: joinedScenes.asset,
       finalVideoAsset,
       joinedScenesFingerprint,
       joinedScenesFingerprintHash,
       finalVideoFingerprint,
       finalVideoFingerprintHash,
       reusedFinalVideo: false,
+      reusedJoinedScenes: joinedScenes.reused,
     };
   } catch (error) {
     if (error instanceof TourFinalRenderError) {
@@ -422,7 +446,44 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
     },
 
     async muxFinalVideo(input) {
-      const args = input.voiceoverAudioPath
+      const scaleFilter = `scale=${input.settings.width}:${input.settings.height}:force_original_aspect_ratio=increase,crop=${input.settings.width}:${input.settings.height}`;
+      const args = input.avatarVideoPath && input.avatarOverlay
+        ? [
+            "-y",
+            "-i",
+            input.joinedScenesPath,
+            "-c:v",
+            input.avatarOverlay.ffmpeg.avatarInputCodec,
+            "-i",
+            input.avatarVideoPath,
+            ...(input.voiceoverAudioPath ? ["-i", input.voiceoverAudioPath] : []),
+            "-filter_complex",
+            input.avatarOverlay.ffmpeg.filterComplex,
+            "-map",
+            "[v]",
+            ...(input.voiceoverAudioPath ? ["-map", "2:a:0"] : ["-an"]),
+            "-c:v",
+            input.avatarOverlay.ffmpeg.outputVideoCodec,
+            "-preset",
+            input.settings.preset,
+            "-crf",
+            String(input.settings.crf),
+            "-pix_fmt",
+            "yuv420p",
+            ...(input.voiceoverAudioPath
+              ? [
+                  "-c:a",
+                  input.avatarOverlay.ffmpeg.outputAudioCodec,
+                  "-b:a",
+                  input.settings.audioBitrate,
+                ]
+              : []),
+            "-shortest",
+            "-movflags",
+            "+faststart",
+            input.finalVideoPath,
+          ]
+        : input.voiceoverAudioPath
         ? [
             "-y",
             "-i",
@@ -434,7 +495,7 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
             "-map",
             "1:a:0",
             "-vf",
-            `scale=${input.settings.width}:${input.settings.height}:force_original_aspect_ratio=increase,crop=${input.settings.width}:${input.settings.height}`,
+            scaleFilter,
             "-c:v",
             input.settings.videoCodec,
             "-preset",
@@ -455,7 +516,7 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
             "-i",
             input.joinedScenesPath,
             "-vf",
-            `scale=${input.settings.width}:${input.settings.height}:force_original_aspect_ratio=increase,crop=${input.settings.width}:${input.settings.height}`,
+            scaleFilter,
             "-c:v",
             input.settings.videoCodec,
             "-preset",
@@ -467,9 +528,135 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
             input.finalVideoPath,
           ];
       await runProcess(input.ffmpegPath, args);
-      return { metadata: { renderer: "ffmpeg_mux", hasVoiceover: Boolean(input.voiceoverAudioPath) } };
+      return {
+        metadata: {
+          renderer: "ffmpeg_mux",
+          hasVoiceover: Boolean(input.voiceoverAudioPath),
+          hasAvatarOverlay: Boolean(input.avatarVideoPath && input.avatarOverlay),
+        },
+      };
     },
   };
+}
+
+async function joinOrReuseJoinedScenes(input: {
+  projectId: string;
+  userId: string;
+  runId: string;
+  repository: TourRenderRepository;
+  renderer: FinalVideoRenderer;
+  concatFilePath: string;
+  sceneClipPaths: string[];
+  joinedScenesPath: string;
+  finalVideoPath: string;
+  voiceoverAudioPath?: string;
+  avatarVideoPath?: string;
+  avatarOverlay?: HeyGenAvatarMetadata["overlay"];
+  settings: ResolvedFinalRenderSettings;
+  fingerprint: JoinedScenesFingerprint;
+  fingerprintHash: string;
+  reuseExistingAssets: boolean;
+}): Promise<{ asset: TourRenderAsset; reused: boolean }> {
+  const reused = await reuseJoinedScenesAsset(input);
+  if (reused) return reused;
+
+  let joined: { metadata?: Record<string, unknown> };
+  try {
+    joined = await input.renderer.joinSceneClips({
+      concatFilePath: input.concatFilePath,
+      sceneClipPaths: input.sceneClipPaths,
+      joinedScenesPath: input.joinedScenesPath,
+      finalVideoPath: input.finalVideoPath,
+      voiceoverAudioPath: input.voiceoverAudioPath,
+      avatarVideoPath: input.avatarVideoPath,
+      avatarOverlay: input.avatarOverlay,
+      settings: input.settings,
+      ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+    });
+  } catch {
+    throw new TourFinalRenderError("Scene clip concat failed.", "CONCAT_FAILED");
+  }
+
+  const joinedUpload = await input.repository.uploadRenderAssetBytes({
+    userId: input.userId,
+    projectId: input.projectId,
+    runId: input.runId,
+    kind: "joined_scenes",
+    content: await readFile(input.joinedScenesPath),
+    contentType: "video/mp4",
+    extension: "mp4",
+  });
+  if (!joinedUpload) {
+    throw new TourFinalRenderError(
+      "Could not upload joined scene video.",
+      "JOINED_SCENES_UPLOAD_FAILED"
+    );
+  }
+
+  const joinedScenesAsset = await input.repository.createAsset({
+    projectId: input.projectId,
+    createdByRunId: input.runId,
+    kind: "joined_scenes",
+    storageBucket: joinedUpload.storageBucket,
+    storagePath: joinedUpload.storagePath,
+    contentType: joinedUpload.contentType,
+    fingerprintHash: input.fingerprintHash,
+    fingerprint: input.fingerprint,
+    reusable: true,
+    metadata: {
+      sceneClipAssetIds: input.fingerprint.orderedClips.map((clip) => clip.assetId),
+      ...(joined.metadata ?? {}),
+    },
+  });
+  if (!joinedScenesAsset) {
+    throw new TourFinalRenderError(
+      "Could not create joined scene asset record.",
+      "JOINED_SCENES_ASSET_CREATE_FAILED"
+    );
+  }
+
+  await input.repository.recordRunAssetUsage({
+    runId: input.runId,
+    assetId: joinedScenesAsset.id,
+    usage: "created",
+  });
+
+  return { asset: joinedScenesAsset, reused: false };
+}
+
+async function reuseJoinedScenesAsset(input: {
+  projectId: string;
+  runId: string;
+  repository: TourRenderRepository;
+  joinedScenesPath: string;
+  fingerprintHash: string;
+  reuseExistingAssets: boolean;
+}): Promise<{ asset: TourRenderAsset; reused: true } | null> {
+  if (!input.reuseExistingAssets) {
+    return null;
+  }
+
+  const reusableJoinedScenes = await input.repository.findReusableAsset({
+    projectId: input.projectId,
+    kind: "joined_scenes",
+    fingerprintHash: input.fingerprintHash,
+  });
+  if (!reusableJoinedScenes) {
+    return null;
+  }
+
+  await writeJoinedScenesToScratch({
+    repository: input.repository,
+    joinedScenesAsset: reusableJoinedScenes,
+    joinedScenesPath: input.joinedScenesPath,
+  });
+  await input.repository.recordRunAssetUsage({
+    runId: input.runId,
+    assetId: reusableJoinedScenes.id,
+    usage: "reused",
+  });
+
+  return { asset: reusableJoinedScenes, reused: true };
 }
 
 async function writeSceneClipsToScratch(input: {
@@ -530,6 +717,63 @@ async function writeVoiceoverToScratch(input: {
   const voiceoverPath = path.join(input.scratchDir, `${input.voiceoverAsset.id}.mp3`);
   await writeFile(voiceoverPath, bytes);
   return voiceoverPath;
+}
+
+async function writeAvatarToScratch(input: {
+  repository: TourRenderRepository;
+  avatarAsset: TourRenderAsset;
+  scratchDir: string;
+}): Promise<string> {
+  if (input.avatarAsset.storageBucket !== "tours-generated-media" || !input.avatarAsset.storagePath) {
+    throw new TourFinalRenderError(
+      "Stored avatar asset is missing a storage object.",
+      "AVATAR_STORAGE_MISSING"
+    );
+  }
+
+  const bytes = await input.repository.downloadRenderAssetBytes({
+    storageBucket: input.avatarAsset.storageBucket,
+    storagePath: input.avatarAsset.storagePath,
+  });
+  if (!bytes) {
+    throw new TourFinalRenderError(
+      "Could not download stored avatar video.",
+      "AVATAR_DOWNLOAD_FAILED"
+    );
+  }
+
+  const avatarPath = path.join(input.scratchDir, `${input.avatarAsset.id}.webm`);
+  await writeFile(avatarPath, bytes);
+  return avatarPath;
+}
+
+async function writeJoinedScenesToScratch(input: {
+  repository: TourRenderRepository;
+  joinedScenesAsset: TourRenderAsset;
+  joinedScenesPath: string;
+}): Promise<void> {
+  if (
+    input.joinedScenesAsset.storageBucket !== "tours-generated-media" ||
+    !input.joinedScenesAsset.storagePath
+  ) {
+    throw new TourFinalRenderError(
+      "Stored scene clip asset is missing a storage object.",
+      "SCENE_CLIP_STORAGE_MISSING"
+    );
+  }
+
+  const bytes = await input.repository.downloadRenderAssetBytes({
+    storageBucket: input.joinedScenesAsset.storageBucket,
+    storagePath: input.joinedScenesAsset.storagePath,
+  });
+  if (!bytes) {
+    throw new TourFinalRenderError(
+      "Could not download stored scene clip.",
+      "SCENE_CLIP_DOWNLOAD_FAILED"
+    );
+  }
+
+  await writeFile(input.joinedScenesPath, bytes);
 }
 
 async function runProcess(command: string, args: string[]): Promise<void> {

@@ -10,6 +10,7 @@ import {
   renderFinalVideoStage,
   type FinalVideoRenderer,
 } from "./tour-final-render";
+import type { HeyGenAvatarMetadata } from "./tour-avatar";
 import type { TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
 
 const sceneClipAsset1: TourRenderAsset = {
@@ -63,6 +64,68 @@ const finalVideoAsset: TourRenderAsset = {
   storagePath: "user-1/project-1/run-1/final-video.mp4",
   fingerprintHash: "final-hash",
 };
+
+const avatarVideoAsset: TourRenderAsset = {
+  ...sceneClipAsset1,
+  id: "asset-avatar",
+  sceneId: null,
+  kind: "avatar_video",
+  storagePath: "user-1/project-1/run-1/avatar.webm",
+  contentType: "video/webm",
+  fingerprintHash: "avatar-hash",
+};
+
+const avatarMetadataAsset: TourRenderAsset = {
+  ...sceneClipAsset1,
+  id: "asset-avatar-metadata",
+  sceneId: null,
+  kind: "avatar_metadata",
+  storagePath: "user-1/project-1/run-1/avatar-metadata.json",
+  contentType: "application/json",
+  fingerprintHash: "avatar-metadata-hash",
+};
+
+const avatarMetadata = {
+  analysis: {
+    sourceWidth: 720,
+    sourceHeight: 1280,
+    sampledFrameCount: 1,
+    alphaThreshold: 16,
+    medianBox: { x: 120, y: 100, width: 360, height: 900, right: 480, bottom: 1000 },
+    maxBox: { x: 120, y: 100, width: 360, height: 900, right: 480, bottom: 1000 },
+    transparentPadding: { left: 120, right: 240, top: 100, bottom: 280 },
+    edgeTouchRate: { left: 0, right: 0, top: 0, bottom: 0 },
+    cropRisk: { level: "none", reasons: [] },
+  },
+  overlay: {
+    canvas: { width: 1080, height: 1920 },
+    size: "medium",
+    placement: {
+      avatarWidth: 1188,
+      anchor: "bottom-right",
+      rightMargin: 0,
+      bottomMargin: 0,
+      basis: "visibleBoundingBox",
+      overlayX: "W-792-0",
+      overlayY: "H-1650-0",
+    },
+    ffmpeg: {
+      avatarInputCodec: "libvpx-vp9",
+      backgroundFilter:
+        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg]",
+      avatarScaleFilter: "scale=1188:-1",
+      overlayFilter:
+        "[1:v]scale=1188:-1[av];[bg][av]overlay=x=W-792-0:y=H-1650-0:format=auto[v]",
+      filterComplex:
+        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[bg];[1:v]scale=1188:-1[av];[bg][av]overlay=x=W-792-0:y=H-1650-0:format=auto[v]",
+      outputVideoCodec: "libx264",
+      outputAudioCodec: "aac",
+      preserveAlpha: true,
+    },
+  },
+  frameChecks: [],
+  warnings: [],
+} satisfies HeyGenAvatarMetadata;
 
 function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRenderRepository {
   return {
@@ -242,6 +305,96 @@ describe("renderFinalVideoStage", () => {
     });
   });
 
+  it("reuses matching joined scenes before muxing the final video", async () => {
+    const reusedJoinedScenesAsset: TourRenderAsset = {
+      ...joinedScenesAsset,
+      id: "asset-joined-reused",
+      createdByRunId: "older-run",
+    };
+    const repository = createRepository({
+      findReusableAsset: vi.fn((input) =>
+        Promise.resolve(input.kind === "joined_scenes" ? reusedJoinedScenesAsset : null)
+      ),
+      uploadRenderAssetBytes: vi.fn().mockResolvedValue({
+        storageBucket: "tours-generated-media",
+        storagePath: "user-1/project-1/run-1/final-video.mp4",
+        contentType: "video/mp4",
+      }),
+      createAsset: vi.fn().mockResolvedValue(finalVideoAsset),
+    });
+    const renderer = createRenderer();
+
+    const result = await renderFinalVideoStage({
+      projectId: "project-1",
+      userId: "user-1",
+      runId: "run-final",
+      repository,
+      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      voiceoverAsset,
+      renderer,
+      options: { reuseExistingAssets: true },
+    });
+
+    expect(result.reusedJoinedScenes).toBe(true);
+    expect(result.joinedScenesAsset).toBe(reusedJoinedScenesAsset);
+    expect(renderer.joinSceneClips).not.toHaveBeenCalled();
+    expect(renderer.muxFinalVideo).toHaveBeenCalled();
+    expect(repository.downloadRenderAssetBytes).not.toHaveBeenCalledWith({
+      storageBucket: "tours-generated-media",
+      storagePath: "user-1/project-1/run-1/scene-clip-1.mp4",
+    });
+    expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
+      runId: "run-final",
+      assetId: "asset-joined-reused",
+      usage: "reused",
+    });
+  });
+
+  it("overlays avatar video during final mux when avatar assets are provided", async () => {
+    const repository = createRepository({
+      createAsset: vi.fn().mockResolvedValueOnce(joinedScenesAsset).mockResolvedValueOnce(finalVideoAsset),
+    });
+    const renderer = createRenderer({
+      muxFinalVideo: vi.fn(async (input) => {
+        expect(input.avatarVideoPath).toMatch(/asset-avatar/);
+        expect(input.avatarOverlay?.ffmpeg.filterComplex).toContain("overlay=x=W-792-0");
+        await writeFile(input.finalVideoPath, Buffer.from("final-avatar-mp4"));
+        return { metadata: { muxer: "avatar-test" } };
+      }),
+    });
+
+    const result = await renderFinalVideoStage({
+      projectId: "project-1",
+      userId: "user-1",
+      runId: "run-final",
+      repository,
+      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      voiceoverAsset,
+      avatarOverlay: {
+        avatarAsset: avatarVideoAsset,
+        metadataAsset: avatarMetadataAsset,
+        metadata: avatarMetadata,
+      },
+      renderer,
+    });
+
+    expect(result.finalVideoFingerprint.avatarOverlay).toMatchObject({
+      assetId: "asset-avatar",
+      fingerprintHash: "avatar-hash",
+      metadataAssetId: "asset-avatar-metadata",
+      metadataFingerprintHash: "avatar-metadata-hash",
+    });
+    expect(repository.createAsset).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        kind: "final_video",
+        metadata: expect.objectContaining({
+          avatarOverlay: expect.objectContaining({ assetId: "asset-avatar" }),
+        }),
+      })
+    );
+  });
+
   it("does not reuse the final video when reuse is disabled", async () => {
     const repository = createRepository({
       findReusableAsset: vi.fn().mockResolvedValue(finalVideoAsset),
@@ -356,7 +509,7 @@ describe("renderFinalVideoStage", () => {
 });
 
 describe("final render fingerprints", () => {
-  it("include ordered clip identity, voiceover identity, mux settings, preset, and avatar extension point", () => {
+  it("include ordered clip identity, voiceover identity, mux settings, preset, and avatar overlay identity", () => {
     const joined = buildJoinedScenesFingerprint({
       clips: [
         { sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" },
@@ -367,6 +520,11 @@ describe("final render fingerprints", () => {
     const final = buildFinalVideoFingerprint({
       joinedScenesFingerprintHash: "joined-hash",
       voiceoverAsset,
+      avatarOverlay: {
+        avatarAsset: avatarVideoAsset,
+        metadataAsset: avatarMetadataAsset,
+        metadata: avatarMetadata,
+      },
       muxSettings: {
         width: 1080,
         height: 1920,
@@ -388,7 +546,7 @@ describe("final render fingerprints", () => {
       voiceover: { assetId: "asset-voiceover", fingerprintHash: "voiceover-hash" },
       muxSettings: { width: 1080, height: 1920 },
       outputPreset: "vertical_1080p_h264_aac",
-      avatarOverlay: null,
+      avatarOverlay: { assetId: "asset-avatar", metadataAssetId: "asset-avatar-metadata" },
     });
   });
 });

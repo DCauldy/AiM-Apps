@@ -299,7 +299,7 @@ Use Supabase for product status and durable asset reuse.
 Before product render rows exist, the local proof path is intentionally separate
 from end-user render actions:
 
-- Task: `src/triggers/tours-render-noop-proof.ts`
+- Task: `triggers/tours-render-noop-proof.ts`
 - Endpoint: `POST /api/apps/tours/projects/:projectId/render-proof/noop`
 - Payload shape:
 

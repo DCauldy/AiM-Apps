@@ -8,7 +8,6 @@ const FALLBACK_STEPS = [
   { key: "queued", label: "Queued", detail: "Render request received" },
   { key: "preparing_assets", label: "Preparing Assets", detail: "Checking listing media and scene inputs" },
   { key: "planning_script", label: "Planning Script", detail: "Structuring the property tour" },
-  { key: "detecting_transitions", label: "Detecting Transitions", detail: "Matching motion between scenes" },
   { key: "rendering_scene_clips", label: "Rendering Scene Clips", detail: "Building individual scene video clips" },
   { key: "joining_video", label: "Joining Scene Clips", detail: "Combining rendered scenes" },
   { key: "uploading_final", label: "Uploading Final Video", detail: "Saving the generated tour" },

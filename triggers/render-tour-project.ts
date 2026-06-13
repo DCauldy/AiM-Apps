@@ -8,6 +8,7 @@ import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/tour-vo
 import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/openrouter-script-planning-provider";
 import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/tour-transitions";
 import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/tour-render.repository";
+import { createHeyGenAvatarProvider } from "@/lib/tours/rendering/tour-avatar";
 
 export type RenderTourProjectPayload = Omit<GenerateTourProjectVideoInput, "progress">;
 
@@ -32,6 +33,7 @@ export const renderTourProjectTask = task({
       triggerRunId: ctx.run.id,
     });
 
+    const isAvatarRender = payload.options?.tourType === "tour_video_avatar";
     const run = await generateTourProjectVideo(
       {
         ...payload,
@@ -51,6 +53,7 @@ export const renderTourProjectTask = task({
         transitionDetectionProvider: createOpenRouterTransitionDetectionProvider({
           apiKey: process.env.OPENROUTER_API_KEY ?? "",
         }),
+        ...(isAvatarRender ? { avatarProvider: createHeyGenAvatarProvider() } : {}),
       }
     );
 

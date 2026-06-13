@@ -6,6 +6,11 @@ import {
   type TourRenderPreflightProject,
   type TourRenderRepository,
 } from "./tour-render.repository";
+import type {
+  HeyGenAvatarGenerationOptions,
+  HeyGenAvatarPositioningInput,
+  HeyGenAvatarSize,
+} from "./tour-avatar";
 
 export type TourRenderMode = "ken_burns_ffmpeg" | "provider_image_to_video";
 
@@ -15,6 +20,7 @@ export type TourRenderOptions = {
   reuse?: {
     scriptPlan?: boolean;
     voiceover?: boolean;
+    avatar?: boolean;
     sceneClips?: boolean;
     finalVideo?: boolean;
   };
@@ -58,6 +64,10 @@ export type TourRenderOptions = {
     crf?: number;
     audioBitrate?: string;
   };
+  heyGenAvatarId?: string;
+  heyGenAvatarSize?: HeyGenAvatarSize;
+  heyGenAvatarPositioning?: HeyGenAvatarPositioningInput;
+  heyGenAvatarGeneration?: Partial<HeyGenAvatarGenerationOptions>;
 };
 
 export type TourRenderPreflightIssueCode =
@@ -67,6 +77,8 @@ export type TourRenderPreflightIssueCode =
   | "missing_authoritative_source_photo"
   | "missing_elevenlabs_key"
   | "missing_heygen_key"
+  | "missing_heygen_avatar_id"
+  | "unsupported_render_mode"
   | "listing_media_unreadable"
   | "generated_media_unwritable";
 
@@ -170,6 +182,15 @@ export async function preflightTourRender(
     );
   }
 
+  if (options.renderMode === "provider_image_to_video") {
+    issues.push(
+      issue(
+        "unsupported_render_mode",
+        "Provider image-to-video rendering is not enabled for production tours yet."
+      )
+    );
+  }
+
   const includedScenes = project.scenes.filter((scene) => scene.included);
   if (includedScenes.length === 0) {
     issues.push(
@@ -216,6 +237,18 @@ export async function preflightTourRender(
         issue("missing_heygen_key", "Add a HeyGen API key before rendering an avatar tour.")
       );
     }
+  }
+
+  if (
+    project.project.tourType === "tour_video_avatar" &&
+    !(options.heyGenAvatarId ?? process.env.HEYGEN_AVATAR_ID ?? "").trim()
+  ) {
+    issues.push(
+      issue(
+        "missing_heygen_avatar_id",
+        "Configure a HeyGen avatar id before rendering an avatar tour."
+      )
+    );
   }
 
   const readableSourcePaths = includedScenes

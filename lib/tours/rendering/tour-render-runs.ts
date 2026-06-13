@@ -1,8 +1,8 @@
 import "server-only";
 
 import { tasks } from "@trigger.dev/sdk/v3";
-import type { renderTourProjectTask } from "@/src/triggers/render-tour-project";
-import type { toursRenderNoopProofTask } from "@/src/triggers/tours-render-noop-proof";
+import type { renderTourProjectTask } from "@/triggers/render-tour-project";
+import type { toursRenderNoopProofTask } from "@/triggers/tours-render-noop-proof";
 import {
   isTourRenderRunActive,
   type TourRenderTimelineStep,
@@ -138,13 +138,14 @@ function getPipelineStepKeys(tourType: TourProjectType): TourRenderStep[] {
 
   if (tourType === "tour_video_voice_over" || tourType === "tour_video_avatar") {
     steps.push("generating_voiceover");
+    steps.push("detecting_transitions");
   }
 
   if (tourType === "tour_video_avatar") {
     steps.push("generating_avatar");
   }
 
-  steps.push("detecting_transitions", "rendering_scene_clips", "joining_video", "uploading_final");
+  steps.push("rendering_scene_clips", "joining_video", "uploading_final");
   return steps;
 }
 

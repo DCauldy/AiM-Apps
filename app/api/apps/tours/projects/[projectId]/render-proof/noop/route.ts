@@ -2,7 +2,7 @@ import { tasks } from "@trigger.dev/sdk/v3";
 import { z } from "zod";
 
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import type { toursRenderNoopProofTask } from "@/src/triggers/tours-render-noop-proof";
+import type { toursRenderNoopProofTask } from "@/triggers/tours-render-noop-proof";
 
 export const dynamic = "force-dynamic";
 

@@ -159,23 +159,52 @@ describe("preflightTourRender", () => {
       project: { ...baseProject.project, tourType: "tour_video_avatar" },
     });
 
-    await expect(runPreflight(repository, {}, { elevenlabs: true })).resolves.toMatchObject({
+    await expect(
+      runPreflight(repository, { heyGenAvatarId: "avatar-1" }, { elevenlabs: true })
+    ).resolves.toMatchObject({
       ok: false,
       issues: [{ code: "missing_heygen_key", severity: "blocking" }],
     });
 
-    await expect(runPreflight(repository, {}, { heygen: true })).resolves.toMatchObject({
+    await expect(
+      runPreflight(repository, { heyGenAvatarId: "avatar-1" }, { heygen: true })
+    ).resolves.toMatchObject({
       ok: false,
       issues: [{ code: "missing_elevenlabs_key", severity: "blocking" }],
     });
 
     await expect(
-      runPreflight(repository, {}, { elevenlabs: true, heygen: true })
+      runPreflight(repository, { heyGenAvatarId: "avatar-1" }, { elevenlabs: true, heygen: true })
     ).resolves.toMatchObject({
       ok: true,
       summary: {
         requiredProviderKeys: ["elevenlabs", "heygen"],
       },
+    });
+  });
+
+  test("requires a configured HeyGen avatar id for avatar tours", async () => {
+    const repository = createRepository({
+      ...baseProject,
+      project: { ...baseProject.project, tourType: "tour_video_avatar" },
+    });
+
+    await expect(
+      runPreflight(repository, {}, { elevenlabs: true, heygen: true })
+    ).resolves.toMatchObject({
+      ok: false,
+      issues: [{ code: "missing_heygen_avatar_id", severity: "blocking" }],
+    });
+  });
+
+  test("blocks provider image-to-video until the production adapter is enabled", async () => {
+    const repository = createRepository();
+
+    await expect(
+      runPreflight(repository, { renderMode: "provider_image_to_video" })
+    ).resolves.toMatchObject({
+      ok: false,
+      issues: [{ code: "unsupported_render_mode", severity: "blocking" }],
     });
   });
 
