@@ -81,6 +81,9 @@ export default function OtterlyProbePage() {
     status: number;
     data?: unknown;
     error?: string;
+    /** Otterly's raw error body when status !== 2xx — usually
+     *  contains the actual validation detail / missing-field list. */
+    body?: unknown;
   } | null>(null);
 
   const handleProbe = async () => {
@@ -112,6 +115,7 @@ export default function OtterlyProbePage() {
         status: res.status,
         data: data.data,
         error: data.error,
+        body: data.body,
       });
     } catch (e) {
       setResponse({
@@ -261,7 +265,16 @@ export default function OtterlyProbePage() {
               )}
             </div>
             <pre className="px-5 py-4 overflow-auto text-xs leading-relaxed font-mono max-h-[500px]">
-              {JSON.stringify(response.data ?? response.error, null, 2)}
+              {JSON.stringify(
+                // On success show the data; on error show the full
+                // Otterly response body if present (validation detail
+                // lives there), falling back to the error message.
+                response.ok
+                  ? response.data
+                  : response.body ?? response.error,
+                null,
+                2,
+              )}
             </pre>
           </div>
         )}
