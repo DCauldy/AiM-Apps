@@ -1,12 +1,10 @@
+import { tasks } from "@trigger.dev/sdk/v3";
 import { createClient } from "@/lib/supabase/server";
-import { inngest } from "@/lib/inngest/client";
 import { getRadarUsage, incrementManualChecks } from "@/lib/radar/usage";
-import { runRadarCheck } from "@/lib/radar/run-check";
 import { NextRequest } from "next/server";
+import type { radarCheckTask } from "@/triggers/radar";
 
 export const dynamic = "force-dynamic";
-
-const isDev = process.env.NODE_ENV === "development";
 
 /**
  * GET /api/apps/radar/checks
@@ -109,25 +107,12 @@ export async function POST(_req: NextRequest) {
     // Increment usage
     await incrementManualChecks(user.id);
 
-    if (isDev) {
-      // Dev mode: run check directly in background, return immediately
-      runRadarCheck({
-        userId: user.id,
-        trigger: "manual",
-      }).catch((err) => {
-        console.error("[Radar] Check failed:", err);
-      });
-
-      return Response.json({ success: true, message: "Check triggered (dev mode)" });
-    }
-
-    // Production: send event to Inngest
-    await inngest.send({
-      name: "radar/check.requested",
-      data: {
-        userId: user.id,
-        trigger: "manual" as const,
-      },
+    // Fire the Trigger.dev task. In dev the Trigger.dev CLI receives
+    // the run; in prod Trigger Cloud runs it. Either way the route
+    // returns immediately and the heavy work happens out-of-band.
+    await tasks.trigger<typeof radarCheckTask>("radar-check", {
+      userId: user.id,
+      trigger: "manual" as const,
     });
 
     return Response.json({ success: true, message: "Check triggered" });

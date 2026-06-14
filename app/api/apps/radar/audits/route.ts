@@ -1,12 +1,10 @@
+import { tasks } from "@trigger.dev/sdk/v3";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { inngest } from "@/lib/inngest/client";
 import { getRadarUsage, incrementAudits } from "@/lib/radar/usage";
-import { runRadarAudit } from "@/lib/radar/run-audit";
 import { NextRequest } from "next/server";
+import type { radarAuditTask } from "@/triggers/radar";
 
 export const dynamic = "force-dynamic";
-
-const isDev = process.env.NODE_ENV === "development";
 
 /**
  * GET /api/apps/radar/audits
@@ -89,29 +87,12 @@ export async function POST(_req: NextRequest) {
     // Increment usage
     await incrementAudits(user.id);
 
-    if (isDev) {
-      // Dev mode: run audit directly in background, return immediately
-      runRadarAudit({
-        userId: user.id,
-        url: profile.website_url,
-      }).catch((err) => {
-        console.error("[Radar] Audit failed:", err);
-      });
-
-      return Response.json({
-        success: true,
-        message: "Audit triggered (dev mode)",
-        url: profile.website_url,
-      });
-    }
-
-    // Production: send event to Inngest
-    await inngest.send({
-      name: "radar/audit.requested",
-      data: {
-        userId: user.id,
-        url: profile.website_url,
-      },
+    // Fire the Trigger.dev task. In dev the local Trigger CLI picks
+    // up the run; in prod Trigger Cloud runs it. The route returns
+    // immediately and the crawl + score happen out-of-band.
+    await tasks.trigger<typeof radarAuditTask>("radar-audit", {
+      userId: user.id,
+      url: profile.website_url,
     });
 
     return Response.json({
