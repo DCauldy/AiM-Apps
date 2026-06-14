@@ -6,7 +6,6 @@ import { Sparkles, FileText, Radar, Lock, GraduationCap, ExternalLink } from "lu
 import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
 import { BlogUpgradeModal } from "@/components/blog-engine/BlogUpgradeModal";
-import { RadarUpgradeModal } from "@/components/radar/RadarUpgradeModal";
 import { startNavigationProgress } from "@/lib/navigation-progress";
 
 interface AppCard {
@@ -82,12 +81,14 @@ export function AppsLandingGrid({ flags, subscriptionTier, usageStats }: AppsLan
 
   const [showPromptPackModal, setShowPromptPackModal] = useState(false);
   const [showBlogUpgradeModal, setShowBlogUpgradeModal] = useState(false);
-  const [showRadarUpgradeModal, setShowRadarUpgradeModal] = useState(false);
 
   const handleGetMore = (appId: string) => {
     if (appId === "prompt-studio") setShowPromptPackModal(true);
     if (appId === "blog-engine") setShowBlogUpgradeModal(true);
-    if (appId === "radar") setShowRadarUpgradeModal(true);
+    // Radar paywall preview will be rebuilt as a generic
+    // "Pro Required" modal once we sort the multi-app paywall story.
+    // For now, non-Pro clicks fall through to the route's tier check
+    // which redirects to /apps/prompt-studio?upgrade=radar.
   };
 
   return (
@@ -225,10 +226,6 @@ export function AppsLandingGrid({ flags, subscriptionTier, usageStats }: AppsLan
       <BlogUpgradeModal
         open={showBlogUpgradeModal}
         onClose={() => setShowBlogUpgradeModal(false)}
-      />
-      <RadarUpgradeModal
-        open={showRadarUpgradeModal}
-        onClose={() => setShowRadarUpgradeModal(false)}
       />
     </>
   );

@@ -153,18 +153,37 @@ export async function getRadarPacks(): Promise<RadarPack[]> {
       .order("sort_order");
 
     if (data && data.length > 0) {
-      return data.map((row) => ({
-        id: row.id,
-        tier: row.tier ?? "",
-        queryLimit: row.query_limit ?? 25,
-        manualChecksLimit: row.manual_checks_limit ?? 0,
-        auditsLimit: row.audits_limit ?? 1,
-        monitoringFrequency: row.monitoring_frequency ?? "monthly",
-        priceCents: row.price_cents ?? 0,
-        stripePriceId: row.stripe_price_id ?? "price_TODO",
-        label: row.label ?? "",
-        bestValue: row.best_value ?? false,
-      }));
+      return data.map((row) => {
+        // Legacy DB columns drive the per-customer quota system; the
+        // newer Bronze/Silver/Gold/Diamond fields are derived from
+        // those for display in the Upgrade tab. When the DB grows
+        // dedicated columns for prompts/competitors/etc, swap to
+        // reading those directly.
+        const queryLimit = row.query_limit ?? 25;
+        const auditsLimit = row.audits_limit ?? 1;
+        const monitoringFrequency =
+          (row.monitoring_frequency ?? "monthly") as "monthly" | "weekly";
+        return {
+          id: row.id,
+          tier: row.tier ?? "",
+          queryLimit,
+          manualChecksLimit: row.manual_checks_limit ?? 0,
+          auditsLimit,
+          monitoringFrequency,
+          // Derived display fields
+          prompts: Math.max(1, Math.round(queryLimit / 4)),
+          competitors: 3,
+          auditsPerMonth: auditsLimit,
+          refreshFrequency:
+            monitoringFrequency === "weekly"
+              ? ("daily" as const)
+              : ("weekly" as const),
+          priceCents: row.price_cents ?? 0,
+          stripePriceId: row.stripe_price_id ?? "price_TODO",
+          label: row.label ?? "",
+          bestValue: row.best_value ?? false,
+        };
+      });
     }
   } catch {
     // DB unavailable — fall through

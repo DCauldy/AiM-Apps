@@ -6,7 +6,12 @@ import type {
   OtterlyAuditCheck,
   OtterlyBrandReport,
   OtterlyBrandReportStats,
+  OtterlyCitation,
+  OtterlyContentCheckDetail,
+  OtterlyCrawlabilityCheckDetail,
   OtterlyListResponse,
+  OtterlyPromptDetail,
+  OtterlyPromptSummary,
   OtterlyRecommendation,
   OtterlyWorkspace,
   CreateAuditCheckInput,
@@ -112,6 +117,43 @@ export function getBrandReportRecommendations(
 }
 
 // ---------------------------------------------------------------------------
+// Research — per-prompt aggregates + citations.
+// All three endpoints require the same startDate/endDate/country
+// triple as the stats call.
+// ---------------------------------------------------------------------------
+
+export function listBrandReportPrompts(
+  reportId: string,
+  opts: StatsRangeOptions,
+  c?: OtterlyClient,
+): Promise<OtterlyListResponse<OtterlyPromptSummary>> {
+  return client(c).raw<OtterlyListResponse<OtterlyPromptSummary>>(
+    `/v1/reports/brand/${reportId}/prompts?${rangeQs(opts)}`,
+  );
+}
+
+export function getBrandReportPrompt(
+  reportId: string,
+  promptId: string,
+  opts: StatsRangeOptions,
+  c?: OtterlyClient,
+): Promise<OtterlyPromptDetail> {
+  return client(c).raw<OtterlyPromptDetail>(
+    `/v1/reports/brand/${reportId}/prompts/${promptId}?${rangeQs(opts)}`,
+  );
+}
+
+export function listBrandReportCitations(
+  reportId: string,
+  opts: StatsRangeOptions,
+  c?: OtterlyClient,
+): Promise<OtterlyListResponse<OtterlyCitation>> {
+  return client(c).raw<OtterlyListResponse<OtterlyCitation>>(
+    `/v1/reports/brand/${reportId}/citations?${rangeQs(opts)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // GEO audits — URL-driven, scoped to a workspace
 // ---------------------------------------------------------------------------
 
@@ -141,8 +183,8 @@ export function createCrawlabilityCheck(
 export function getContentCheck(
   id: string,
   c?: OtterlyClient,
-): Promise<OtterlyAuditCheck> {
-  return client(c).raw<OtterlyAuditCheck>(
+): Promise<OtterlyContentCheckDetail> {
+  return client(c).raw<OtterlyContentCheckDetail>(
     `/v1/audits/geo/content-checks/${id}`,
   );
 }
@@ -150,8 +192,24 @@ export function getContentCheck(
 export function getCrawlabilityCheck(
   id: string,
   c?: OtterlyClient,
-): Promise<OtterlyAuditCheck> {
-  return client(c).raw<OtterlyAuditCheck>(
+): Promise<OtterlyCrawlabilityCheckDetail> {
+  return client(c).raw<OtterlyCrawlabilityCheckDetail>(
     `/v1/audits/geo/crawlability-checks/${id}`,
+  );
+}
+
+export function listContentChecks(
+  c?: OtterlyClient,
+): Promise<OtterlyListResponse<OtterlyAuditCheck>> {
+  return client(c).raw<OtterlyListResponse<OtterlyAuditCheck>>(
+    "/v1/audits/geo/content-checks",
+  );
+}
+
+export function listCrawlabilityChecks(
+  c?: OtterlyClient,
+): Promise<OtterlyListResponse<OtterlyAuditCheck>> {
+  return client(c).raw<OtterlyListResponse<OtterlyAuditCheck>>(
+    "/v1/audits/geo/crawlability-checks",
   );
 }

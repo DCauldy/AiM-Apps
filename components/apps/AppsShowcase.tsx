@@ -34,7 +34,6 @@ import {
 import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
 import { BlogUpgradeModal } from "@/components/blog-engine/BlogUpgradeModal";
-import { RadarUpgradeModal } from "@/components/radar/RadarUpgradeModal";
 import { startNavigationProgress } from "@/lib/navigation-progress";
 
 /* ── Types ── */
@@ -276,7 +275,6 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
   const [selectedId, setSelectedId] = useState<string>(APPS[0].id);
   const [showPromptPackModal, setShowPromptPackModal] = useState(false);
   const [showBlogUpgradeModal, setShowBlogUpgradeModal] = useState(false);
-  const [showRadarUpgradeModal, setShowRadarUpgradeModal] = useState(false);
 
   // Mobile accordion
   const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
@@ -299,8 +297,9 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
   const handleGetMore = (appId: string) => {
     if (appId === "prompt-studio") setShowPromptPackModal(true);
     if (appId === "blog-engine") setShowBlogUpgradeModal(true);
-    if (appId === "radar") setShowRadarUpgradeModal(true);
-    if (appId === "tours") setShowRadarUpgradeModal(true);
+    // Radar + Tours: paywall preview is being rebuilt as a generic
+    // "Pro Required" modal. For now, non-Pro clicks fall through to
+    // each route's tier check which redirects to the upgrade flow.
   };
 
   const getAccessState = (app: AppMeta) => {
@@ -790,10 +789,6 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
       <BlogUpgradeModal
         open={showBlogUpgradeModal}
         onClose={() => setShowBlogUpgradeModal(false)}
-      />
-      <RadarUpgradeModal
-        open={showRadarUpgradeModal}
-        onClose={() => setShowRadarUpgradeModal(false)}
       />
     </>
   );

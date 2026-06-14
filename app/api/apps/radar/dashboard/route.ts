@@ -5,7 +5,6 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getActiveProfile } from "@/lib/profiles/server";
 import {
   getAccountInfo,
-  getBrandReportRecommendations,
   getBrandReportStats,
   listBrandReports,
 } from "@/lib/radar-otterly/accessors";
@@ -18,7 +17,6 @@ import type {
   OtterlyAccountInfo,
   OtterlyBrandReport,
   OtterlyBrandReportStats,
-  OtterlyRecommendation,
 } from "@/lib/radar-otterly/types";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +30,7 @@ interface RadarDashboardResponse {
     | "ready"
     | "no_active_profile"
     | "no_website_url"
+    | "pending_setup"
     | "no_matching_report"
     | "otterly_error";
   // Set when status === "ready"
@@ -39,11 +38,16 @@ interface RadarDashboardResponse {
   account?: OtterlyAccountInfo;
   report?: OtterlyBrandReport;
   stats?: OtterlyBrandReportStats;
-  recommendations?: OtterlyRecommendation[];
   // Set when status === "no_matching_report" — surface the candidate
-  // hostname so the gating UI can say "create a brand report with
-  // brandDomain = <hostname>".
+  // hostname so the gating UI can say "start tracking <hostname>".
   hostname?: string;
+  // Set when status === "pending_setup"
+  pendingRequest?: {
+    id: string;
+    hostname: string;
+    status: "pending" | "researching" | "ready_for_ops";
+    requested_at: string;
+  };
   // Set when status === "otterly_error"
   error?: { message: string; status: number };
 }
@@ -95,6 +99,32 @@ export async function GET(_req: NextRequest) {
     return Response.json(payload);
   }
 
+  // If there's a non-terminal setup request for this profile, surface
+  // the warm-up state — even if a matching report exists, we keep
+  // showing pending until ops marks the request completed (which is
+  // also when the customer gets the "your Radar is live" email). This
+  // keeps the customer experience consistent with what ops sees.
+  const { data: pending } = await service
+    .from("radar_setup_requests")
+    .select("id, hostname, status, requested_at")
+    .eq("profile_id", profile.id)
+    .in("status", ["pending", "researching", "ready_for_ops"])
+    .order("requested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (pending) {
+    const payload: RadarDashboardResponse = {
+      status: "pending_setup",
+      pendingRequest: {
+        id: pending.id,
+        hostname: pending.hostname,
+        status: pending.status as "pending" | "researching" | "ready_for_ops",
+        requested_at: pending.requested_at,
+      },
+    };
+    return Response.json(payload);
+  }
+
   try {
     // Account info first — surfaces trial-expiry / quota warnings on
     // every load, doesn't depend on a matching brand report.
@@ -124,10 +154,11 @@ export async function GET(_req: NextRequest) {
     const endDate = now.toISOString().split("T")[0];
     const startDate = thirtyDaysAgo.toISOString().split("T")[0];
 
-    const [stats, recommendations] = await Promise.all([
-      getBrandReportStats(report.id, { startDate, endDate, country }),
-      getBrandReportRecommendations(report.id, { country }).then((r) => r.items),
-    ]);
+    const stats = await getBrandReportStats(report.id, {
+      startDate,
+      endDate,
+      country,
+    });
 
     const payload: RadarDashboardResponse = {
       status: "ready",
@@ -135,7 +166,6 @@ export async function GET(_req: NextRequest) {
       account,
       report,
       stats,
-      recommendations,
     };
     return Response.json(payload);
   } catch (e) {

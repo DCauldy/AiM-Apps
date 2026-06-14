@@ -1,14 +1,7 @@
-import { RadarOtterlyDashboardClient } from "@/components/radar-otterly/DashboardClient";
+import { redirect } from "next/navigation";
 
-// /apps/radar landing — Otterly-backed AI visibility dashboard for the
-// agent's active profile. Auto-discovers the matching Otterly brand
-// report by hostname (profile.website_url → brandDomain) and renders
-// KPIs / competitors / detected brand landscape / cited sources /
-// recommendations.
-//
-// The pre-Otterly Radar surface (radar_check / radar_audit / etc) is
-// being torn down in a follow-up cleanup commit once this is verified
-// against real data.
-export default function RadarPage() {
-  return <RadarOtterlyDashboardClient />;
+// /apps/radar lands on the Dashboard tab. All five tabs (Dashboard,
+// Monitor, Research, Optimize, Settings) live at /apps/radar/<tab>.
+export default function RadarIndexPage() {
+  redirect("/apps/radar/dashboard");
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { AppShell } from "@/components/app-shell/AppShell";
-import { RadarHeader } from "@/components/radar/RadarHeader";
+import { RadarHeader } from "@/components/radar-otterly/RadarHeader";
 
 export function RadarLayoutClient({
   children,

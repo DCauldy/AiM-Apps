@@ -199,6 +199,80 @@ export interface OtterlyRecommendation {
 }
 
 // ---------------------------------------------------------------------------
+// Research — per-prompt drill-down. Verbatim AI responses are NOT
+// available on the public API (the /responses endpoint 404s). What
+// we do get: rich per-prompt aggregates + citations.
+// ---------------------------------------------------------------------------
+
+export interface OtterlyPromptSummary {
+  id: string;
+  rank: number;
+  country: string;
+  prompt: string;
+  /** Intent volume (estimated monthly searches). May be 0 if Otterly
+   *  doesn't have keyword data for the phrasing. */
+  volume: number;
+  /** Times the main brand was mentioned across all engine runs of
+   *  this prompt in the window. */
+  brandMentions: number;
+  /** Times the main brand's domain was cited across all engine runs
+   *  of this prompt in the window. */
+  domainMentions: number;
+  tags: string[];
+  /** Competitor brand mention counts on this specific prompt. Shape:
+   *  Array<{ brand, mentions }> but we keep it loose for now. */
+  competitors: unknown[];
+}
+
+export interface OtterlyPromptBrandRow {
+  brand: string;
+  rank: number;
+  mentions: number;
+  brandCoverage: number;
+  sentiment: OtterlySentiment | null;
+}
+
+export interface OtterlyDomainCategoryRow {
+  category: string;
+  value: number;
+}
+
+export interface OtterlyPromptDetail {
+  id: string;
+  reportId: string;
+  prompt: string;
+  intentVolume: number;
+  brandCoverageHistory: Array<{ brand: string; coverage: number; date: string }>;
+  brandRank: OtterlyPromptBrandRow[];
+  domainCategories: OtterlyDomainCategoryRow[];
+  brandReports: Array<{
+    id: string;
+    brand: string;
+    brandDomain: string;
+    reportTitle?: string;
+  }>;
+  tags: string[];
+}
+
+export interface OtterlyCitation {
+  url: string;
+  domain: string;
+  title: string;
+  /** Total times AI engines cited this URL across all prompts in the
+   *  window (across the brand report). */
+  citations: number;
+  /** Prompt IDs that cited this URL. Populated by the citations
+   *  endpoint. */
+  prompts: string[];
+  competitors: unknown[];
+  /** 1 if the main brand was mentioned in the response that cited
+   *  this URL, 0 otherwise. */
+  brandMentioned: number;
+  /** "Brand" (your domain), "Others", "Blogs/Personal Sites", etc. */
+  domainCategory: string;
+}
+
+// ---------------------------------------------------------------------------
 // Audits
 // ---------------------------------------------------------------------------
 
@@ -206,8 +280,57 @@ export interface OtterlyAuditCheck {
   id: string;
   workspaceId: string;
   url: string;
-  status: "pending" | "running" | "finished" | "failed";
+  // Otterly uses both "finished" (in older payloads) and "completed"
+  // (newer detail responses). Treat them as the same terminal state.
+  status: "pending" | "running" | "finished" | "completed" | "failed";
   createdDate: string;
+}
+
+// ---------------------------------------------------------------------------
+// Content-check detail — Otterly's full GEO-readiness audit of a single
+// URL. Returned by GET /v1/audits/geo/content-checks/{id} once the
+// background audit finishes.
+// ---------------------------------------------------------------------------
+
+export interface OtterlyAuditCategoryBreakdown {
+  [key: string]: {
+    maxScore: number;
+    score: number;
+  };
+}
+
+export interface OtterlyAuditCategory {
+  score: number;
+  breakdown: OtterlyAuditCategoryBreakdown;
+}
+
+export interface OtterlyContentCheckDetail extends OtterlyAuditCheck {
+  structuralAnalysis?: {
+    overallScore: number;
+    categoryScores: {
+      metadata: number;
+      technical: number;
+      structure: number;
+      content: number;
+    };
+    metadata: OtterlyAuditCategory;
+    technical: OtterlyAuditCategory;
+    structure: OtterlyAuditCategory;
+    content: OtterlyAuditCategory;
+  };
+  dynamicContent?: {
+    score: number;
+    differenceDescription: string;
+    dynamicLength: number;
+    staticLength: number;
+    isPotentiallyBlocked: boolean;
+  };
+}
+
+export interface OtterlyCrawlabilityCheckDetail extends OtterlyAuditCheck {
+  // Shape verified once we run one — kept loose for now since we
+  // don't yet have a finished crawlability check in this account.
+  results?: Record<string, unknown>;
 }
 
 export interface CreateAuditCheckInput {

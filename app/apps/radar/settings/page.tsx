@@ -1,37 +1,10 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { SettingsClient } from "@/components/radar/settings/SettingsClient";
-import type { RadarConfig, RadarCompetitor } from "@/types/radar";
+import { RadarSettingsClient } from "@/components/radar-otterly/SettingsClient";
 
-export default async function RadarSettingsPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/login");
-
-  const [configResult, competitorsResult] = await Promise.all([
-    supabase
-      .from("radar_config")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    supabase
-      .from("radar_competitors")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-  ]);
-
-  if (!configResult.data?.onboarding_completed) {
-    redirect("/apps/radar/onboarding");
-  }
-
-  return (
-    <SettingsClient
-      config={configResult.data as RadarConfig}
-      competitors={(competitorsResult.data as RadarCompetitor[]) ?? []}
-    />
-  );
+// /apps/radar/settings — read-only view of the agent's tracking
+// config + account quota. Mutating controls (notification prefs,
+// alert thresholds, engine selection, pause tracking) require
+// schema + partner-API access and land later. For now this is the
+// "what is being tracked and how much quota is left" surface.
+export default function RadarSettingsPage() {
+  return <RadarSettingsClient />;
 }
