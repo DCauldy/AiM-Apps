@@ -1,31 +1,35 @@
-import { createServiceRoleClient } from "@/lib/supabase/server";
-import { NextRequest } from "next/server";
+import "server-only";
 
-export const dynamic = "force-dynamic";
+import { createServiceRoleClient } from "@/lib/supabase/server";
+
+// ============================================================
+// runHyperlocalEventsRollup — daily rollup for hl_email_events.
+//
+// For events older than RETENTION_DAYS, group by
+// (email_connection_id, day, type), upsert per-day counts into
+// hl_email_event_daily, then delete the raw events.
+//
+// The dashboard's "last 30 days" queries still target
+// hl_email_events directly. Anything older comes from the rollup.
+// Keeps the dashboard fast at 6k-agent scale without throwing away
+// historical engagement.
+//
+// Idempotent — ON CONFLICT upsert means re-running on a partially
+// processed window is safe.
+// ============================================================
 
 const RETENTION_DAYS = 30;
 const PAGE_SIZE = 5000;
+const MAX_EVENTS_PER_TICK = 50_000;
 
-/**
- * GET /api/cron/hyperlocal-events-rollup
- *
- * Daily Vercel cron. For events older than RETENTION_DAYS, group by
- * (email_connection_id, day, type), upsert per-day counts into
- * hl_email_event_daily, then delete the raw events.
- *
- * The dashboard's "last 30 days" queries still target hl_email_events
- * directly. Anything older comes from the rollup. This keeps the dashboard
- * fast at 6k-agent scale without throwing away historical engagement.
- *
- * Idempotent — ON CONFLICT upsert means re-running the cron on a partially
- * processed window is safe.
- */
-export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export interface RunHyperlocalEventsRollupResult {
+  cutoff: string;
+  pages: number;
+  events_processed: number;
+  events_deleted: number;
+}
 
+export async function runHyperlocalEventsRollup(): Promise<RunHyperlocalEventsRollupResult> {
   const supabase = createServiceRoleClient();
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 3600 * 1000);
   const cutoffIso = cutoff.toISOString();
@@ -85,23 +89,29 @@ export async function GET(req: NextRequest) {
     }
 
     // Upsert the rollups. ADDS to whatever was already there for that
-    // (connection, day, type) so partial-day rollups + same-day inserts
-    // are consistent. Postgres ON CONFLICT DO UPDATE with arithmetic
-    // does the right thing.
+    // (connection, day, type) so partial-day rollups + same-day
+    // inserts are consistent. Postgres ON CONFLICT DO UPDATE with
+    // arithmetic does the right thing.
     if (agg.size > 0) {
-      const { error: rollupErr } = await supabase.rpc("hl_event_rollup_upsert", {
-        p_rows: Array.from(agg.values()).map((a) => ({
-          email_connection_id: a.email_connection_id,
-          day: a.day,
-          event_type: a.event_type,
-          total: a.total,
-          unique_count: a.recipients.size,
-        })),
-      });
+      const { error: rollupErr } = await supabase.rpc(
+        "hl_event_rollup_upsert",
+        {
+          p_rows: Array.from(agg.values()).map((a) => ({
+            email_connection_id: a.email_connection_id,
+            day: a.day,
+            event_type: a.event_type,
+            total: a.total,
+            unique_count: a.recipients.size,
+          })),
+        },
+      );
       if (rollupErr) {
-        // RPC may not be installed — fall back to a per-row upsert that
-        // simulates the same arithmetic in JS.
-        console.error("[events-rollup] RPC failed, falling back", rollupErr.message);
+        // RPC may not be installed — fall back to a per-row upsert
+        // that simulates the same arithmetic in JS.
+        console.error(
+          "[events-rollup] RPC failed, falling back",
+          rollupErr.message,
+        );
         for (const a of agg.values()) {
           const { data: existing } = await supabase
             .from("hl_email_event_daily")
@@ -133,15 +143,14 @@ export async function GET(req: NextRequest) {
     totalProcessed += page.length;
     totalDeleted += ids.length;
 
-    // Safety: stop at 50k events per cron tick so we don't time out.
-    if (totalProcessed >= 50_000) break;
+    // Safety: stop at 50k events per tick so we don't time out.
+    if (totalProcessed >= MAX_EVENTS_PER_TICK) break;
   }
 
-  return Response.json({
-    ok: true,
+  return {
     cutoff: cutoffIso,
     pages,
     events_processed: totalProcessed,
     events_deleted: totalDeleted,
-  });
+  };
 }
