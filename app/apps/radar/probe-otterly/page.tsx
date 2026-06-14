@@ -20,42 +20,59 @@ import { cn } from "@/lib/utils";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
-// Real Otterly endpoints (verified at https://docs.otterly.ai/llms.txt).
-// `{...}` placeholders need the id from the previous call's response —
-// e.g. list workspaces first, plug a workspaceId into the brand-reports
-// flow, plug a reportId into the prompts/citations flows, etc.
+// Real Otterly endpoints — verified one-by-one against the docs at
+// https://docs.otterly.ai/api-reference/* . Key path quirks:
+//   - Account info lives at /v1/accounts/info (NOT /v1/accounts)
+//   - Brand reports live at /v1/reports/brand (NOT /v1/brand-reports)
+//   - Audits live at /v1/audits/geo/* (NOT /v1/audits/*)
+//   - Stats/citations/prompts require ?startDate=&endDate=&country=
+//     query params — the chip URL pre-fills a sensible example so
+//     you can fire it without composing the query string from scratch.
+const DEFAULT_COUNTRY = "us";
+// Last 30 days, ISO YYYY-MM-DD. Computed once at module load so the
+// chips render predictable URLs in the dev preview.
+const NOW = new Date();
+const THIRTY_DAYS_AGO = new Date(NOW.getTime() - 30 * 24 * 3600 * 1000);
+const END_DATE = NOW.toISOString().split("T")[0];
+const START_DATE = THIRTY_DAYS_AGO.toISOString().split("T")[0];
+const RANGE_QS = `?startDate=${START_DATE}&endDate=${END_DATE}&country=${DEFAULT_COUNTRY}`;
+
 const COMMON_PATHS: Array<{
   label: string;
   path: string;
   method: Method;
   category: string;
 }> = [
-  // Reference / account
-  { category: "Account", label: "Account + usage", path: "/v1/accounts", method: "GET" },
+  // ─── Reference / account ───
+  { category: "Account", label: "Account + usage", path: "/v1/accounts/info", method: "GET" },
   { category: "Engines", label: "Engines + countries", path: "/v1/engines", method: "GET" },
-  // Workspaces — the top-level container for tracking
+
+  // ─── Workspaces (top-level container for tracking) ───
   { category: "Workspaces", label: "List workspaces", path: "/v1/workspaces", method: "GET" },
-  { category: "Workspaces", label: "Workspace tags", path: "/v1/workspaces/{id}/tags", method: "GET" },
-  // Brand reports — the meat (Share of Voice, sentiment, citations all
-  // live inside report-scoped statistics endpoints).
-  { category: "Brand Reports", label: "List reports", path: "/v1/brand-reports", method: "GET" },
-  { category: "Brand Reports", label: "Get report", path: "/v1/brand-reports/{id}", method: "GET" },
-  { category: "Brand Reports", label: "Statistics", path: "/v1/brand-reports/{id}/statistics", method: "GET" },
-  { category: "Brand Reports", label: "List prompts", path: "/v1/brand-reports/{id}/prompts", method: "GET" },
-  { category: "Brand Reports", label: "Get prompt", path: "/v1/brand-reports/{id}/prompts/{promptId}", method: "GET" },
-  { category: "Brand Reports", label: "Prompt responses", path: "/v1/brand-reports/{id}/prompts/{promptId}/responses", method: "GET" },
-  { category: "Brand Reports", label: "Citations", path: "/v1/brand-reports/{id}/citations", method: "GET" },
-  { category: "Brand Reports", label: "Citation stats", path: "/v1/brand-reports/{id}/citations/statistics", method: "GET" },
-  { category: "Brand Reports", label: "Recommendations", path: "/v1/brand-reports/{id}/recommendations", method: "GET" },
-  // Audits — content + crawlability checks
-  { category: "Audits", label: "List content checks", path: "/v1/audits/content-checks", method: "GET" },
-  { category: "Audits", label: "Get content check", path: "/v1/audits/content-checks/{id}", method: "GET" },
-  { category: "Audits", label: "List crawlability", path: "/v1/audits/crawlability-checks", method: "GET" },
-  { category: "Audits", label: "Get crawlability", path: "/v1/audits/crawlability-checks/{id}", method: "GET" },
+  { category: "Workspaces", label: "Workspace tags", path: "/v1/workspaces/{workspaceId}/tags", method: "GET" },
+
+  // ─── Brand reports (the meat) ───
+  // Reports themselves are setup-only — no POST in the public API,
+  // they're created in the Otterly dashboard. We read them here.
+  { category: "Brand Reports", label: "List reports", path: "/v1/reports/brand", method: "GET" },
+  { category: "Brand Reports", label: "Get report", path: "/v1/reports/brand/{reportId}", method: "GET" },
+  { category: "Brand Reports", label: "Stats (SoV/sentiment/visibility)", path: `/v1/reports/brand/{reportId}/stats${RANGE_QS}`, method: "GET" },
+  { category: "Brand Reports", label: "Citations", path: `/v1/reports/brand/{reportId}/citations${RANGE_QS}`, method: "GET" },
+  { category: "Brand Reports", label: "Citation stats", path: `/v1/reports/brand/{reportId}/citations/stats${RANGE_QS}`, method: "GET" },
+  { category: "Brand Reports", label: "List prompts", path: `/v1/reports/brand/{reportId}/prompts${RANGE_QS}`, method: "GET" },
+  { category: "Brand Reports", label: "Get prompt", path: "/v1/reports/brand/{reportId}/prompts/{promptId}", method: "GET" },
+  { category: "Brand Reports", label: "Prompt responses", path: `/v1/reports/brand/{reportId}/prompts/{promptId}/responses${RANGE_QS}`, method: "GET" },
+  { category: "Brand Reports", label: "Recommendations", path: `/v1/reports/brand/{reportId}/recommendations`, method: "GET" },
+
+  // ─── GEO audits (content + crawlability checks, URL-driven) ───
+  { category: "Audits", label: "List content checks", path: "/v1/audits/geo/content-checks", method: "GET" },
+  { category: "Audits", label: "Get content check", path: "/v1/audits/geo/content-checks/{id}", method: "GET" },
+  { category: "Audits", label: "List crawlability", path: "/v1/audits/geo/crawlability-checks", method: "GET" },
+  { category: "Audits", label: "Get crawlability", path: "/v1/audits/geo/crawlability-checks/{id}", method: "GET" },
 ];
 
 export default function OtterlyProbePage() {
-  const [path, setPath] = useState("/v1/accounts");
+  const [path, setPath] = useState("/v1/accounts/info");
   const [method, setMethod] = useState<Method>("GET");
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
