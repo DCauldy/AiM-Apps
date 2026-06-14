@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart3, Upload, Heart, Bookmark, ThumbsUp, MessageSquare, Calendar } from "lucide-react";
+import { StatsPageSkeleton } from "@/components/prompt-studio/StatsPageSkeleton";
 
 interface StatsData {
   publishedPromptsCount: number;
@@ -61,11 +62,7 @@ export default function StatsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Loading stats...</div>
-      </div>
-    );
+    return <StatsPageSkeleton />;
   }
 
   if (!stats) {
