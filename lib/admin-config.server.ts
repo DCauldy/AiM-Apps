@@ -1,8 +1,17 @@
 import "server-only";
 
-import { cache } from "react";
+import { cache as reactCache } from "react";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
+
+// react.cache() is only available inside Next.js's React renderer
+// runtime (it dedupes within a single SSR render). Trigger.dev
+// workers bundle for plain Node where the import resolves but
+// `cache` is undefined, so calling it at module load throws. Fall
+// through to identity in non-Next contexts — tasks don't have the
+// per-request scope this is optimizing for anyway.
+const cache: <T extends (...args: never[]) => unknown>(fn: T) => T =
+  typeof reactCache === "function" ? (reactCache as never) : (fn) => fn;
 import { FEATURES } from "@/lib/feature-flags";
 import { PROMPT_PACKS, type PromptPack } from "@/lib/prompt-packs";
 import { BLOG_PACKS, type BlogPack } from "@/lib/blog-packs";
