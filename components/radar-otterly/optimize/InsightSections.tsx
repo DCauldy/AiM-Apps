@@ -1,9 +1,8 @@
 "use client";
 
-import { PenSquare, Sparkles, TrendingDown, Trophy } from "lucide-react";
-import Link from "next/link";
+import { Sparkles, TrendingDown, Trophy } from "lucide-react";
 
-import { FEATURES } from "@/lib/feature-flags";
+import { WriteAboutThisLink } from "@/components/radar-otterly/CrossAppActions";
 import type { PromptInsight } from "./types";
 
 // Three side-by-side cards rendered as a grid in OptimizeClient:
@@ -103,24 +102,6 @@ export function GapsSection({ gaps }: { gaps: PromptInsight[] }) {
   );
 }
 
-// Cross-app deep link: if the customer has Blog Engine, surface a
-// "Write about this" CTA next to each prompt. Routes to the Topic
-// Bank with the prompt pre-loaded as a suggestion (banner appears
-// on landing). The platform-moat play — Radar identifies, Blog
-// Engine acts.
-function WriteAboutThisLink({ prompt }: { prompt: string }) {
-  if (!FEATURES.BLOG_ENGINE) return null;
-  const href = `/apps/blog-engine/topics?suggest=${encodeURIComponent(prompt)}`;
-  return (
-    <Link
-      href={href}
-      className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
-      title="Write a blog post about this with Blog Engine"
-    >
-      <PenSquare className="h-3.5 w-3.5" />
-    </Link>
-  );
-}
 
 function InsightCard({
   icon,

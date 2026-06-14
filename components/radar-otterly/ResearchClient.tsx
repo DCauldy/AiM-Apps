@@ -14,6 +14,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/toast";
+import { WriteAboutThisLink } from "@/components/radar-otterly/CrossAppActions";
 import type {
   OtterlyBrandReport,
   OtterlyCitation,
@@ -312,53 +313,60 @@ function PromptRow({
 
   return (
     <li>
-      <button
-        type="button"
-        onClick={handleToggle}
-        className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
-      >
-        {open ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] tabular-nums text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
-              #{prompt.rank}
-            </span>
-            <span className="text-sm text-foreground">{prompt.prompt}</span>
-          </div>
-          <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
-            <span
-              className={cn(
-                "inline-flex items-center gap-1",
-                mentioned ? "text-emerald-500" : "text-muted-foreground",
+      {/* Row uses a flex container with the toggle as a button and
+          the WriteAboutThisLink as a sibling. Can't nest <a> inside
+          <button> (invalid HTML / broken a11y) so they're peers,
+          with the toggle button taking the flex-1 width. */}
+      <div className="flex items-start gap-2 hover:bg-muted/40 transition-colors">
+        <button
+          type="button"
+          onClick={handleToggle}
+          className="flex-1 flex items-start gap-3 px-4 py-3 text-left min-w-0"
+        >
+          {open ? (
+            <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] tabular-nums text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded shrink-0">
+                #{prompt.rank}
+              </span>
+              <span className="text-sm text-foreground">{prompt.prompt}</span>
+            </div>
+            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1",
+                  mentioned ? "text-emerald-500" : "text-muted-foreground",
+                )}
+              >
+                <Sparkles className="h-3 w-3" />
+                {prompt.brandMentions} brand mention
+                {prompt.brandMentions === 1 ? "" : "s"}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <ExternalLink className="h-3 w-3" />
+                {prompt.domainMentions} citation
+                {prompt.domainMentions === 1 ? "" : "s"}
+              </span>
+              {prompt.volume > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3" />
+                  {prompt.volume.toLocaleString()}/mo intent
+                </span>
               )}
-            >
-              <Sparkles className="h-3 w-3" />
-              {prompt.brandMentions} brand mention
-              {prompt.brandMentions === 1 ? "" : "s"}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <ExternalLink className="h-3 w-3" />
-              {prompt.domainMentions} citation
-              {prompt.domainMentions === 1 ? "" : "s"}
-            </span>
-            {prompt.volume > 0 && (
-              <span className="inline-flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" />
-                {prompt.volume.toLocaleString()}/mo intent
-              </span>
-            )}
-            {prompt.tags?.length > 0 && (
-              <span className="inline-flex items-center gap-1">
-                {prompt.tags.join(", ")}
-              </span>
-            )}
+              {prompt.tags?.length > 0 && (
+                <span className="inline-flex items-center gap-1">
+                  {prompt.tags.join(", ")}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      </button>
+        </button>
+        <WriteAboutThisLink prompt={prompt.prompt} className="mt-3 mr-4" />
+      </div>
 
       {open && (
         <div className="px-4 pb-4 pt-1 bg-muted/20 border-t border-border space-y-5">

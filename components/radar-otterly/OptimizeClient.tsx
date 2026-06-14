@@ -14,6 +14,7 @@ import {
 } from "./optimize/InsightSections";
 import { RunAuditSection } from "./optimize/RunAuditSection";
 import { HistorySection } from "./optimize/HistorySection";
+import { RecommendedActionsPanel } from "./optimize/RecommendedActionsPanel";
 
 // ============================================================
 // Optimize tab — customer-facing helpful insights.
@@ -110,6 +111,12 @@ export function RadarOptimizeClient() {
             {data.report?.brand ?? "your brand"}.
           </p>
         </div>
+
+        <RecommendedActionsPanel
+          wins={data.wins ?? []}
+          quickWins={data.quickWins ?? []}
+          gaps={data.gaps ?? []}
+        />
 
         <SiteHealthSection
           audit={data.siteHealth?.audit ?? null}
