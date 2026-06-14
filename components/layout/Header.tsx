@@ -8,7 +8,6 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ConversationHeader } from "@/components/chat/ConversationHeader";
 import { HowToUseModal } from "@/components/ui/HowToUseModal";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { UserMenu } from "./UserMenu";
 
 interface HeaderProps {
@@ -98,9 +97,8 @@ export function Header({
             <div className="flex-1" />
           )}
           
-          {/* Theme toggle, Help button, and User menu */}
+          {/* Help button, and User menu */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <ThemeToggle />
             {/* Only show help button in prompt-studio app */}
             {isInPromptStudio && (
               <Button

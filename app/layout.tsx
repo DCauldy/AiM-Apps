@@ -35,10 +35,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${spaceGrotesk.variable} ${archivo.variable} font-sans`} suppressHydrationWarning>
+        {/* All product apps lock themselves to dark via the
+            `product-app-theme` class scope; admin keeps the
+            ThemeToggle for its own header chrome. We default to
+            dark + disable system detection so there's no flash of
+            light mode before product-app-theme paints. */}
         <ThemeProvider
           attribute="class"
-          defaultTheme="light"
-          enableSystem
+          defaultTheme="dark"
+          enableSystem={false}
         >
           {/* Global SVG gradient definition for help icon */}
           <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">

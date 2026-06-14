@@ -37,7 +37,12 @@ export function MainLayout({
   return (
     <ToastProvider>
       <ConfirmProvider>
-        <div className="flex h-screen overflow-hidden w-full max-w-full">
+        {/* Lock Prompt Studio to the shared product-app dark theme so
+            it visually matches CMA, Hyperlocal, Blog Engine, etc.
+            `dark` enables Tailwind dark: utilities; product-app-theme
+            sets the HSL custom properties (bg / fg / card / border /
+            etc.) used by shadcn-style components. */}
+        <div className="dark product-app-theme flex h-screen overflow-hidden w-full max-w-full bg-background text-foreground">
           <Sidebar
           activeThreadId={activeThreadId} 
           onThreadSelect={onThreadSelect}
