@@ -20,17 +20,42 @@ import { cn } from "@/lib/utils";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
-const COMMON_PATHS: Array<{ label: string; path: string; method: Method }> = [
-  { label: "List brands", path: "/v1/brands", method: "GET" },
-  { label: "List prompts", path: "/v1/prompts", method: "GET" },
-  { label: "Brand mentions", path: "/v1/brands/{brandId}/mentions", method: "GET" },
-  { label: "Share of voice", path: "/v1/brands/{brandId}/share-of-voice", method: "GET" },
-  { label: "Sentiment", path: "/v1/brands/{brandId}/sentiment", method: "GET" },
-  { label: "Domain citations", path: "/v1/brands/{brandId}/citations", method: "GET" },
+// Real Otterly endpoints (verified at https://docs.otterly.ai/llms.txt).
+// `{...}` placeholders need the id from the previous call's response —
+// e.g. list workspaces first, plug a workspaceId into the brand-reports
+// flow, plug a reportId into the prompts/citations flows, etc.
+const COMMON_PATHS: Array<{
+  label: string;
+  path: string;
+  method: Method;
+  category: string;
+}> = [
+  // Reference / account
+  { category: "Account", label: "Account + usage", path: "/v1/accounts", method: "GET" },
+  { category: "Engines", label: "Engines + countries", path: "/v1/engines", method: "GET" },
+  // Workspaces — the top-level container for tracking
+  { category: "Workspaces", label: "List workspaces", path: "/v1/workspaces", method: "GET" },
+  { category: "Workspaces", label: "Workspace tags", path: "/v1/workspaces/{id}/tags", method: "GET" },
+  // Brand reports — the meat (Share of Voice, sentiment, citations all
+  // live inside report-scoped statistics endpoints).
+  { category: "Brand Reports", label: "List reports", path: "/v1/brand-reports", method: "GET" },
+  { category: "Brand Reports", label: "Get report", path: "/v1/brand-reports/{id}", method: "GET" },
+  { category: "Brand Reports", label: "Statistics", path: "/v1/brand-reports/{id}/statistics", method: "GET" },
+  { category: "Brand Reports", label: "List prompts", path: "/v1/brand-reports/{id}/prompts", method: "GET" },
+  { category: "Brand Reports", label: "Get prompt", path: "/v1/brand-reports/{id}/prompts/{promptId}", method: "GET" },
+  { category: "Brand Reports", label: "Prompt responses", path: "/v1/brand-reports/{id}/prompts/{promptId}/responses", method: "GET" },
+  { category: "Brand Reports", label: "Citations", path: "/v1/brand-reports/{id}/citations", method: "GET" },
+  { category: "Brand Reports", label: "Citation stats", path: "/v1/brand-reports/{id}/citations/statistics", method: "GET" },
+  { category: "Brand Reports", label: "Recommendations", path: "/v1/brand-reports/{id}/recommendations", method: "GET" },
+  // Audits — content + crawlability checks
+  { category: "Audits", label: "List content checks", path: "/v1/audits/content-checks", method: "GET" },
+  { category: "Audits", label: "Get content check", path: "/v1/audits/content-checks/{id}", method: "GET" },
+  { category: "Audits", label: "List crawlability", path: "/v1/audits/crawlability-checks", method: "GET" },
+  { category: "Audits", label: "Get crawlability", path: "/v1/audits/crawlability-checks/{id}", method: "GET" },
 ];
 
 export default function OtterlyProbePage() {
-  const [path, setPath] = useState("/v1/brands");
+  const [path, setPath] = useState("/v1/accounts");
   const [method, setMethod] = useState<Method>("GET");
   const [body, setBody] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,24 +123,38 @@ export default function OtterlyProbePage() {
           </p>
         </div>
 
-        {/* Quick-fill chips */}
-        <div className="flex flex-wrap gap-2">
-          {COMMON_PATHS.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              onClick={() => {
-                setPath(p.path);
-                setMethod(p.method);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:bg-accent"
-            >
-              <span className="font-mono text-[10px] text-muted-foreground">
-                {p.method}
-              </span>
-              <span className="font-medium">{p.label}</span>
-            </button>
-          ))}
+        {/* Quick-fill chips, grouped by category. Click one to load
+            its path/method into the form. Where the path has {id} /
+            {promptId} placeholders, run the list endpoint first to get
+            real ids you can plug in. */}
+        <div className="space-y-3">
+          {Array.from(new Set(COMMON_PATHS.map((p) => p.category))).map(
+            (cat) => (
+              <div key={cat} className="space-y-1.5">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                  {cat}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {COMMON_PATHS.filter((p) => p.category === cat).map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => {
+                        setPath(p.path);
+                        setMethod(p.method);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs hover:bg-accent"
+                    >
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {p.method}
+                      </span>
+                      <span className="font-medium">{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ),
+          )}
         </div>
 
         {/* Request form */}

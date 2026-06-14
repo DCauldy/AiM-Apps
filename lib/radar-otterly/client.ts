@@ -11,7 +11,10 @@ import "server-only";
 // can expand the client into typed accessors per endpoint.
 // ============================================================
 
-const BASE_URL = "https://api.otterly.ai";
+// Otterly's public API is served from data.otterly.ai (NOT
+// api.otterly.ai — that subdomain doesn't resolve). Verified at
+// https://docs.otterly.ai/api-reference/engines/list-ai-engines-and-supported-countries
+const BASE_URL = "https://data.otterly.ai";
 
 export class OtterlyApiError extends Error {
   constructor(
