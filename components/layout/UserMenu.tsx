@@ -42,7 +42,11 @@ export function UserMenu() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="h-9 w-9 rounded-full p-0 hover:bg-accent border-0 bg-transparent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+      {/* flex centering on the trigger so the inner avatar (32px)
+          sits dead-center in the 36px trigger box. Without it the
+          avatar pinned top-left and the focus ring (which wraps the
+          trigger) appeared visually offset from the avatar circle. */}
+      <DropdownMenuTrigger className="h-9 w-9 rounded-full p-0 hover:bg-accent border-0 bg-transparent focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 flex items-center justify-center">
         <div className="w-8 h-8 rounded-full bg-gradient-to-r from-[#1C4C8A] to-[#31DBA5] flex items-center justify-center text-white text-sm font-semibold">
           {getUserInitials()}
         </div>

@@ -1,15 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/auth/get-cached-user";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
 import { DashboardClient } from "./dashboard-client";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const user = await getCachedUser();
   if (!user) redirect("/login");
+  const supabase = await createClient();
 
   // Check onboarding (now lives on bofu_schedules alongside the rest of
   // per-profile Blog Engine config)
@@ -46,16 +44,23 @@ export default async function DashboardPage() {
         .maybeSingle(),
       supabase
         .from("bofu_cms_connections")
-        .select("id")
+        .select("id, platform, last_publish_at, last_error, is_active")
         .eq("user_id", user.id)
-        .eq("is_active", true)
-        .maybeSingle(),
+        .order("is_active", { ascending: false }),
     ]);
 
   const blogs = blogsResult.data || [];
   const publishedCount = blogs.filter(
     (b) => b.publish_status === "published"
   ).length;
+  // Count blogs with a pipeline_error so the health rail can surface
+  // "1 failed run" — cheap server-side aggregation, no extra round-trip.
+  const failedBlogsCount = blogs.filter(
+    (b) => b.publish_status === "failed" || b.pipeline_error,
+  ).length;
+
+  const cmsConnections = cmsResult.data ?? [];
+  const activeCms = cmsConnections.find((c) => c.is_active);
 
   return (
     <DashboardClient
@@ -65,7 +70,14 @@ export default async function DashboardPage() {
       publishedBlogs={publishedCount}
       topicBankSize={topicsResult.count || 0}
       nextRunAt={scheduleResult.data?.next_run_at || undefined}
-      cmsConnected={!!cmsResult.data}
+      cmsConnected={!!activeCms}
+      cmsHealth={{
+        activeConnections: cmsConnections.filter((c) => c.is_active).length,
+        platform: activeCms?.platform ?? null,
+        lastPublishAt: activeCms?.last_publish_at ?? null,
+        lastError: activeCms?.last_error ?? null,
+      }}
+      failedBlogsCount={failedBlogsCount}
     />
   );
 }

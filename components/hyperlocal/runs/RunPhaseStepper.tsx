@@ -27,13 +27,13 @@ const STEPS: Step[] = [
   },
   {
     id: "service-area",
-    label: "Service Area",
+    label: "Area",
     phases: ["awaiting_service_area"],
     doneAt: ["awaiting_mls", "generate", "review", "sending", "completed"],
   },
   {
     id: "mls",
-    label: "MLS Upload",
+    label: "MLS",
     phases: ["awaiting_mls"],
     doneAt: ["generate", "review", "sending", "completed"],
   },
@@ -59,7 +59,7 @@ const STEPS: Step[] = [
 
 export function RunPhaseStepper({ phase }: { phase: RunPhase }) {
   return (
-    <ol className="flex items-center gap-2 sm:gap-3 overflow-x-auto">
+    <ol className="flex items-center gap-2 sm:gap-3 w-full">
       {STEPS.map((step, idx) => {
         const isCurrent = step.phases.includes(phase);
         const isDone = step.doneAt.includes(phase);
@@ -68,11 +68,17 @@ export function RunPhaseStepper({ phase }: { phase: RunPhase }) {
         return (
           <li
             key={step.id}
-            className="flex items-center gap-2 sm:gap-3 shrink-0"
+            className={cn(
+              "flex items-center gap-2 sm:gap-3 shrink-0",
+              // Last step takes no extra space; everything else stretches
+              // its connector to fill remaining width — no overflow,
+              // no scroll, no matter how wide or narrow the container.
+              idx < STEPS.length - 1 && "flex-1",
+            )}
           >
             <div
               className={cn(
-                "flex items-center justify-center w-7 h-7 rounded-full border-2 text-xs font-medium",
+                "flex items-center justify-center w-7 h-7 rounded-full border-2 text-xs font-medium shrink-0",
                 isDone
                   ? "bg-emerald-500 border-emerald-500 text-white"
                   : isCurrent
@@ -86,7 +92,7 @@ export function RunPhaseStepper({ phase }: { phase: RunPhase }) {
             </div>
             <span
               className={cn(
-                "text-xs sm:text-sm font-medium",
+                "text-xs sm:text-sm font-medium shrink-0",
                 isCurrent
                   ? "text-foreground"
                   : isDone
@@ -99,7 +105,7 @@ export function RunPhaseStepper({ phase }: { phase: RunPhase }) {
             {idx < STEPS.length - 1 && (
               <span
                 className={cn(
-                  "h-px w-4 sm:w-8",
+                  "h-px flex-1 min-w-[1rem]",
                   isDone ? "bg-emerald-500" : "bg-border"
                 )}
               />

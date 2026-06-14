@@ -60,6 +60,11 @@ export function HyperlocalMap({
   const [geo, setGeo] = useState<GeoJSON.FeatureCollection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Track Mapbox's own load lifecycle — calling fitBounds before the
+  // map is fully loaded silently no-ops, leaving the view stuck at
+  // the initial zoom 3 continental-US framing (what users see as
+  // "the whole planet"). Gating the effect on this fixes the race.
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [hovered, setHovered] = useState<{
     zip: string;
     label: string;
@@ -142,9 +147,12 @@ export function HyperlocalMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments]);
 
-  // Fit viewport when GeoJSON loads or selection changes (when fitToSelected)
+  // Fit viewport when GeoJSON loads or selection changes (when fitToSelected).
+  // Depends on mapLoaded so we never call fitBounds before the map's
+  // internal state is ready — Mapbox silently drops those calls,
+  // which is why some users would see the unzoomed continental view.
   useEffect(() => {
-    if (!geo || !mapRef.current) return;
+    if (!geo || !mapLoaded || !mapRef.current) return;
 
     let toFit: GeoJSON.Feature[] = geo.features;
     if (fitToSelected && selectedZips && selectedZips.size > 0) {
@@ -165,7 +173,7 @@ export function HyperlocalMap({
       ],
       { padding: 40, duration: 600 }
     );
-  }, [geo, fitToSelected, selectedZips]);
+  }, [geo, fitToSelected, selectedZips, mapLoaded]);
 
   const onClick = (e: MapMouseEvent) => {
     if (!onToggleZip) return;
@@ -233,7 +241,21 @@ export function HyperlocalMap({
           zoom: 3,
         }}
         maxZoom={13}
+        // For display-only maps (no onToggleZip) lock all pan/zoom/
+        // scroll/touch interactions so the embedded map behaves like
+        // a static image — no hijacking of page scroll, no accidental
+        // pan, no zoom buttons cluttering the chrome. The picker
+        // keeps all interactions because the user needs to click ZIPs.
+        scrollZoom={!!onToggleZip}
+        dragPan={!!onToggleZip}
+        dragRotate={false}
+        doubleClickZoom={!!onToggleZip}
+        boxZoom={!!onToggleZip}
+        touchPitch={false}
+        touchZoomRotate={!!onToggleZip}
+        keyboard={!!onToggleZip}
         interactiveLayerIds={geo ? ["hl-zip-fill"] : []}
+        onLoad={() => setMapLoaded(true)}
         onClick={onClick}
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHovered(null)}

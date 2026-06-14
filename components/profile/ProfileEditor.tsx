@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { getStateRequirements } from "@/lib/hyperlocal/email/state-requirements";
+import { FontSelect } from "@/components/profile/FontSelect";
 import type { PlatformProfile, PlatformProfileUpdate } from "@/types/platform-profile";
 
 interface Props {
@@ -71,6 +73,11 @@ export function ProfileEditor({ initialProfile }: Props) {
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
+
+  // State-aware disclosure requirements for Hyperlocal email compliance.
+  // The compliance gate in lib/hyperlocal/email/compliance.ts blocks runs
+  // when any of these are missing for a profile that wants to send.
+  const stateReqs = getStateRequirements(form.state);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -172,7 +179,10 @@ export function ProfileEditor({ initialProfile }: Props) {
             ))}
           </select>
         </Field>
-        <Field label="Brokerage">
+        <Field
+          label="Brokerage"
+          required={stateReqs.requires_brokerage_disclosure}
+        >
           <Input
             value={form.brokerage ?? ""}
             onChange={(e) => set("brokerage", e.target.value)}
@@ -254,12 +264,21 @@ export function ProfileEditor({ initialProfile }: Props) {
             onChange={(e) => set("reply_to_email", e.target.value)}
           />
         </Field>
-        <Field label="Physical address (required for outbound email)" className="md:col-span-2">
+        <Field
+          label="Physical address"
+          required
+          className="md:col-span-2"
+        >
           <Input
             value={form.physical_address ?? ""}
             onChange={(e) => set("physical_address", e.target.value)}
             placeholder="123 Main St, Cincinnati, OH 45202"
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            CAN-SPAM requires a valid postal address on every marketing email.
+            Use your brokerage address — not a home address — to keep personal
+            location out of your sends.
+          </p>
         </Field>
         <Field label="Sign-off">
           <Input
@@ -270,24 +289,45 @@ export function ProfileEditor({ initialProfile }: Props) {
         </Field>
       </Section>
 
-      <Section title="Compliance" description="License info and required disclaimers.">
-        <Field label="License number">
+      <Section
+        title="Compliance"
+        description={
+          form.state
+            ? `${stateReqs.display_name} disclosure rules apply to this profile's outbound email. Hyperlocal blocks sends that are missing any required field.`
+            : "License info and required disclaimers. Set your state above so we apply the right disclosure rules."
+        }
+      >
+        <Field
+          label="License number"
+          required={stateReqs.requires_license_number}
+        >
           <Input
             value={form.license_number ?? ""}
             onChange={(e) => set("license_number", e.target.value)}
+            placeholder="e.g. SL-3416289"
           />
         </Field>
         <Field label="Regulatory body">
           <Input
             value={form.regulatory_body ?? ""}
             onChange={(e) => set("regulatory_body", e.target.value)}
+            placeholder="e.g. Texas Real Estate Commission"
           />
         </Field>
-        <Field label="License info" className="md:col-span-2">
+        <Field
+          label="License info / supervising broker"
+          required={stateReqs.requires_supervising_broker}
+          className="md:col-span-2"
+        >
           <Textarea
             value={form.license_info ?? ""}
             onChange={(e) => set("license_info", e.target.value)}
             rows={2}
+            placeholder={
+              stateReqs.requires_supervising_broker
+                ? `${stateReqs.display_name} requires the supervising / sponsoring broker name + license in agent marketing.`
+                : "Optional. Add supervising broker info here if your state requires it."
+            }
           />
         </Field>
         <Field label="Compliance notes" className="md:col-span-2">
@@ -341,21 +381,49 @@ export function ProfileEditor({ initialProfile }: Props) {
           <ColorInput value={form.accent_color ?? "#31DBA5"} onChange={(v) => set("accent_color", v)} />
         </Field>
         <Field label="Heading font">
-          <Input value={form.heading_font ?? ""} onChange={(e) => set("heading_font", e.target.value)} />
+          <FontSelect
+            value={form.heading_font}
+            onChange={(v) => set("heading_font", v)}
+            placeholder="Pick a heading font"
+          />
         </Field>
         <Field label="Body font">
-          <Input value={form.body_font ?? ""} onChange={(e) => set("body_font", e.target.value)} />
+          <FontSelect
+            value={form.body_font}
+            onChange={(v) => set("body_font", v)}
+            placeholder="Pick a body font"
+          />
         </Field>
-        <Field label="Logo URL">
-          <Input value={form.logo_url ?? ""} onChange={(e) => set("logo_url", e.target.value)} />
+        <Field
+          label="Logo URL"
+          hint="Previews on the brand header color (matches the email)."
+        >
+          <ImagePreviewField
+            value={form.logo_url ?? ""}
+            onChange={(v) => set("logo_url", v)}
+            // Match the renderer's email-header treatment so the preview
+            // looks identical to what the recipient sees.
+            background={form.primary_color ?? "#1B7FB5"}
+            maxHeight={36}
+            shape="rectangle"
+          />
         </Field>
         <Field label="Headshot URL">
-          <Input value={form.headshot_url ?? ""} onChange={(e) => set("headshot_url", e.target.value)} />
+          <ImagePreviewField
+            value={form.headshot_url ?? ""}
+            onChange={(v) => set("headshot_url", v)}
+            background="#f5f5f5"
+            maxHeight={72}
+            shape="circle"
+          />
         </Field>
         <Field label="Brokerage badge URL">
-          <Input
+          <ImagePreviewField
             value={form.brokerage_badge_url ?? ""}
-            onChange={(e) => set("brokerage_badge_url", e.target.value)}
+            onChange={(v) => set("brokerage_badge_url", v)}
+            background="#f5f5f5"
+            maxHeight={48}
+            shape="rectangle"
           />
         </Field>
       </Section>
@@ -396,11 +464,13 @@ function Field({
   label,
   required,
   className,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
   className?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -410,6 +480,65 @@ function Field({
         {required && <span className="text-destructive ml-0.5">*</span>}
       </label>
       {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
+function ImagePreviewField({
+  value,
+  onChange,
+  background,
+  maxHeight,
+  shape,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  /** Backdrop the preview renders on. Use the brand primary color for the
+   *  logo so the preview matches the email header. */
+  background: string;
+  /** Caps the rendered preview to the email's actual max-height for that
+   *  asset (logo 36, badge 48, headshot 72) so the agent sees true scale. */
+  maxHeight: number;
+  shape: "rectangle" | "circle";
+}) {
+  const [loadError, setLoadError] = useState(false);
+  const trimmed = value.trim();
+  return (
+    <div className="space-y-2">
+      <Input
+        value={value}
+        onChange={(e) => {
+          setLoadError(false);
+          onChange(e.target.value);
+        }}
+        placeholder="https://…"
+      />
+      {trimmed && (
+        <div
+          className="rounded-md border border-border p-3 flex items-center justify-center"
+          style={{ background }}
+        >
+          {loadError ? (
+            <p className="text-xs text-muted-foreground">
+              Couldn't load image — check the URL is publicly accessible.
+            </p>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={trimmed}
+              alt="Preview"
+              style={{
+                maxHeight: `${maxHeight}px`,
+                width: "auto",
+                display: "block",
+                borderRadius: shape === "circle" ? "9999px" : "0",
+              }}
+              onError={() => setLoadError(true)}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }

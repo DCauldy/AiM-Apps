@@ -1,5 +1,7 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { triggerDiscover } from "@/lib/hyperlocal/run-pipeline";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +67,29 @@ export async function POST(req: NextRequest) {
     return Response.json(
       { error: "campaign_id and crm_connection_id are required" },
       { status: 400 }
+    );
+  }
+
+  // Pack-cap gate. Client UIs disable the launch button when usage hits
+  // the cap and offer an upgrade — this is the server-side closure so a
+  // direct POST can't bypass it. UNLIMITED tiers (Diamond) skip the gate.
+  const usage = await getHyperlocalUsage(user.id);
+  if (
+    usage.campaignsLimit !== UNLIMITED &&
+    usage.campaignsThisMonth >= usage.campaignsLimit
+  ) {
+    return Response.json(
+      {
+        error: "Monthly campaign limit reached",
+        code: "pack_limit_reached",
+        usage: {
+          campaignsThisMonth: usage.campaignsThisMonth,
+          campaignsLimit: usage.campaignsLimit,
+          tier: usage.tier,
+          periodEnd: usage.periodEnd,
+        },
+      },
+      { status: 403 },
     );
   }
 

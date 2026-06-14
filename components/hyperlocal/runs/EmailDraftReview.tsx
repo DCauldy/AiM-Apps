@@ -12,12 +12,19 @@ import {
   Eye,
   Wrench,
   Beaker,
+  RefreshCw,
+  X,
+  Lightbulb,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
 import { useHlDialog } from "@/components/hyperlocal/ui/HlDialog";
+import {
+  ComplianceFixItBanner,
+  type ComplianceIssue,
+} from "@/components/hyperlocal/runs/ComplianceFixItBanner";
 import { cn } from "@/lib/utils";
 import type { HlEmail } from "@/types/hyperlocal";
 
@@ -57,7 +64,59 @@ export function EmailDraftReview({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("preview");
   const [approving, setApproving] = useState(false);
+  const [complianceIssues, setComplianceIssues] = useState<
+    ComplianceIssue[] | null
+  >(null);
   const [testSending, setTestSending] = useState(false);
+  const [refreshingBranding, setRefreshingBranding] = useState(false);
+
+  // Dismissible first-time tip — surfaces the AI edits chat on the
+  // right column, which new users often miss. localStorage key is
+  // module-stable so once you dismiss, it stays dismissed forever
+  // across all your runs (not per-run).
+  const [tipDismissed, setTipDismissed] = useState(true); // assume dismissed until hydration confirms
+  useEffect(() => {
+    setTipDismissed(
+      typeof window !== "undefined" &&
+        window.localStorage.getItem("hl-tip-review-ai-edits") === "dismissed",
+    );
+  }, []);
+  const dismissTip = () => {
+    setTipDismissed(true);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("hl-tip-review-ai-edits", "dismissed");
+    }
+  };
+
+  const refreshBranding = useCallback(async () => {
+    setRefreshingBranding(true);
+    try {
+      const res = await fetch(
+        `/api/apps/hyperlocal/runs/${runId}/refresh-branding`,
+        { method: "POST" },
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Refresh failed");
+      // Reload drafts so the iframe picks up the new HTML.
+      const reload = await fetch(`/api/apps/hyperlocal/runs/${runId}/emails`);
+      const reloadJson = await reload.json();
+      if (reload.ok) setEmails(reloadJson.emails ?? []);
+      const errorCount = (json.errors ?? []).length;
+      if (errorCount > 0) {
+        toast.error(
+          `Refreshed ${json.refreshed} of ${json.total} drafts — ${errorCount} failed`,
+        );
+      } else {
+        toast.success(
+          `Refreshed ${json.refreshed} draft${json.refreshed === 1 ? "" : "s"} with current branding`,
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setRefreshingBranding(false);
+    }
+  }, [runId, toast]);
 
   // Block-editor local state (mirrors selected draft)
   const [editSubject, setEditSubject] = useState("");
@@ -314,14 +373,16 @@ export function EmailDraftReview({
     }
   };
 
-  const approveAndSend = async () => {
-    const ok = await confirm({
-      title: "Approve all drafts and start sending?",
-      message: `${totalRecipients.toLocaleString()} email${totalRecipients === 1 ? "" : "s"} will be queued for delivery. The send can't be paused mid-batch.`,
-      confirmLabel: "Send now",
-      destructive: true,
-    });
-    if (!ok) return;
+  const approveAndSend = async (opts: { skipConfirm?: boolean } = {}) => {
+    if (!opts.skipConfirm) {
+      const ok = await confirm({
+        title: "Approve all drafts and start sending?",
+        message: `${totalRecipients.toLocaleString()} email${totalRecipients === 1 ? "" : "s"} will be queued for delivery. The send can't be paused mid-batch.`,
+        confirmLabel: "Send now",
+        destructive: true,
+      });
+      if (!ok) return;
+    }
     setApproving(true);
     try {
       const res = await fetch(
@@ -333,7 +394,16 @@ export function EmailDraftReview({
         }
       );
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Approve failed");
+      if (!res.ok) {
+        // Compliance gate refused the launch — surface the structured issue
+        // list inline so the user knows exactly what to fix and where.
+        if (Array.isArray(json.issues) && json.issues.length > 0) {
+          setComplianceIssues(json.issues as ComplianceIssue[]);
+          return;
+        }
+        throw new Error(json.error ?? "Approve failed");
+      }
+      setComplianceIssues(null);
       toast.success(`Sending ${json.approved_count} email(s)`);
       onApproved();
     } catch (e) {
@@ -371,7 +441,16 @@ export function EmailDraftReview({
     : 0;
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
+    <>
+      {complianceIssues && (
+        <ComplianceFixItBanner
+          issues={complianceIssues}
+          retrying={approving}
+          onRetry={() => approveAndSend({ skipConfirm: true })}
+          onDismiss={() => setComplianceIssues(null)}
+        />
+      )}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
       {dialog}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
         <div>
@@ -381,26 +460,70 @@ export function EmailDraftReview({
             recipients queued
           </p>
         </div>
-        <Button
-          onClick={approveAndSend}
-          disabled={approving || testSending}
-          className="bg-[#E11D48] hover:bg-[#BE123C]"
-        >
-          {approving ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending…
-            </>
-          ) : (
-            <>
-              <Send className="h-4 w-4 mr-2" /> Approve all & send
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Re-render every draft with current profile data — picks up
+              logo, colors, fonts, sign-off changes made after the run
+              was generated. Preserves AI edit history + manual block edits. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={refreshBranding}
+            disabled={refreshingBranding || approving || testSending}
+            title="Re-render all drafts with the latest profile settings"
+          >
+            {refreshingBranding ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Refreshing…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Refresh branding
+              </>
+            )}
+          </Button>
+          <Button
+            onClick={() => approveAndSend()}
+            disabled={approving || testSending}
+            className="bg-[#E11D48] hover:bg-[#BE123C]"
+          >
+            {approving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Sending…
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-2" /> Approve all & send
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
+      {!tipDismissed && (
+        <div className="mx-4 mt-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 flex items-start gap-2.5 text-xs">
+          <Lightbulb className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+          <p className="flex-1 text-foreground/90 leading-relaxed">
+            <span className="font-medium">New here?</span> The chat panel on
+            the right lets you ask AI to tweak any draft — &quot;make the
+            buyer section shorter&quot;, &quot;more conversational&quot;, etc.
+            Edits apply instantly and you can undo any change.
+          </p>
+          <button
+            type="button"
+            onClick={dismissTip}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+            title="Dismiss tip"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Column ratio 2/7/3 (was 3/5/4) — gives the email preview the
+          most room, since that's the content the agent actually reads. */}
       <div className="grid grid-cols-12">
         {/* Sidebar — list of drafts */}
-        <aside className="col-span-12 sm:col-span-3 border-r border-border max-h-[640px] overflow-y-auto">
+        <aside className="col-span-12 sm:col-span-2 border-r border-border max-h-[640px] overflow-y-auto">
           <ul>
             {emails.map((e) => {
               const segLabel = e.segment?.geo_label ?? "Segment";
@@ -446,7 +569,7 @@ export function EmailDraftReview({
         </aside>
 
         {/* Middle — preview / blocks editor */}
-        <section className="col-span-12 sm:col-span-6 p-4 max-h-[640px] overflow-y-auto">
+        <section className="col-span-12 sm:col-span-7 p-4 max-h-[640px] overflow-y-auto">
           {!selected ? (
             <p className="text-sm text-muted-foreground">Select an email.</p>
           ) : (
@@ -467,6 +590,7 @@ export function EmailDraftReview({
                     variant={mode === "preview" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setMode("preview")}
+                    title="Visual preview of the rendered email"
                   >
                     <Eye className="h-3.5 w-3.5 mr-1.5" /> Preview
                   </Button>
@@ -474,6 +598,7 @@ export function EmailDraftReview({
                     variant={mode === "blocks" ? "default" : "outline"}
                     size="sm"
                     onClick={() => setMode("blocks")}
+                    title="Manually edit subject, preheader, and copy blocks"
                   >
                     <Wrench className="h-3.5 w-3.5 mr-1.5" /> Edit
                   </Button>
@@ -498,6 +623,7 @@ export function EmailDraftReview({
                     }
                     size="sm"
                     onClick={() => toggleApprove(selected)}
+                    title="Mark this draft as ready to send. 'Approve all & send' fires once every draft is approved."
                   >
                     {selected.status === "approved" ? (
                       "Un-approve"
@@ -593,7 +719,7 @@ export function EmailDraftReview({
           <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
             {chat.length === 0 ? (
               <p className="text-xs text-muted-foreground py-4 text-center">
-                Ask Claude to tweak this draft.<br />
+                Ask AI to tweak this draft.<br />
                 <span className="text-[11px]">e.g. "make the homeowners section punchier" or "shorten the subject"</span>
               </p>
             ) : (
@@ -644,6 +770,7 @@ export function EmailDraftReview({
         </aside>
       </div>
     </div>
+    </>
   );
 }
 

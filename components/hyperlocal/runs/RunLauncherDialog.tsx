@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
+import { HyperlocalUpgradeModal } from "@/components/hyperlocal/HyperlocalUpgradeModal";
 import { CRM_PLATFORM_LABELS, EMAIL_PROVIDER_LABELS } from "@/types/hyperlocal";
 import type {
   HlCampaign,
@@ -44,6 +45,13 @@ export function RunLauncherDialog({
   const [senderId, setSenderId] = useState("");
   const [brandingId, setBrandingId] = useState("");
   const [launching, setLaunching] = useState(false);
+  // When the server-side pack-cap gate fires (403, code "pack_limit_reached"),
+  // capture the usage payload so the upgrade modal can show period reset etc.
+  const [capInfo, setCapInfo] = useState<{
+    periodEnd?: string;
+    campaignsThisMonth: number;
+    campaignsLimit: number;
+  } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -99,7 +107,25 @@ export function RunLauncherDialog({
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to launch");
+      if (!res.ok) {
+        // Server-side pack-cap gate. Surface the upgrade modal in-context
+        // instead of a generic toast — the user just tried to act and
+        // needs to know what to do next.
+        if (res.status === 403 && json.code === "pack_limit_reached") {
+          setCapInfo({
+            periodEnd: json.usage?.periodEnd,
+            campaignsThisMonth: json.usage?.campaignsThisMonth ?? 0,
+            campaignsLimit: json.usage?.campaignsLimit ?? 0,
+          });
+          return;
+        }
+        throw new Error(json.error ?? "Failed to launch");
+      }
+      // Notify the header so the usage chip ticks up immediately —
+      // HyperlocalHeader listens for this event and re-fetches.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("hyperlocal-usage-updated"));
+      }
       onLaunched(json.run.id);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Launch failed");
@@ -212,6 +238,20 @@ export function RunLauncherDialog({
           </Button>
         </div>
       </DialogContent>
+      <HyperlocalUpgradeModal
+        open={!!capInfo}
+        onClose={() => setCapInfo(null)}
+        reason="limit"
+        periodEnd={capInfo?.periodEnd}
+        currentUsage={
+          capInfo
+            ? {
+                campaignsThisMonth: capInfo.campaignsThisMonth,
+                campaignsLimit: capInfo.campaignsLimit,
+              }
+            : undefined
+        }
+      />
     </Dialog>
   );
 }

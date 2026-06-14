@@ -58,7 +58,8 @@ interface AppMeta {
   external?: boolean;
   gradient: [string, string];
   accentColor: string;
-  category: string;
+  /** Short descriptors shown as pills under the app name in the row + in the preview header. 2–3 words each. */
+  categories: string[];
   features: { icon: React.ReactNode; text: string }[];
 }
 
@@ -78,7 +79,7 @@ const APPS: AppMeta[] = [
     hasUpgrade: true,
     gradient: ["#1B7FB5", "#1C4C8A"],
     accentColor: "#1B7FB5",
-    category: "Creative",
+    categories: ["Creative", "AI", "Workflow"],
     features: [
       { icon: <Brain className="h-4 w-4" />, text: "AI-guided prompt builder with real-time suggestions" },
       { icon: <Zap className="h-4 w-4" />, text: "One-click prompt refinement and optimization" },
@@ -99,7 +100,7 @@ const APPS: AppMeta[] = [
     hasUpgrade: true,
     gradient: ["#17A697", "#31DBA5"],
     accentColor: "#31DBA5",
-    category: "Content",
+    categories: ["Content", "SEO", "Automated"],
     features: [
       { icon: <Target className="h-4 w-4" />, text: "Bottom-of-funnel topics researched automatically" },
       { icon: <PenTool className="h-4 w-4" />, text: "Claude-written long-form articles with citations" },
@@ -120,7 +121,7 @@ const APPS: AppMeta[] = [
     hasUpgrade: true,
     gradient: ["#D97706", "#E0A458"],
     accentColor: "#E0A458",
-    category: "Analytics",
+    categories: ["Analytics", "AI Search", "Monitoring"],
     features: [
       { icon: <Search className="h-4 w-4" />, text: "Monitor AI search results across major platforms" },
       { icon: <TrendingUp className="h-4 w-4" />, text: "Track visibility trends over time" },
@@ -141,7 +142,7 @@ const APPS: AppMeta[] = [
     hasUpgrade: true,
     gradient: ["#E11D48", "#7C3AED"],
     accentColor: "#F43F5E",
-    category: "Outreach",
+    categories: ["Outreach", "Email", "Local"],
     features: [
       { icon: <Users className="h-4 w-4" />, text: "Pulls live contacts from your CRM (FUB, Lofty, CSV)" },
       { icon: <MapPin className="h-4 w-4" />, text: "Segments by ZIP, city, or neighborhood automatically" },
@@ -162,7 +163,7 @@ const APPS: AppMeta[] = [
     hasUpgrade: true,
     gradient: ["#2563EB", "#7C3AED"],
     accentColor: "#6366F1",
-    category: "Listings",
+    categories: ["Listings", "Video", "Workspace"],
     features: [
       { icon: <Home className="h-4 w-4" />, text: "Create one-property tour projects for active listings" },
       { icon: <Target className="h-4 w-4" />, text: "Keep project status, property details, and next steps together" },
@@ -183,7 +184,7 @@ const APPS: AppMeta[] = [
     external: true,
     gradient: ["#17A697", "#1B7FB5"],
     accentColor: "#17A697",
-    category: "Education",
+    categories: ["Education", "Community", "Live"],
     features: [
       { icon: <BookOpen className="h-4 w-4" />, text: "Self-paced AI marketing courses" },
       { icon: <Users className="h-4 w-4" />, text: "Private community of real estate professionals" },
@@ -380,9 +381,16 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-muted-foreground truncate block">
-                    {app.category}
-                  </span>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {app.categories.map((label) => (
+                      <span
+                        key={label}
+                        className="text-[10px] font-medium px-1.5 py-0.5 rounded text-muted-foreground bg-white/[0.06] border border-white/10"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Chevron */}
@@ -434,13 +442,20 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
               {selectedApp.tagline}
             </p>
 
-            {/* Category pill — white-tint rather than per-app accent so it
-                stays legible regardless of which app gradient is behind it. */}
+            {/* Category pills — white-tint rather than per-app accent so they
+                stay legible regardless of which app gradient is behind them. */}
             <div
-              className="animate-fade-up inline-flex items-center gap-1.5 mt-3 text-xs font-semibold px-2.5 py-1 rounded-full text-white bg-white/15 border border-white/20"
+              className="animate-fade-up flex flex-wrap gap-1.5 mt-3"
               style={{ animationDelay: "150ms" }}
             >
-              {selectedApp.category}
+              {selectedApp.categories.map((label) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center text-xs font-semibold px-2.5 py-1 rounded-full text-white bg-white/15 border border-white/20"
+                >
+                  {label}
+                </span>
+              ))}
             </div>
           </div>
 

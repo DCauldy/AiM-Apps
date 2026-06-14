@@ -1,6 +1,11 @@
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { renderEmailHtml, htmlToPlainText } from "./render";
 import { buildStaticMapUrl } from "@/lib/hyperlocal/map/static-map";
+import { getTrendsForGeo } from "@/lib/hyperlocal/mls/snapshots";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
+import { getAdapter, hasAdapter } from "./providers/registry";
+import type { EmailProvider } from "@/types/hyperlocal";
 import type {
   HlEmail,
   HlSegment,
@@ -43,10 +48,26 @@ export async function rerenderEmail(emailId: string): Promise<{
 
   const { data: run } = await supabase
     .from("hl_runs")
-    .select("profile_id")
+    .select("profile_id, email_connection_id, user_id")
     .eq("id", email.run_id)
     .single();
   if (!run?.profile_id) throw new Error("Run profile not set — cannot re-render");
+
+  // Resolve the sending provider's footer-handling capability so re-renders
+  // stay consistent with what the run will actually send through.
+  let espHandlesComplianceFooter = false;
+  if (run.email_connection_id) {
+    const { data: conn } = await supabase
+      .from("hl_email_connections")
+      .select("provider")
+      .eq("id", run.email_connection_id)
+      .maybeSingle();
+    const provider = conn?.provider as EmailProvider | undefined;
+    if (provider && hasAdapter(provider)) {
+      espHandlesComplianceFooter =
+        getAdapter(provider).capabilities.handles_compliance_footer;
+    }
+  }
 
   const { data: profile } = await supabase
     .from("platform_profiles")
@@ -64,6 +85,9 @@ export async function rerenderEmail(emailId: string): Promise<{
     phone: profile.phone,
     reply_to_email: profile.reply_to_email,
     license_number: profile.license_number,
+    license_info: profile.license_info,
+    regulatory_body: profile.regulatory_body,
+    state: profile.state,
     physical_address: profile.physical_address,
     sign_off: profile.sign_off,
   };
@@ -94,6 +118,23 @@ export async function rerenderEmail(emailId: string): Promise<{
     token: process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "",
   }).catch(() => null);
 
+  // Pack-tier MLS history cap. Diamond is UNLIMITED → no cap; everything
+  // else clamps how far back trends can pull from.
+  const packUsage = run.user_id
+    ? await getHyperlocalUsage(run.user_id).catch(() => null)
+    : null;
+  const historyCap =
+    packUsage && packUsage.mlsHistoryMonths !== UNLIMITED
+      ? (packUsage.mlsHistoryMonths as number)
+      : null;
+
+  const trends = await getTrendsForGeo(
+    supabase,
+    run.profile_id,
+    (segment as HlSegment).geo_key,
+    historyCap,
+  ).catch(() => null);
+
   const html = renderEmailHtml({
     branding: branding as PlatformBrandingProfile | null,
     sender: sender as PlatformSenderProfile,
@@ -105,6 +146,9 @@ export async function rerenderEmail(emailId: string): Promise<{
     // Token placeholder — replaced per-recipient at send time
     unsubscribeUrl: "{{UNSUBSCRIBE_URL}}",
     staticMapUrl,
+    yoyPriceChangePct: trends?.yoy_price_change_pct ?? null,
+    threeYearPriceChangePct: trends?.three_year_price_change_pct ?? null,
+    espHandlesComplianceFooter,
   });
   return { html, plain_text: htmlToPlainText(html) };
 }

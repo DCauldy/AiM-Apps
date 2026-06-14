@@ -30,7 +30,7 @@ export function LoginForm() {
         throw new Error(data.error || "Failed to sign in");
       }
 
-      router.push("/apps/prompt-studio/chat");
+      router.push("/apps");
       router.refresh();
     } catch (error: any) {
       addToast({

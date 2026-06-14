@@ -57,6 +57,12 @@ export interface PlatformSenderProfile {
   phone?: string | null;
   reply_to_email?: string | null;
   license_number?: string | null;
+  /** Free text describing supervising / sponsoring broker (CA, TX, IL etc.). */
+  license_info?: string | null;
+  /** "Texas Real Estate Commission" — agency the license is issued by. */
+  regulatory_body?: string | null;
+  /** State the agent operates in (ISO 2-letter code or display name). Drives state-aware disclosure rules at render time. */
+  state?: string | null;
 
   physical_address: string;       // CAN-SPAM requirement
   sign_off: string;
@@ -181,12 +187,21 @@ export interface HlCrmConnection {
 // Email Connections
 // ---------------------------------------------------------------------------
 
-export type EmailProvider = "google" | "microsoft" | "resend";
+export type EmailProvider =
+  | "resend"
+  | "sendgrid"
+  | "mailchimp"
+  | "activecampaign"
+  | "constantcontact"
+  | "klaviyo";
 
 export const EMAIL_PROVIDER_LABELS: Record<EmailProvider, string> = {
-  google: "Gmail",
-  microsoft: "Outlook / Microsoft 365",
   resend: "Resend (verified domain)",
+  sendgrid: "SendGrid",
+  mailchimp: "Mailchimp",
+  activecampaign: "ActiveCampaign",
+  constantcontact: "Constant Contact",
+  klaviyo: "Klaviyo",
 };
 
 export type ResendDkimStatus = "pending" | "verified" | "failed";
@@ -199,15 +214,25 @@ export interface HlEmailConnection {
   email_address: string;
   display_name?: string | null;
 
-  oauth_access_token_encrypted?: string | null;
-  oauth_refresh_token_encrypted?: string | null;
-  oauth_expires_at?: string | null;
-  oauth_scope?: string | null;
-
   resend_api_key_encrypted?: string | null;
+  resend_webhook_secret_encrypted?: string | null;
   resend_domain?: string | null;
   resend_domain_id?: string | null;
   resend_dkim_status?: ResendDkimStatus | null;
+
+  // Generic credentials used by non-Resend providers (SendGrid, future
+  // OAuth-based marketing ESPs). The Resend-named columns above stay
+  // populated only for Resend connections — they don't migrate.
+  provider_api_key_encrypted?: string | null;
+  provider_oauth_access_token_encrypted?: string | null;
+  provider_oauth_refresh_token_encrypted?: string | null;
+  provider_oauth_expires_at?: string | null;
+  /** Per-ESP JSON grab-bag (Mailchimp dc, AC list_id, SendGrid domain_id, etc.) */
+  provider_metadata?: Record<string, unknown> | null;
+
+  paused?: boolean;
+  paused_reason?: string | null;
+  paused_at?: string | null;
 
   is_active: boolean;
   is_default: boolean;
@@ -217,6 +242,10 @@ export interface HlEmailConnection {
 
   created_at: string;
   updated_at: string;
+
+  /** Client-side only: true when `resend_webhook_secret_encrypted` is populated.
+   *  The encrypted secret itself is never sent to the client. */
+  webhook_secret_set?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +256,7 @@ export type RunPhase =
   | "discover"
   | "awaiting_service_area"
   | "awaiting_mls"
+  | "awaiting_audience_confirmation"
   | "generate"
   | "review"
   | "sending"
@@ -238,6 +268,7 @@ export const RUN_PHASE_LABELS: Record<RunPhase, string> = {
   discover: "Discovering",
   awaiting_service_area: "Pick your service area",
   awaiting_mls: "Waiting for MLS data",
+  awaiting_audience_confirmation: "Confirm audience changes",
   generate: "Generating drafts",
   review: "Awaiting review",
   sending: "Sending",

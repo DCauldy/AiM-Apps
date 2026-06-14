@@ -1,17 +1,21 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Loader2, Sparkles } from "lucide-react";
 import { TopicList } from "@/components/blog-engine/topics/TopicList";
+import { useToast } from "@/components/ui/toast";
 import type { BofuTopic } from "@/types/blog-engine";
 
 const POLL_INTERVAL_MS = 5000;
 const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
 export default function TopicsPage() {
+  const { addToast } = useToast();
   const [topics, setTopics] = useState<BofuTopic[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seenGeneratingRef = useRef(false);
@@ -158,6 +162,55 @@ export default function TopicsPage() {
     }
   };
 
+  const handleDiscover = async () => {
+    setDiscovering(true);
+    const startingCount = topics.length;
+    try {
+      const res = await fetch("/api/apps/blog-engine/topics/discover", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Discovery failed");
+      }
+      addToast({
+        title: "Searching for new topics…",
+        description: "This usually takes 30–60 seconds. Topics will appear here.",
+      });
+
+      // Light polling — refetch a few times so the new topics show up
+      // without needing a manual refresh. The Inngest function runs in
+      // the background; we just want to render its output when ready.
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts += 1;
+        await fetchTopics();
+        if (attempts >= 12) {
+          // ~60s of polling, then stop
+          clearInterval(poll);
+          setDiscovering(false);
+        }
+      }, 5_000);
+
+      // Also stop polling early if we see the topic count grow
+      const stopOnGrowth = setInterval(() => {
+        if (topics.length > startingCount) {
+          clearInterval(poll);
+          clearInterval(stopOnGrowth);
+          setDiscovering(false);
+        }
+      }, 1_000);
+      setTimeout(() => clearInterval(stopOnGrowth), 65_000);
+    } catch (err) {
+      addToast({
+        title: "Discovery failed",
+        description: err instanceof Error ? err.message : "Try again later.",
+        variant: "destructive",
+      });
+      setDiscovering(false);
+    }
+  };
+
   const handleSkipTopic = async (topicId: string) => {
     try {
       const response = await fetch("/api/apps/blog-engine/topics", {
@@ -189,12 +242,28 @@ export default function TopicsPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="mb-6">
-          <h1 className="font-sans text-xl font-bold text-foreground">Topic Bank</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Topics discovered and scored for your market. Click &quot;Write&quot; to
-            generate a blog from any available topic.
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="font-sans text-xl font-bold text-foreground">Topic Bank</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Topics discovered and scored for your market. Click &quot;Write&quot; to
+              generate a blog from any available topic.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDiscover}
+            disabled={discovering}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md border border-border hover:bg-accent disabled:opacity-50 transition-colors shrink-0"
+            title="Run topic research now without spending a weekly blog slot"
+          >
+            {discovering ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {discovering ? "Discovering…" : "Discover Topics"}
+          </button>
         </div>
 
         {/* Pipeline activity banner */}

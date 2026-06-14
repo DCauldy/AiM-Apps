@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ChevronDown, Sparkles, FileText, Radar, Mail, Video, Lock, ExternalLink, LayoutGrid, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useProfile } from "@/components/profile/ProfileProvider";
 import { cn } from "@/lib/utils";
 import { startNavigationProgress } from "@/lib/navigation-progress";
 import {
@@ -32,36 +33,42 @@ interface AppDefinition {
 
 const DEFAULT_ICON_BG = "bg-gradient-to-br from-[#17A697] to-[#1B7FB5]";
 
+// Gradients mirror /apps showcase (AppsShowcase.tsx) so users see the
+// same color identity in the switcher dropdown and on the landing.
 const APPS: AppDefinition[] = [
   {
     id: "prompt-studio",
     name: "Prompt Studio",
     description: "AI-powered prompt engineering",
-    route: "/apps/prompt-studio",
+    // Route deep so we skip the bounce through /apps/prompt-studio → redirect.
+    route: "/apps/prompt-studio/chat",
     icon: <Sparkles className="h-4 w-4" />,
     requiresPro: false,
+    iconClassName: "bg-gradient-to-br from-[#1B7FB5] to-[#1C4C8A]",
   },
   {
     id: "blog-engine",
     name: "Blog Engine",
     description: "Automated BOFU blog generation",
-    route: "/apps/blog-engine",
+    route: "/apps/blog-engine/dashboard",
     icon: <FileText className="h-4 w-4" />,
     requiresPro: true,
+    iconClassName: "bg-gradient-to-br from-[#17A697] to-[#31DBA5]",
   },
   {
     id: "radar",
     name: "Radar",
     description: "AI search visibility monitoring",
-    route: "/apps/radar",
+    route: "/apps/radar/dashboard",
     icon: <Radar className="h-4 w-4" />,
     requiresPro: true,
+    iconClassName: "bg-gradient-to-br from-[#D97706] to-[#E0A458]",
   },
   {
     id: "hyperlocal",
     name: "Hyperlocal",
     description: "Neighborhood market-report email campaigns",
-    route: "/apps/hyperlocal",
+    route: "/apps/hyperlocal/dashboard",
     icon: <Mail className="h-4 w-4" />,
     requiresPro: true,
     iconClassName: "bg-gradient-to-br from-[#E11D48] to-[#7C3AED]",
@@ -77,27 +84,18 @@ const APPS: AppDefinition[] = [
   },
 ];
 
-interface ProfileSummary {
-  id: string;
-  display_name: string;
-  brokerage: string | null;
-  primary_color: string;
-  accent_color: string;
-}
-
 export function AppSwitcher() {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
+  const { profiles, activeProfileId, activeProfile, switchProfile: ctxSwitchProfile } = useProfile();
+
   const [proModalOpen, setProModalOpen] = useState(false);
   const [availability, setAvailability] = useState<Record<string, boolean> | null>(null);
+  const [profileSwitchBusy, setProfileSwitchBusy] = useState(false);
 
   const subscriptionTier = user?.app_metadata?.subscription_tier;
   const isPro = subscriptionTier === "pro";
-
-  const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
-  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
-  const [profileSwitchBusy, setProfileSwitchBusy] = useState(false);
 
   useEffect(() => {
     fetch("/api/app-availability")
@@ -106,50 +104,25 @@ export function AppSwitcher() {
       .catch(() => setAvailability(null));
   }, []);
 
-  useEffect(() => {
-    if (!user) return;
-    fetch("/api/profiles")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!data?.profiles) return;
-        const summaries: ProfileSummary[] = data.profiles
-          .filter((p: { archived_at: string | null }) => !p.archived_at)
-          .map((p: ProfileSummary) => ({
-            id: p.id,
-            display_name: p.display_name,
-            brokerage: p.brokerage,
-            primary_color: p.primary_color,
-            accent_color: p.accent_color,
-          }));
-        setProfiles(summaries);
-      })
-      .catch(() => setProfiles([]));
-
-    fetch("/api/profile")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setActiveProfileId(data?.active_profile_id ?? null))
-      .catch(() => setActiveProfileId(null));
-  }, [user]);
-
-  const activeProfile = profiles.find((p) => p.id === activeProfileId) ?? null;
   const otherProfiles = profiles.filter((p) => p.id !== activeProfileId);
 
   async function switchProfile(profileId: string) {
-    if (profileId === activeProfileId) return;
     setProfileSwitchBusy(true);
     try {
-      const res = await fetch(`/api/profiles/${profileId}/activate`, { method: "POST" });
-      if (res.ok) {
-        setActiveProfileId(profileId);
-        router.refresh();
-      }
+      await ctxSwitchProfile(profileId);
     } finally {
       setProfileSwitchBusy(false);
     }
   }
 
-  // Determine which app is currently active
-  const currentApp = APPS.find((app) => pathname?.startsWith(app.route)) ?? APPS[0];
+  // Determine which app is currently active. Match by app root prefix
+  // (/apps/{id}) rather than the deep nav target — sub-pages like
+  // /apps/blog-engine/topics or /apps/hyperlocal/runs/[id] still need
+  // to resolve to their owning app. Cross-app pages (/apps, /apps/profile)
+  // match nothing and fall through to the neutral "All Apps" trigger.
+  const currentApp = APPS.find((app) =>
+    pathname?.startsWith(`/apps/${app.id}`),
+  );
 
   const handleAppSelect = (app: AppDefinition) => {
     const isUnavailable = availability && availability[app.id] === false;
@@ -169,20 +142,22 @@ export function AppSwitcher() {
           <span
             className={cn(
               "flex items-center justify-center w-7 h-7 rounded-md text-white",
-              currentApp.iconClassName ?? DEFAULT_ICON_BG
+              currentApp ? (currentApp.iconClassName ?? DEFAULT_ICON_BG) : "bg-muted-foreground/30"
             )}
           >
-            {currentApp.icon}
+            {currentApp ? currentApp.icon : <LayoutGrid className="h-4 w-4" />}
           </span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{currentApp.name}</p>
+            <p className="text-sm font-semibold truncate">
+              {currentApp ? currentApp.name : "All Apps"}
+            </p>
           </div>
           <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="start" className="w-64 glass-dropdown text-white border-0">
           {APPS.map((app) => {
-            const isActive = pathname?.startsWith(app.route);
+            const isActive = pathname?.startsWith(`/apps/${app.id}`);
             const isUnavailable = availability ? availability[app.id] === false : false;
             const isLocked = !isUnavailable && app.requiresPro && !isPro;
             const isDisabled = isUnavailable || isLocked;

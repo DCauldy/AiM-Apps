@@ -235,6 +235,9 @@ export interface BofuBlog {
   // Pipeline
   pipeline_run_id?: string;
   generation_cost_cents?: number;
+  /** Last failure surfaced to the UI as "{step}: {message}". NULL when
+   *  the pipeline + publish are healthy. Cleared on successful retry. */
+  pipeline_error?: string | null;
 
   created_at: string;
   updated_at: string;

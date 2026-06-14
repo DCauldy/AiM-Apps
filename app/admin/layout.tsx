@@ -18,7 +18,7 @@ export default async function AdminLayout({
   } = await supabase.auth.getUser();
 
   if (!user || !isAdminUser(user)) {
-    redirect("/apps/prompt-studio/chat");
+    redirect("/apps");
   }
 
   return (

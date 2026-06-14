@@ -1,5 +1,8 @@
 import { inngest } from "@/lib/inngest/client";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import { getAdapter } from "@/lib/hyperlocal/email/providers/registry";
+import { dispatchCampaignRun } from "@/lib/hyperlocal/email/campaign-dispatch";
+import type { HlEmailConnection } from "@/types/hyperlocal";
 
 type HlSendEvent = {
   name: "hl/run.send.approved";
@@ -42,6 +45,43 @@ export const hlSend = inngest.createFunction(
       }
       return data;
     });
+
+    // ---- Branch by provider mode ----
+    // Campaign-mode (Mailchimp, AC, CC, Klaviyo) collapses into one ESP
+    // campaign object. We skip the per-recipient queue and dispatch
+    // through campaign-dispatch instead. Transactional-mode (Resend,
+    // SendGrid) keeps the current fan-out path below.
+    const conn = await step.run("load-connection", async () => {
+      const { data: c } = await supabase
+        .from("hl_email_connections")
+        .select("*")
+        .eq("id", run.email_connection_id)
+        .single();
+      if (!c) throw new Error("Email connection not found");
+      return c as HlEmailConnection;
+    });
+
+    const adapter = getAdapter(conn.provider);
+    if (adapter.mode === "campaign") {
+      const result = await step.run("campaign-dispatch", () =>
+        dispatchCampaignRun({
+          supabase,
+          runId,
+          connection: conn,
+          // First pass through hl-send is implicit-no-approval — if there
+          // are new contacts the run parks at awaiting_audience_confirmation.
+          // The approve route re-triggers hl-send with the audienceApproved
+          // signal injected via a re-fired event (see approve-audience route).
+          audienceApproved: false,
+        }),
+      );
+      return {
+        mode: "campaign",
+        outcome: result.outcome,
+        campaign_id: result.campaign_id,
+        bucketing: result.bucketing,
+      };
+    }
 
     // Load all recipients of approved emails for this run
     const recipients = await step.run("load-recipients", async () => {

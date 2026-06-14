@@ -78,7 +78,7 @@ export function MemberstackLoginButton() {
         // Ignore
       }
 
-      router.push("/apps/prompt-studio/chat");
+      router.push("/apps");
       router.refresh();
     } catch (error: any) {
       const msg = error?.message || "";

@@ -3,6 +3,7 @@ import { createServiceRoleClient } from "@/lib/supabase/server";
 import { dispatchEmail } from "@/lib/hyperlocal/email/dispatch";
 import { buildUnsubscribeUrl } from "@/lib/hyperlocal/email/unsubscribe";
 import { isSuppressed, addSuppression } from "@/lib/hyperlocal/email/suppressions";
+import { assertSendOk, ComplianceError } from "@/lib/hyperlocal/email/compliance";
 import type { HlEmailConnection, PlatformSenderProfile } from "@/types/hyperlocal";
 
 type HlSendOneEvent = {
@@ -92,7 +93,9 @@ export const hlSendOne = inngest.createFunction(
       if (run.profile_id) {
         const { data: pp } = await supabase
           .from("platform_profiles")
-          .select("id, full_name, display_name, title, brokerage, phone, reply_to_email, license_number, physical_address, sign_off")
+          .select(
+            "id, full_name, display_name, title, brokerage, phone, reply_to_email, license_number, license_info, regulatory_body, state, physical_address, sign_off"
+          )
           .eq("id", run.profile_id)
           .maybeSingle();
         if (pp && pp.physical_address) {
@@ -104,6 +107,9 @@ export const hlSendOne = inngest.createFunction(
             phone: pp.phone,
             reply_to_email: pp.reply_to_email,
             license_number: pp.license_number,
+            license_info: pp.license_info,
+            regulatory_body: pp.regulatory_body,
+            state: pp.state,
             physical_address: pp.physical_address,
             sign_off: pp.sign_off,
           };
@@ -165,10 +171,35 @@ export const hlSendOne = inngest.createFunction(
       return { skipped: true, reason: "suppressed" };
     }
 
+    // ---- Per-recipient compliance gate (kill switch + token must exist) ----
+    try {
+      assertSendOk({
+        connection,
+        recipient: {
+          contact_email: recipient.contact_email,
+          unsubscribe_token: recipient.unsubscribe_token,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ComplianceError) {
+        const reason = err.issues.map((i) => i.code).join(",");
+        await supabase
+          .from("hl_recipients")
+          .update({ send_status: "failed", error_message: err.message })
+          .eq("id", recipient.id);
+        await supabase
+          .from("hl_send_jobs")
+          .update({ status: "failed", last_error: err.message })
+          .eq("recipient_id", recipient.id)
+          .eq("status", "queued");
+        return { skipped: true, reason };
+      }
+      throw err;
+    }
+
     // ---- Build final message: inject per-recipient unsubscribe URL ----
-    const unsubscribeUrl = recipient.unsubscribe_token
-      ? buildUnsubscribeUrl(recipient.unsubscribe_token)
-      : "";
+    // unsubscribe_token is guaranteed non-empty by assertSendOk above.
+    const unsubscribeUrl = buildUnsubscribeUrl(recipient.unsubscribe_token!);
     const finalHtml = email.html
       .replace(/\{\{UNSUBSCRIBE_URL:\{\{UNSUBSCRIBE_TOKEN\}\}\}\}/g, unsubscribeUrl)
       .replace(/\{\{UNSUBSCRIBE_URL\}\}/g, unsubscribeUrl);
@@ -196,7 +227,11 @@ export const hlSendOne = inngest.createFunction(
         text: finalText,
         headers: unsubscribeUrl
           ? {
-              "List-Unsubscribe": `<${unsubscribeUrl}>, <mailto:unsubscribe@${connection.email_address.split("@")[1] ?? "apps.aimarketingacademy.com"}>`,
+              // HTTPS one-click only — the mailto half is optional in RFC 2369
+              // and we don't operate an inbox to receive it, so listing it
+              // would silently drop unsubscribe attempts from clients that
+              // prefer mailto over HTTPS.
+              "List-Unsubscribe": `<${unsubscribeUrl}>`,
               "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
             }
           : undefined,

@@ -4,6 +4,7 @@ import {
   generateUnsubscribeToken,
   buildUnsubscribeUrl,
 } from "@/lib/hyperlocal/email/unsubscribe";
+import { isSuppressed } from "@/lib/hyperlocal/email/suppressions";
 import { NextRequest } from "next/server";
 import type {
   HlEmailConnection,
@@ -154,6 +155,47 @@ export async function POST(
     );
   }
 
+  // Mirror the per-send compliance gate so test sends can't bypass it:
+  //   - inactive / paused connection blocks the whole batch
+  //   - suppressed test addresses are dropped (other addresses still go)
+  // Content-compliance issues (missing license, brokerage, etc.) are NOT
+  // enforced here because the agent uses test sends to iterate on content
+  // before the launch-time gate catches those at approve.
+  const conn = connection as HlEmailConnection;
+  if (!conn.is_active) {
+    return Response.json(
+      { error: "Email connection is inactive — re-verify your sending domain before test-sending." },
+      { status: 400 }
+    );
+  }
+  if (conn.paused) {
+    return Response.json(
+      {
+        error:
+          conn.paused_reason ??
+          "Email connection is paused — resolve the deliverability issue before test-sending.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const suppressedTestEmails = new Set<string>();
+  for (const addr of testEmails) {
+    if (await isSuppressed(user.id, addr)) suppressedTestEmails.add(addr);
+  }
+  const deliverableTestEmails = testEmails.filter(
+    (e) => !suppressedTestEmails.has(e),
+  );
+  if (deliverableTestEmails.length === 0) {
+    return Response.json(
+      {
+        error:
+          "All provided test addresses are on your suppression list. Remove them from Settings → Suppression or use a different address.",
+      },
+      { status: 400 }
+    );
+  }
+
   // Fire each test send sequentially. Throughput isn't critical here —
   // typically 10 drafts × 1 test recipient = 10 sends, ~5–10 sec total.
   const results: Array<{
@@ -165,7 +207,7 @@ export async function POST(
   }> = [];
 
   for (const email of emails) {
-    for (const to of testEmails) {
+    for (const to of deliverableTestEmails) {
       // Fresh per-recipient unsubscribe token so the link in the test email
       // actually works (suppresses that address from future real sends if
       // clicked — useful warning if the user is sending to a list they
@@ -232,7 +274,9 @@ export async function POST(
     sent: successCount,
     failed: failCount,
     total: results.length,
-    test_emails: testEmails,
+    test_emails: deliverableTestEmails,
+    suppressed_test_emails:
+      suppressedTestEmails.size > 0 ? Array.from(suppressedTestEmails) : undefined,
     results,
   });
 }

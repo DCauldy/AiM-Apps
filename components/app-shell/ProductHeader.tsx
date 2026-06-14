@@ -53,7 +53,7 @@ export function ProductHeader({
 
   return (
     <header className="border-b border-[hsl(var(--border))] bg-[hsl(var(--card))]">
-      <div className="flex items-center h-14 px-4">
+      <div className="relative flex items-center h-14 px-4">
         <div className="flex items-center gap-3 shrink-0">
           <Link href={homeHref} className="flex items-center gap-2.5">
             <Image
@@ -70,7 +70,11 @@ export function ProductHeader({
           <ActiveProfileBadge />
         </div>
 
-        <nav className="hidden md:flex items-center gap-1 mx-auto">
+        {/* Absolute-centered nav so it sits at the true viewport center
+            regardless of how wide the left or right slot is. With
+            mx-auto in flex, asymmetric left/right widths offset the
+            visual center — especially obvious with a single nav item. */}
+        <nav className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
           {navItems.map((item) => {
             const active = isItemActive(item.href);
             return (

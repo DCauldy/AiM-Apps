@@ -17,48 +17,15 @@ interface DialogContentProps {
   className?: string;
 }
 
-let openDialogCount = 0;
-let previousBodyOverflow: string | null = null;
-
-function lockBodyScroll() {
-  if (openDialogCount === 0) {
-    previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-  }
-  openDialogCount += 1;
-}
-
-function unlockBodyScroll() {
-  if (openDialogCount === 0) {
-    return;
-  }
-
-  openDialogCount -= 1;
-  if (openDialogCount === 0) {
-    document.body.style.overflow = previousBodyOverflow ?? "";
-    previousBodyOverflow = null;
-  }
-}
-
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
-  const hasScrollLock = React.useRef(false);
-
   React.useEffect(() => {
-    if (open && !hasScrollLock.current) {
-      lockBodyScroll();
-      hasScrollLock.current = true;
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
     }
-
-    if (!open && hasScrollLock.current) {
-      unlockBodyScroll();
-      hasScrollLock.current = false;
-    }
-
     return () => {
-      if (hasScrollLock.current) {
-        unlockBodyScroll();
-        hasScrollLock.current = false;
-      }
+      document.body.style.overflow = "";
     };
   }, [open]);
 
@@ -91,7 +58,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
 
 export function DialogHeader({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex items-center justify-between border-b border-border p-6", className)}>
+    <div className={cn("flex items-center justify-between p-6 border-b", className)}>
       {children}
     </div>
   );
@@ -128,7 +95,7 @@ export function DialogBody({ children, className }: { children: React.ReactNode;
 
 export function DialogFooter({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex justify-end gap-3 border-t border-border p-6", className)}>
+    <div className={cn("flex justify-end gap-3 p-6 border-t", className)}>
       {children}
     </div>
   );

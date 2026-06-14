@@ -1,31 +1,24 @@
 import type { HlEmailConnection } from "@/types/hyperlocal";
-import { googleProvider } from "./providers/google";
-import { microsoftProvider } from "./providers/microsoft";
-import { resendProvider } from "./providers/resend";
-import type {
-  EmailMessage,
-  EmailProviderClient,
-  SendResult,
-} from "./providers/types";
+import { getAdapter } from "./providers/registry";
+import type { EmailMessage, SendResult } from "./providers/types";
 
-function getProvider(conn: HlEmailConnection): EmailProviderClient {
-  switch (conn.provider) {
-    case "google":
-      return googleProvider;
-    case "microsoft":
-      return microsoftProvider;
-    case "resend":
-      return resendProvider;
-    default: {
-      const _exhaust: never = conn.provider;
-      throw new Error(`Unknown email provider: ${String(_exhaust)}`);
-    }
-  }
-}
-
+/**
+ * Dispatch a Hyperlocal email through the connection's provider.
+ *
+ * Resolves the adapter via the central registry and asserts its mode is
+ * transactional (campaign-mode providers route through a different path —
+ * see lib/hyperlocal/email/campaign-dispatch.ts when that ships).
+ */
 export async function dispatchEmail(
   conn: HlEmailConnection,
-  msg: EmailMessage
+  msg: EmailMessage,
 ): Promise<SendResult> {
-  return getProvider(conn).send(conn, msg);
+  const adapter = getAdapter(conn.provider);
+  if (adapter.mode !== "transactional" || !adapter.send) {
+    throw new Error(
+      `dispatchEmail called on a ${adapter.mode}-mode provider (${conn.provider}). ` +
+        "Campaign-mode sends go through campaign-dispatch, not per-recipient dispatchEmail.",
+    );
+  }
+  return adapter.send(conn, msg);
 }

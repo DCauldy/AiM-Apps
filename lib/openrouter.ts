@@ -3,6 +3,12 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://apps.aimarketingacademy.com";
 
+// HTTP-Referer sent to OpenRouter for attribution. Always the public prod URL
+// — not NEXT_PUBLIC_APP_URL — so dev/preview/prod all aggregate under a single
+// app entry instead of fragmenting per environment ("http://localhost:6060/",
+// "https://aim-apps-git-abc.vercel.app/", etc).
+const OPENROUTER_REFERER = "https://apps.aimarketingacademy.com";
+
 const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
 
 // ---------------------------------------------------------------------------
@@ -11,15 +17,39 @@ const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
 
 /**
  * OpenRouter provider (used in production when OPENROUTER_API_KEY is set).
+ *
+ * Attribution: OpenRouter identifies apps by HTTP-Referer (primary) +
+ * X-OpenRouter-Title (display name) — no manual registration. Apps show
+ * up at openrouter.ai/apps?url=<APP_URL> once they've received traffic
+ * with both headers.
+ *
+ * Header injection happens via a custom `fetch` wrapper rather than the
+ * `headers` option on createOpenAI — observed in the wild that the
+ * AI SDK's option doesn't always propagate to every outgoing request,
+ * which leaves OpenRouter logs showing the bare referer URL instead of
+ * the friendly title. A fetch interceptor is the belt-and-suspenders fix.
  */
 function createAppProvider(appName: string) {
+  const title = `AiM ${appName}`;
+  const attribution: Record<string, string> = {
+    "X-OpenRouter-Title": title,
+    "X-Title": title,
+    "HTTP-Referer": OPENROUTER_REFERER,
+  };
+
+  const wrappedFetch: typeof fetch = (input, init) => {
+    const merged = new Headers(init?.headers);
+    for (const [k, v] of Object.entries(attribution)) {
+      // setIfAbsent semantics: don't trample if a caller already set it.
+      if (!merged.has(k)) merged.set(k, v);
+    }
+    return fetch(input, { ...init, headers: merged });
+  };
+
   return createOpenAI({
     apiKey: process.env.OPENROUTER_API_KEY,
     baseURL: "https://openrouter.ai/api/v1",
-    headers: {
-      "X-Title": `AiM ${appName}`,
-      "HTTP-Referer": APP_URL,
-    },
+    fetch: wrappedFetch,
   });
 }
 
@@ -140,10 +170,18 @@ export function getHyperlocalSubjectModel() {
   return getHyperlocalProvider().chat("openai/gpt-4o");
 }
 
-/** Claude Sonnet for conversational onboarding intake */
+/**
+ * GPT-4o-mini for conversational onboarding intake — used over Claude here
+ * because `generateObject` schema extraction relies on OpenAI-style tool
+ * calls, which round-trip cleanly through OpenRouter to OpenAI but flake
+ * when OpenRouter has to translate between OpenAI tools and Anthropic
+ * messages (silent "could not parse the response" failures). Email body
+ * writing (getHyperlocalEmailWriterModel) stays on Claude where prose
+ * quality matters more than structured output.
+ */
 export function getHyperlocalOnboardingModel() {
-  if (!useOpenRouter) return getDirectAnthropic()("claude-sonnet-4-20250514");
-  return getHyperlocalProvider().chat("anthropic/claude-sonnet-4");
+  if (!useOpenRouter) return getDirectOpenAI().chat("gpt-4o-mini");
+  return getHyperlocalProvider().chat("openai/gpt-4o-mini");
 }
 
 // ---------------------------------------------------------------------------

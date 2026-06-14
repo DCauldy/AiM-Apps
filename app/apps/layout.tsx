@@ -1,16 +1,14 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getCachedUser } from "@/lib/auth/get-cached-user";
 import { ToastProvider } from "@/components/ui/toast";
+import { ProfileProvider } from "@/components/profile/ProfileProvider";
 
 export default async function AppsLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser();
 
   if (!user) {
     redirect((process.env.NEXT_PUBLIC_AIM_BASE_URL ?? "https://aimarketingacademy.com") + "/apps");
@@ -18,7 +16,7 @@ export default async function AppsLayout({
 
   return (
     <ToastProvider>
-      {children}
+      <ProfileProvider>{children}</ProfileProvider>
     </ToastProvider>
   );
 }

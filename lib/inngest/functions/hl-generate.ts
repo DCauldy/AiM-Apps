@@ -54,11 +54,21 @@ const MAX_SEGMENTS_PER_RUN = 30;
 interface GenerateContext {
   runId: string;
   userId: string;
+  /** Active profile this run is scoped to — drives snapshot lookups. */
+  profileId: string | null;
   campaign: HlCampaign;
   sender: PlatformSenderProfile;
   branding: PlatformBrandingProfile | null;
   segments: HlSegment[];               // already capped
   cachePath: string;
+  /** Sending provider for this run — drives renderer footer behavior.
+   *  Null when no email connection is attached (rare; generate normally
+   *  blocks earlier in that case). */
+  providerForRender: import("@/types/hyperlocal").EmailProvider | null;
+  /** Pack-tier MLS history cap in months. `null` = unlimited (Diamond) or
+   *  unresolved. Resolved once at load-context to avoid N pack lookups
+   *  across per-segment generation. */
+  mlsHistoryMonthsCap: number | null;
 }
 
 export const hlGenerate = inngest.createFunction(
@@ -83,10 +93,22 @@ export const hlGenerate = inngest.createFunction(
     const ctx: GenerateContext = await step.run("load-context", async () => {
       const { data: run } = await supabase
         .from("hl_runs")
-        .select("id, user_id, campaign_id, profile_id, sender_profile_id, branding_profile_id")
+        .select("id, user_id, campaign_id, profile_id, sender_profile_id, branding_profile_id, email_connection_id")
         .eq("id", runId)
         .single();
       if (!run) throw new Error("Run not found");
+
+      // Resolve the run's email connection so the renderer can ask its
+      // adapter whether to skip the CAN-SPAM footer.
+      let providerForRender: import("@/types/hyperlocal").EmailProvider | null = null;
+      if (run.email_connection_id) {
+        const { data: conn } = await supabase
+          .from("hl_email_connections")
+          .select("provider")
+          .eq("id", run.email_connection_id)
+          .maybeSingle();
+        providerForRender = (conn?.provider as import("@/types/hyperlocal").EmailProvider) ?? null;
+      }
 
       // Sender + branding resolution: prefer run.profile_id (post-backfill path
       // — pulls from platform_profiles), fall back to legacy per-run snapshots.
@@ -108,6 +130,9 @@ export const hlGenerate = inngest.createFunction(
             phone: pp.phone,
             reply_to_email: pp.reply_to_email,
             license_number: pp.license_number,
+            license_info: pp.license_info,
+            regulatory_body: pp.regulatory_body,
+            state: pp.state,
             physical_address: pp.physical_address,
             sign_off: pp.sign_off,
           };
@@ -172,14 +197,27 @@ export const hlGenerate = inngest.createFunction(
         segments = readySegments.slice(0, MAX_SEGMENTS_PER_RUN);
       }
 
+      // Resolve the pack-tier MLS history cap once for the whole run.
+      // Diamond → null (unlimited); everything else → numeric months.
+      const { getHyperlocalUsage } = await import("@/lib/hyperlocal/usage");
+      const { UNLIMITED } = await import("@/lib/hyperlocal-packs");
+      const packUsage = await getHyperlocalUsage(run.user_id).catch(() => null);
+      const mlsHistoryMonthsCap =
+        packUsage && packUsage.mlsHistoryMonths !== UNLIMITED
+          ? (packUsage.mlsHistoryMonths as number)
+          : null;
+
       return {
         runId,
         userId: run.user_id,
+        profileId: run.profile_id ?? null,
         campaign: campaign as HlCampaign,
         sender: sender as unknown as PlatformSenderProfile,
         branding: branding as unknown as PlatformBrandingProfile | null,
         segments,
         cachePath: `${run.user_id}/${runId}/discovery.json`,
+        providerForRender,
+        mlsHistoryMonthsCap,
       };
     });
 
@@ -249,6 +287,26 @@ async function processSegment(
   let sellerHtml: string | null = null;
   let buyerHtml: string | null = null;
 
+  // Resolve trends once per segment (used by both renderer + writer prompt)
+  // so we don't re-hit the snapshots table for each perspective.
+  let yoyPct: number | null = null;
+  let threeYearPct: number | null = null;
+  if (ctx.profileId) {
+    const { getTrendsForGeo } = await import("@/lib/hyperlocal/mls/snapshots");
+    const trends = await getTrendsForGeo(
+      supabase,
+      ctx.profileId,
+      segment.geo_key,
+      ctx.mlsHistoryMonthsCap,
+    ).catch(() => null);
+    yoyPct = trends?.yoy_price_change_pct ?? null;
+    threeYearPct = trends?.three_year_price_change_pct ?? null;
+  }
+  const trendContext = {
+    yoy_price_change_pct: yoyPct,
+    three_year_price_change_pct: threeYearPct,
+  };
+
   for (const perspective of tasks) {
     const prompt = getEmailWriterPrompt({
       sender: ctx.sender,
@@ -256,6 +314,7 @@ async function processSegment(
       metrics,
       perspective,
       campaign: ctx.campaign,
+      trends: trendContext,
     });
     const result = await generateText({
       model: getHyperlocalEmailWriterModel(),
@@ -288,6 +347,18 @@ async function processSegment(
     token: process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "",
   }).catch(() => null);
 
+  // Resolve the sending provider's capabilities so the renderer knows
+  // whether to skip its CAN-SPAM footer (marketing ESPs append their own).
+  // State-specific real estate disclosures render regardless.
+  const { getAdapter, hasAdapter } = await import(
+    "@/lib/hyperlocal/email/providers/registry"
+  );
+  const connectionProvider = ctx.providerForRender;
+  const espHandlesComplianceFooter =
+    connectionProvider && hasAdapter(connectionProvider)
+      ? getAdapter(connectionProvider).capabilities.handles_compliance_footer
+      : false;
+
   // Render HTML — per-recipient unsubscribe placeholder is filled at send time
   const html = renderEmailHtml({
     branding: ctx.branding,
@@ -299,6 +370,9 @@ async function processSegment(
     preheader,
     unsubscribeUrl: "{{UNSUBSCRIBE_URL}}",
     staticMapUrl,
+    yoyPriceChangePct: yoyPct,
+    threeYearPriceChangePct: threeYearPct,
+    espHandlesComplianceFooter,
   });
   const plain = htmlToPlainText(html);
 

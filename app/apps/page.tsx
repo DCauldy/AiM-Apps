@@ -6,6 +6,8 @@ import { ActiveProfileChip } from "@/components/profile/ActiveProfileChip";
 import { Circuitry } from "@/components/decor/Circuitry";
 import { getTrialStatus } from "@/lib/trial";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
 import type { UsageStats } from "@/components/apps/AppsShowcase";
 
 export default async function AppsPage() {
@@ -62,6 +64,17 @@ export default async function AppsPage() {
           period: "queries tracked",
         };
       }
+
+      // Hyperlocal usage: campaigns this month vs pack limit. Unlimited
+      // packs (Diamond, or future tiers) surface a large sentinel so the
+      // showcase progress bar caps gracefully.
+      const hlUsage = await getHyperlocalUsage(user.id);
+      usageStats["hyperlocal"] = {
+        used: hlUsage.campaignsThisMonth,
+        limit:
+          hlUsage.campaignsLimit === UNLIMITED ? 9999 : hlUsage.campaignsLimit,
+        period: "this month",
+      };
     }
   }
 

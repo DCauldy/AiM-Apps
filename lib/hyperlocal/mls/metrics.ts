@@ -4,13 +4,18 @@ import { detectMlsColumns } from "./parser";
 /**
  * Compute metric snapshot for a slice of MLS rows.
  * Handles missing/malformed columns gracefully by skipping rows.
+ *
+ * Pass `columnMap` to override auto-detection — used when the user
+ * has confirmed/adjusted the column mapping via the upload modal.
+ * Without it we fall back to the heuristic.
  */
 export function computeMetrics(
   rows: Record<string, unknown>[],
-  columns: string[]
+  columns: string[],
+  columnMap?: ReturnType<typeof detectMlsColumns>,
 ): MlsMetrics {
   if (rows.length === 0) return {};
-  const map = detectMlsColumns(columns);
+  const map = columnMap ?? detectMlsColumns(columns);
 
   const now = Date.now();
   const day = 86_400_000;

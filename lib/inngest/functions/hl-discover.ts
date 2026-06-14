@@ -1,11 +1,14 @@
 import { inngest } from "@/lib/inngest/client";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getConnector } from "@/lib/hyperlocal/crm";
+import { filterDeliverable } from "@/lib/hyperlocal/email/validation";
 import { identifyGeographies } from "@/lib/hyperlocal/geographies";
 import {
   computeRequiredMlsExports,
   type MlsExportRequirement,
 } from "@/lib/hyperlocal/mls/data-requirements";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
 import type {
   HlCampaign,
   HlCrmConnection,
@@ -99,7 +102,7 @@ export const hlDiscover = inngest.createFunction(
       "fetch-and-segment",
       async () => {
         const connector = getConnector(ctx.crmConnection.platform);
-        const contacts = await connector.fetchContacts(ctx.crmConnection, {
+        const fetched = await connector.fetchContacts(ctx.crmConnection, {
           limit: 25_000,
         });
 
@@ -111,6 +114,18 @@ export const hlDiscover = inngest.createFunction(
             last_error: null,
           })
           .eq("id", ctx.crmConnection.id);
+
+        // Free in-house list hygiene — syntax + typo + MX. Drops dead
+        // emails before they enter segmentation so the customer's Resend
+        // bounce rate stays clean. See lib/hyperlocal/email/validation.ts
+        // for the strategy notes.
+        const { deliverable: contacts, removed } = await filterDeliverable(fetched);
+        if (removed.length > 0) {
+          console.log(
+            `[hl-discover] hygiene removed ${removed.length}/${fetched.length} contacts ` +
+              `for run ${runId}`
+          );
+        }
 
         const hasServiceArea =
           Array.isArray(ctx.campaign.service_area_zips) &&
@@ -128,11 +143,36 @@ export const hlDiscover = inngest.createFunction(
         }
 
         // Bucket by geography — filter to service area if campaign has one set
-        const buckets = identifyGeographies(
+        const rawBuckets = identifyGeographies(
           contacts,
           ctx.campaign,
           hasServiceArea ? ctx.campaign.service_area_zips : undefined
         );
+
+        // Pack-tier cap on segments per campaign. We keep the top N by
+        // contact_count (biggest neighborhoods first) so the email goes to
+        // the most people. Excess buckets are dropped silently — the run
+        // launcher already knows the cap and could surface a warning, but
+        // dropping is safer than failing the whole run mid-flight.
+        const usage = await getHyperlocalUsage(ctx.run.user_id);
+        const segmentsCap = usage.segmentsPerCampaign;
+        const buckets =
+          segmentsCap === UNLIMITED || rawBuckets.length <= (segmentsCap as number)
+            ? rawBuckets
+            : [...rawBuckets]
+                .sort((a, b) => b.contact_ids.length - a.contact_ids.length)
+                .slice(0, segmentsCap as number);
+        if (
+          segmentsCap !== UNLIMITED &&
+          rawBuckets.length > (segmentsCap as number)
+        ) {
+          console.log(
+            `[hl-discover] segments cap (${segmentsCap}) — dropped ${
+              rawBuckets.length - (segmentsCap as number)
+            } of ${rawBuckets.length} buckets for run ${runId}`,
+          );
+        }
+
         if (buckets.length === 0) {
           await supabase
             .from("hl_runs")

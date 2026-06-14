@@ -1,10 +1,17 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { FEATURES } from "@/lib/feature-flags";
 import { PROMPT_PACKS, type PromptPack } from "@/lib/prompt-packs";
 import { BLOG_PACKS, type BlogPack } from "@/lib/blog-packs";
 import { RADAR_PACKS, type RadarPack } from "@/lib/radar-packs";
+import {
+  HYPERLOCAL_PACKS,
+  UNLIMITED,
+  type HyperlocalPack,
+} from "@/lib/hyperlocal-packs";
 
 export const FEATURE_FLAG_DEFAULTS: Record<string, boolean> = {
   PROMPT_PACKS: FEATURES.PROMPT_PACKS,
@@ -15,8 +22,13 @@ export const FEATURE_FLAG_DEFAULTS: Record<string, boolean> = {
   TOURS: FEATURES.TOURS,
 };
 
+// `cache()` dedupes within a single SSR render. Both the layout and the
+// page often look up the same feature flag — wrapping collapses those to
+// one admin_settings hit.
 /** Read a single feature flag from admin_settings, falling back to env var */
-export async function getFeatureFlag(key: string): Promise<boolean> {
+export const getFeatureFlag = cache(async function getFeatureFlag(
+  key: string,
+): Promise<boolean> {
   try {
     const supabase = createServiceRoleClient();
     const { data } = await supabase
@@ -33,16 +45,18 @@ export async function getFeatureFlag(key: string): Promise<boolean> {
   }
 
   return FEATURE_FLAG_DEFAULTS[key] ?? false;
-}
+});
 
 /** Bulk read all feature flags from admin_settings */
-export async function getFeatureFlags(): Promise<Record<string, boolean>> {
+export const getFeatureFlags = cache(async function getFeatureFlags(): Promise<
+  Record<string, boolean>
+> {
   try {
     const supabase = createServiceRoleClient();
     const { data } = await supabase.from("admin_settings").select("*");
 
     if (data && data.length > 0) {
-      const flags: Record<string, boolean> = { ...FEATURE_FLAG_DEFAULTS };
+      const flags: Record<string, boolean> = {};
       for (const row of data) {
         flags[row.key] = row.value === "true";
       }
@@ -53,7 +67,7 @@ export async function getFeatureFlags(): Promise<Record<string, boolean>> {
   }
 
   return { ...FEATURE_FLAG_DEFAULTS };
-}
+});
 
 /** Read prompt packs from DB, falling back to hardcoded array */
 export async function getPromptPacks(): Promise<PromptPack[]> {
@@ -143,4 +157,39 @@ export async function getRadarPacks(): Promise<RadarPack[]> {
   }
 
   return RADAR_PACKS;
+}
+
+/** Read hyperlocal packs from DB, falling back to hardcoded array */
+export async function getHyperlocalPacks(): Promise<HyperlocalPack[]> {
+  try {
+    const supabase = createServiceRoleClient();
+    const { data } = await supabase
+      .from("admin_pack_configs")
+      .select("*")
+      .eq("app", "hyperlocal")
+      .eq("is_active", true)
+      .order("sort_order");
+
+    if (data && data.length > 0) {
+      return data.map((row) => ({
+        id: row.id,
+        tier: row.tier ?? "",
+        campaignsPerMonth: row.campaigns_limit ?? 4,
+        segmentsPerCampaign: row.segments_limit ?? 5,
+        // -1 stored in DB means "unlimited" — coerce via the UNLIMITED sentinel.
+        mlsHistoryMonths:
+          (row.mls_history_months ?? 6) === -1 ? UNLIMITED : (row.mls_history_months ?? 6),
+        aiChatEditsPerDraft:
+          (row.ai_edits_limit ?? 10) === -1 ? UNLIMITED : (row.ai_edits_limit ?? 10),
+        priceCents: row.price_cents ?? 0,
+        stripePriceId: row.stripe_price_id ?? "price_TODO",
+        label: row.label ?? "",
+        bestValue: row.best_value ?? false,
+      }));
+    }
+  } catch {
+    // DB unavailable — fall through
+  }
+
+  return HYPERLOCAL_PACKS;
 }
