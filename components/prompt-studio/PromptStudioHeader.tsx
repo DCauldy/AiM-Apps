@@ -18,20 +18,23 @@ import { FEATURES } from "@/lib/feature-flags";
 // layout client). Top-level nav lives here.
 // ============================================================
 
-// Community Prompts is gated to AiM members on the standalone tier
-// — surface it conditionally so non-members don't see a dead link.
+// Chat sits first so users always have a one-click way back to the
+// chat surface from any other tab (the threads Sidebar only mounts
+// inside /chat routes). Settings is intentionally absent — both
+// prompt-studio-specific settings have moved to the global Profile
+// editor (Bio / Brand / Mail / etc.).
 function buildNavItems(): Array<{ label: string; href: string }> {
   const items: Array<{ label: string; href: string }> = [
+    { label: "Chat", href: "/apps/prompt-studio/chat" },
     { label: "AiM Library", href: "/apps/prompt-studio/aim-library" },
     { label: "Bookmarked", href: "/apps/prompt-studio/saved" },
     { label: "Stats", href: "/apps/prompt-studio/stats" },
-    { label: "Settings", href: "/apps/prompt-studio/settings" },
   ];
   // Community Prompts (the user-shared library) is part of the prompt
-  // packs gate. When the flag is on we expose it; when off the route
-  // still exists but isn't a primary tab.
+  // packs gate. When the flag is on we expose it between Chat and
+  // AiM Library; when off the route still exists but isn't a tab.
   if (FEATURES.PROMPT_PACKS) {
-    items.unshift({
+    items.splice(2, 0, {
       label: "Community Prompts",
       href: "/apps/prompt-studio/library",
     });
@@ -40,13 +43,12 @@ function buildNavItems(): Array<{ label: string; href: string }> {
 }
 
 function isPromptStudioActive(href: string, pathname: string | null) {
-  if (href === "/apps/prompt-studio/aim-library") {
-    // AiM Library doubles as the landing for the home route — make
-    // both light up the same tab so /apps/prompt-studio without a
-    // chat thread doesn't read as "nothing selected".
+  if (href === "/apps/prompt-studio/chat") {
+    // Chat is the landing tab — light it up for /apps/prompt-studio
+    // (no thread) AND any /chat/[id] thread.
     return (
-      pathname === "/apps/prompt-studio/aim-library" ||
-      pathname === "/apps/prompt-studio"
+      pathname === "/apps/prompt-studio" ||
+      Boolean(pathname?.startsWith("/apps/prompt-studio/chat"))
     );
   }
   return Boolean(pathname?.startsWith(href));
@@ -58,7 +60,7 @@ export function PromptStudioHeader() {
   return (
     <>
       <ProductHeader
-        homeHref="/apps/prompt-studio/aim-library"
+        homeHref="/apps/prompt-studio/chat"
         navItems={buildNavItems()}
         isActive={isPromptStudioActive}
         // Emerald accent — matches the product-app-theme --primary

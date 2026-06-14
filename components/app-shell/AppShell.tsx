@@ -20,7 +20,13 @@ export function AppShell({
   mainClassName = "overflow-hidden",
 }: AppShellProps) {
   return (
-    <div className={cn("product-app-theme font-body", themeClassName)}>
+    // `dark` activates Tailwind's `dark:` utility prefix so legacy
+    // components built with the `bg-white dark:bg-neutral-800`
+    // pattern (e.g. PromptCard) render correctly inside the product
+    // apps. `product-app-theme` re-binds the HSL CSS variables to
+    // the shared dark palette — together they cover both styling
+    // conventions.
+    <div className={cn("dark product-app-theme font-body", themeClassName)}>
       <ToastProvider>
         <ConfirmProvider>
           <div className="flex flex-col h-screen overflow-hidden w-full max-w-full bg-background text-foreground">
