@@ -293,6 +293,7 @@ export type TourRenderRepository = {
     storageBucket: "tours-generated-media";
     storagePath: string;
     expiresInSeconds?: number;
+    downloadTitle?: string;
   }): Promise<SignedGeneratedMediaUrl | null>;
   getAsset(input: {
     assetId: string;
@@ -301,6 +302,10 @@ export type TourRenderRepository = {
   getRenderRun(input: {
     runId: string;
     projectId: string;
+    userId: string;
+  }): Promise<TourRenderRun | null>;
+  getRenderRunByIdForUser(input: {
+    runId: string;
     userId: string;
   }): Promise<TourRenderRun | null>;
   listRecentRenderRuns(input: {
@@ -349,6 +354,10 @@ export type TourRenderRepository = {
     assetId: string;
     usage: TourRenderRunAssetUsage;
   }): Promise<boolean>;
+  listRunAssets(input: {
+    runId: string;
+    projectId: string;
+  }): Promise<TourRenderAsset[]>;
   findReusableAsset(input: {
     projectId: string;
     kind: TourRenderAssetKind;

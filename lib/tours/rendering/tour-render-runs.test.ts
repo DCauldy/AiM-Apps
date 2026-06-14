@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { createTourRenderRun } from "./tour-render-runs";
+import {
+  createTourRenderRun,
+  getTourRenderRunResultUrl,
+  listTourRenderRunAssetsWithUrls,
+} from "./tour-render-runs";
 import type {
   RenderableTourProject,
   TourRenderRepository,
@@ -77,7 +81,11 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     uploadRenderAssetJson: vi.fn(),
     uploadRenderAssetBytes: vi.fn(),
     downloadRenderAssetJson: vi.fn(),
+    downloadRenderAssetBytes: vi.fn(),
+    createSignedGeneratedMediaUrl: vi.fn(),
+    getAsset: vi.fn(),
     getRenderRun: vi.fn(),
+    getRenderRunByIdForUser: vi.fn(),
     listRecentRenderRuns: vi.fn(),
     createRenderRun: vi.fn().mockResolvedValue(baseRun),
     attachTriggerRunId: vi.fn((input) =>
@@ -103,6 +111,7 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     appendEvent: vi.fn().mockResolvedValue(true),
     createAsset: vi.fn(),
     recordRunAssetUsage: vi.fn(),
+    listRunAssets: vi.fn(),
     findReusableAsset: vi.fn(),
     markProjectAssetsNonReusable: vi.fn().mockResolvedValue(true),
     ...overrides,
@@ -269,5 +278,142 @@ describe("createTourRenderRun", () => {
         reason: "trigger_enqueue_failed",
       },
     });
+  });
+});
+
+describe("getTourRenderRunResultUrl", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("passes the download title into the generated media signed URL", async () => {
+    const repository = createRepository({
+      getAsset: vi.fn().mockResolvedValue({
+        id: "asset-final",
+        kind: "final_video",
+        storageBucket: "tours-generated-media",
+        storagePath: "user-1/project-1/run-1/final.mp4",
+      }),
+      createSignedGeneratedMediaUrl: vi.fn().mockResolvedValue({
+        storageBucket: "tours-generated-media",
+        storagePath: "user-1/project-1/run-1/final.mp4",
+        signedUrl: "https://storage.example.test/final.mp4?token=abc&download=Lake+House+Tour.mp4",
+      }),
+    });
+
+    const result = await getTourRenderRunResultUrl(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        runId: "run-1",
+        resultAssetId: "asset-final",
+        downloadTitle: "Lake House Tour.mp4",
+      },
+      { repository }
+    );
+
+    expect(result?.downloadUrl).toBe(
+      "https://storage.example.test/final.mp4?token=abc&download=Lake+House+Tour.mp4"
+    );
+    expect(repository.createSignedGeneratedMediaUrl).toHaveBeenCalledWith({
+      storageBucket: "tours-generated-media",
+      storagePath: "user-1/project-1/run-1/final.mp4",
+      downloadTitle: "Lake House Tour.mp4",
+    });
+  });
+});
+
+describe("listTourRenderRunAssetsWithUrls", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns run assets with signed URLs for generated media assets", async () => {
+    const repository = createRepository({
+      getRenderRunByIdForUser: vi.fn().mockResolvedValue(baseRun),
+      listRunAssets: vi.fn().mockResolvedValue([
+        {
+          id: "asset-json",
+          createdByRunId: "run-1",
+          projectId: "project-1",
+          sceneId: null,
+          kind: "script_plan",
+          storageBucket: "tours-generated-media",
+          storagePath: "user-1/project-1/run-1/script-plan.json",
+          contentType: "application/json",
+          fingerprintHash: "fingerprint-json",
+          fingerprint: {},
+          reusable: true,
+          metadata: {},
+          createdAt: "2026-06-13T12:00:00.000Z",
+        },
+        {
+          id: "asset-memory",
+          createdByRunId: "run-1",
+          projectId: "project-1",
+          sceneId: null,
+          kind: "narration_text",
+          storageBucket: null,
+          storagePath: null,
+          contentType: "text/plain",
+          fingerprintHash: "fingerprint-memory",
+          fingerprint: {},
+          reusable: true,
+          metadata: {},
+          createdAt: "2026-06-13T12:00:00.000Z",
+        },
+      ]),
+      createSignedGeneratedMediaUrl: vi.fn().mockResolvedValue({
+        storageBucket: "tours-generated-media",
+        storagePath: "user-1/project-1/run-1/script-plan.json",
+        signedUrl: "https://storage.example.test/script-plan.json?token=abc",
+      }),
+    });
+
+    const assets = await listTourRenderRunAssetsWithUrls(
+      {
+        runId: "run-1",
+        userId: "user-1",
+      },
+      { repository }
+    );
+
+    expect(assets).toEqual([
+      expect.objectContaining({
+        id: "asset-json",
+        name: "script-plan.json",
+        url: "https://storage.example.test/script-plan.json?token=abc",
+      }),
+    ]);
+    expect(repository.getRenderRunByIdForUser).toHaveBeenCalledWith({
+      runId: "run-1",
+      userId: "user-1",
+    });
+    expect(repository.listRunAssets).toHaveBeenCalledWith({
+      runId: "run-1",
+      projectId: "project-1",
+    });
+    expect(repository.createSignedGeneratedMediaUrl).toHaveBeenCalledWith({
+      storageBucket: "tours-generated-media",
+      storagePath: "user-1/project-1/run-1/script-plan.json",
+      downloadTitle: "script-plan.json",
+    });
+  });
+
+  it("returns null when the render run is not owned by the user", async () => {
+    const repository = createRepository({
+      getRenderRunByIdForUser: vi.fn().mockResolvedValue(null),
+    });
+
+    const assets = await listTourRenderRunAssetsWithUrls(
+      {
+        runId: "run-1",
+        userId: "user-1",
+      },
+      { repository }
+    );
+
+    expect(assets).toBeNull();
+    expect(repository.listRunAssets).not.toHaveBeenCalled();
   });
 });

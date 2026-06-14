@@ -47,7 +47,11 @@ describe("GET /api/apps/tours/projects/:projectId/render-runs/:runId/status", ()
   });
 
   it("returns the project-scoped render run status", async () => {
-    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.requireToursAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "user-1" },
+      project: { id: "project-1", name: "Lake House Tour", status: "open" },
+    });
     mocks.getTourRenderRunStatus.mockResolvedValue(run);
     mocks.getTourRenderRunResultUrl.mockResolvedValue(null);
 
@@ -67,6 +71,7 @@ describe("GET /api/apps/tours/projects/:projectId/render-runs/:runId/status", ()
       runId: "run-1",
       userId: "user-1",
       resultAssetId: undefined,
+      downloadTitle: "Lake House Tour.mp4",
     });
   });
 

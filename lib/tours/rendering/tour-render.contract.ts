@@ -1,3 +1,5 @@
+import type { TourRenderAsset } from "./tour-render.repository.types";
+
 export type TourRenderRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type TourRenderStep =
@@ -42,6 +44,22 @@ export type TourRenderRunStatusResponse = {
   triggerRunId: string | null;
 };
 
+export type TourRenderRunAssetResponse = TourRenderAsset & {
+  name: string;
+  url: string;
+};
+
 export function isTourRenderRunActive(run: Pick<TourRenderRunStatusResponse, "status">): boolean {
   return run.status === "queued" || run.status === "running";
+}
+
+export function formatTourVideoDownloadFilename(title: string | null | undefined): string {
+  const baseName = (title ?? "")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, " ")
+    .slice(0, 120)
+    .trim();
+  const filename = baseName || "tour-video";
+  return /\.mp4$/i.test(filename) ? filename : `${filename}.mp4`;
 }

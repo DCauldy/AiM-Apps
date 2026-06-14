@@ -22,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ElevenLabsVoiceSelector } from "./ElevenLabsVoiceSelector";
+import { appendDownloadTitle } from "./TourRenderStatusPanel";
 
 export type ProjectDetailsForm = {
   name: string;
@@ -253,6 +254,7 @@ export function SceneImageRail({
 
 export function ProjectActionsMenu({
   latestDownloadUrl,
+  downloadTitle,
   canGenerateReuseAssets = false,
   isGeneratingReuseAssets = false,
   onGenerateReuseAssets,
@@ -260,6 +262,7 @@ export function ProjectActionsMenu({
   onDelete,
 }: {
   latestDownloadUrl?: string | null;
+  downloadTitle: string;
   canGenerateReuseAssets?: boolean;
   isGeneratingReuseAssets?: boolean;
   onGenerateReuseAssets?: () => void;
@@ -292,13 +295,12 @@ export function ProjectActionsMenu({
           </DropdownMenuItem>
         ) : null}
         {latestDownloadUrl ? (
-          <DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <a
-              href={latestDownloadUrl}
+              href={appendDownloadTitle(latestDownloadUrl, downloadTitle)}
               target="_blank"
               rel="noreferrer"
               download
-              className="flex w-full items-center"
             >
               <Download className="mr-2 h-4 w-4" />
               Download render

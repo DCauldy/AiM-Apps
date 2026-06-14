@@ -15,6 +15,7 @@ export function createTourRenderAssetsRepository(
   | "getAsset"
   | "createAsset"
   | "recordRunAssetUsage"
+  | "listRunAssets"
   | "findReusableAsset"
   | "markProjectAssetsNonReusable"
 > {
@@ -72,6 +73,38 @@ export function createTourRenderAssetsRepository(
         .single<{ run_id: string }>();
 
       return !error && Boolean(data);
+    },
+
+    async listRunAssets(input) {
+      const { data: runAssetRows, error: runAssetsError } = await supabase
+        .from("tour_render_run_assets")
+        .select("asset_id, created_at")
+        .eq("run_id", input.runId)
+        .order("created_at", { ascending: true });
+
+      if (runAssetsError || !runAssetRows?.length) {
+        return [];
+      }
+
+      const assetIds = runAssetRows.map((row) => row.asset_id);
+      const { data: assetRows, error: assetsError } = await supabase
+        .from("tour_render_assets")
+        .select(ASSET_SELECT)
+        .eq("project_id", input.projectId)
+        .in("id", assetIds);
+
+      if (assetsError || !assetRows?.length) {
+        return [];
+      }
+
+      const assetById = new Map(
+        (assetRows as TourRenderAssetRow[]).map((row) => [row.id, mapRenderAsset(row)])
+      );
+
+      return assetIds.flatMap((assetId) => {
+        const asset = assetById.get(assetId);
+        return asset ? [asset] : [];
+      });
     },
 
     async findReusableAsset(input) {

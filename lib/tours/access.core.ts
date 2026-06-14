@@ -1,5 +1,6 @@
 export type ToursAccessProject = {
   id: string;
+  name?: string;
   status: "open" | "archived";
 };
 

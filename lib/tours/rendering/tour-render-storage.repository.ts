@@ -165,7 +165,11 @@ export function createTourRenderStorageRepository(
     async createSignedGeneratedMediaUrl(input): Promise<SignedGeneratedMediaUrl | null> {
       const { data, error } = await supabase.storage
         .from(input.storageBucket)
-        .createSignedUrl(input.storagePath, input.expiresInSeconds ?? 60 * 60);
+        .createSignedUrl(
+          input.storagePath,
+          input.expiresInSeconds ?? 60 * 60,
+          input.downloadTitle ? { download: input.downloadTitle } : undefined
+        );
 
       if (error || !data?.signedUrl) {
         return null;

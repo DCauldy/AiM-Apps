@@ -100,13 +100,14 @@ const DropdownMenuContent = React.forwardRef<
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
 interface DropdownMenuItemProps extends React.HTMLAttributes<HTMLDivElement> {
+  asChild?: boolean;
   disabled?: boolean;
 }
 
 const DropdownMenuItem = React.forwardRef<
   HTMLDivElement,
   DropdownMenuItemProps
->(({ className, disabled = false, onClick, ...props }, ref) => {
+>(({ asChild = false, className, disabled = false, onClick, children, ...props }, ref) => {
   const context = React.useContext(DropdownMenuContext);
   
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -121,6 +122,24 @@ const DropdownMenuItem = React.forwardRef<
     onClick?.(e);
   };
 
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children, {
+      ref,
+      className: cn(
+        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-current",
+        className,
+        children.props.className
+      ),
+      "aria-disabled": disabled,
+      onClick: (event: React.MouseEvent<HTMLDivElement>) => {
+        handleClick(event);
+        children.props.onClick?.(event);
+      },
+      ...props,
+    } as React.HTMLAttributes<HTMLElement>);
+  }
+
   return (
     <div
       ref={ref}
@@ -132,7 +151,9 @@ const DropdownMenuItem = React.forwardRef<
       aria-disabled={disabled}
       onClick={handleClick}
       {...props}
-    />
+    >
+      {children}
+    </div>
   );
 });
 DropdownMenuItem.displayName = "DropdownMenuItem";

@@ -3,12 +3,14 @@ import "server-only";
 import { tasks } from "@trigger.dev/sdk/v3";
 import type { renderTourProjectTask } from "@/triggers/render-tour-project";
 import {
+  type TourRenderRunAssetResponse,
   type TourRenderTimelineStep,
   type TourRenderRunStatusResponse,
 } from "./tour-render.contract";
 import type { TourProjectType } from "../project-types";
 import {
   createTourRenderRepository,
+  type TourRenderAsset,
   type TourRenderRepository,
   type TourRenderRun,
   type TourRenderStep,
@@ -318,12 +320,58 @@ export async function getTourRenderRunStatus(
   return repository.getRenderRun(input);
 }
 
+export async function listTourRenderRunAssetsWithUrls(
+  input: {
+    runId: string;
+    userId: string;
+  },
+  options: RenderRunServiceOptions = {}
+): Promise<TourRenderRunAssetResponse[] | null> {
+  const repository = options.repository ?? (await createTourRenderRepository());
+  const run = await repository.getRenderRunByIdForUser(input);
+
+  if (!run) {
+    return null;
+  }
+
+  const assets = await repository.listRunAssets({
+    runId: run.id,
+    projectId: run.projectId,
+  });
+  const assetsWithUrls = await Promise.all(
+    assets.map(async (asset) => {
+      if (asset.storageBucket !== "tours-generated-media" || !asset.storagePath) {
+        return null;
+      }
+
+      const signed = await repository.createSignedGeneratedMediaUrl({
+        storageBucket: asset.storageBucket,
+        storagePath: asset.storagePath,
+        downloadTitle: getTourRenderAssetDownloadName(asset),
+      });
+
+      if (!signed) {
+        return null;
+      }
+
+      return {
+        ...asset,
+        name: getTourRenderAssetDownloadName(asset),
+        url: signed.signedUrl,
+      };
+    })
+  );
+
+  return assetsWithUrls.flatMap((asset) => (asset ? [asset] : []));
+}
+
 export async function getTourRenderRunResultUrl(
   input: {
     projectId: string;
     userId: string;
     runId: string;
     resultAssetId: string | null;
+    downloadTitle?: string;
   },
   options: RenderRunServiceOptions = {}
 ): Promise<{ downloadUrl: string; storagePath: string } | null> {
@@ -349,6 +397,7 @@ export async function getTourRenderRunResultUrl(
   const signed = await repository.createSignedGeneratedMediaUrl({
     storageBucket: asset.storageBucket,
     storagePath: asset.storagePath,
+    downloadTitle: input.downloadTitle,
   });
 
   if (!signed) {
@@ -359,6 +408,17 @@ export async function getTourRenderRunResultUrl(
     downloadUrl: signed.signedUrl,
     storagePath: signed.storagePath,
   };
+}
+
+function getTourRenderAssetDownloadName(asset: TourRenderAsset): string {
+  if (asset.storagePath) {
+    const storageName = asset.storagePath.split("/").pop()?.trim();
+    if (storageName) {
+      return storageName;
+    }
+  }
+
+  return `${asset.kind.replace(/_/g, "-")}-${asset.id}`;
 }
 
 export async function listRecentTourRenderRuns(

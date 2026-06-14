@@ -1,5 +1,6 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 import { approveAllTourSceneFactsForProject } from "@/lib/tours/facts";
+import { formatTourVideoDownloadFilename } from "@/lib/tours/rendering/tour-render.contract";
 import {
   createTourRenderRun,
   getTourRenderRunResultUrl,
@@ -35,6 +36,7 @@ export async function GET(
         runId: run.id,
         userId: access.user.id,
         resultAssetId: run.resultAssetId,
+        downloadTitle: formatTourVideoDownloadFilename(access.project?.name),
       });
 
       return toTourRenderRunStatusResponseWithResultUrl(run, resultUrl);

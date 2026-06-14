@@ -231,6 +231,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       runId: "run-1",
       userId: "user-1",
       resultAssetId: undefined,
+      downloadTitle: "tour-video.mp4",
     });
   });
 
@@ -245,7 +246,11 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       downloadUrl: "https://storage.example.test/signed-final-video",
       storagePath: "user-1/project-1/run-1/final.mp4",
     };
-    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.requireToursAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "user-1" },
+      project: { id: "project-1", name: "Lake House Tour", status: "open" },
+    });
     mocks.listRecentTourRenderRuns.mockResolvedValue([completedRun]);
     mocks.getTourRenderRunResultUrl.mockResolvedValue(resultUrl);
 
@@ -270,6 +275,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       runId: "run-1",
       userId: "user-1",
       resultAssetId: "asset-final-video",
+      downloadTitle: "Lake House Tour.mp4",
     });
   });
 

@@ -3,19 +3,45 @@
 import { CheckCircle2, Download, LoaderCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { isTourRenderRunActive, type TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
+import {
+  formatTourVideoDownloadFilename,
+  isTourRenderRunActive,
+  type TourRenderRunStatusResponse,
+} from "@/lib/tours/rendering/tour-render.contract";
+import { TourRenderRunAssets } from "./TourRenderRunAssets";
 
 const FALLBACK_STEPS = [
   { key: "queued", label: "Queued", detail: "Render request received" },
-  { key: "preparing_assets", label: "Preparing Assets", detail: "Checking listing media and scene inputs" },
-  { key: "planning_script", label: "Planning Script", detail: "Structuring the property tour" },
-  { key: "rendering_scene_clips", label: "Rendering Scene Clips", detail: "Building individual scene video clips" },
-  { key: "joining_video", label: "Joining Scene Clips", detail: "Combining rendered scenes" },
-  { key: "uploading_final", label: "Uploading Final Video", detail: "Saving the generated tour" },
+  {
+    key: "preparing_assets",
+    label: "Preparing Assets",
+    detail: "Checking listing media and scene inputs",
+  },
+  {
+    key: "planning_script",
+    label: "Planning Script",
+    detail: "Structuring the property tour",
+  },
+  {
+    key: "rendering_scene_clips",
+    label: "Rendering Scene Clips",
+    detail: "Building individual scene video clips",
+  },
+  {
+    key: "joining_video",
+    label: "Joining Scene Clips",
+    detail: "Combining rendered scenes",
+  },
+  {
+    key: "uploading_final",
+    label: "Uploading Final Video",
+    detail: "Saving the generated tour",
+  },
 ];
 
 function getStepState(run: TourRenderRunStatusResponse, index: number) {
-  const steps = run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
+  const steps =
+    run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
   const activeIndex = steps.findIndex((step) => step.key === run.step);
   if (run.status === "completed") {
     return "complete";
@@ -33,12 +59,14 @@ function getStepState(run: TourRenderRunStatusResponse, index: number) {
 }
 
 function getVisibleSteps(run: TourRenderRunStatusResponse) {
-  const steps = run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
+  const steps =
+    run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
   const activeIndex = Math.max(
     0,
-    steps.findIndex((step) => step.key === run.step)
+    steps.findIndex((step) => step.key === run.step),
   );
-  const currentIndex = run.status === "completed" ? steps.length - 1 : activeIndex;
+  const currentIndex =
+    run.status === "completed" ? steps.length - 1 : activeIndex;
 
   if (currentIndex <= 1) {
     return steps.slice(0, 4);
@@ -51,21 +79,40 @@ function getVisibleSteps(run: TourRenderRunStatusResponse) {
   return steps.slice(currentIndex - 2, currentIndex + 3);
 }
 
+export function appendDownloadTitle(downloadUrl: string, title: string) {
+  const filename = formatTourVideoDownloadFilename(title);
+  try {
+    const url = new URL(downloadUrl);
+    url.searchParams.set("download", filename);
+    return url.toString();
+  } catch {
+    const separator = downloadUrl.includes("?") ? "&" : "?";
+    return `${downloadUrl}${separator}download=${encodeURIComponent(filename)}`;
+  }
+}
+
 export function TourRenderStatusPanel({
   run,
+  downloadTitle,
   onDone,
 }: {
   run: TourRenderRunStatusResponse;
+  downloadTitle?: string;
   onDone?: () => void;
 }) {
   const active = isTourRenderRunActive(run);
   const completed = run.status === "completed";
-  const steps = run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
+  const steps =
+    run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
   const activeStep = completed
-    ? { key: "completed", label: "Done", detail: "Your tour video is ready to download." }
-    : steps.find((step) => step.key === run.step) ??
+    ? {
+        key: "completed",
+        label: "Done",
+        detail: "Your tour video is ready to download.",
+      }
+    : (steps.find((step) => step.key === run.step) ??
       steps.find((step) => step.key === "rendering_scene_clips") ??
-      steps[0];
+      steps[0]);
   const clipText =
     run.sceneClipCounts.total > 0
       ? `${run.sceneClipCounts.completed}/${run.sceneClipCounts.total} scene clips`
@@ -115,7 +162,9 @@ export function TourRenderStatusPanel({
               <h3 className="mt-2 text-2xl font-semibold tracking-normal text-foreground">
                 {activeStep.label}
               </h3>
-              <p className="mt-1 text-sm text-muted-foreground">{activeStep.detail}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {activeStep.detail}
+              </p>
             </div>
           </div>
 
@@ -123,14 +172,27 @@ export function TourRenderStatusPanel({
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
               {run.result?.downloadUrl && (
                 <Button asChild className="h-11 sm:w-auto">
-                  <a href={run.result.downloadUrl} target="_blank" rel="noreferrer" download>
+                  <a
+                    href={appendDownloadTitle(
+                      run.result.downloadUrl,
+                      downloadTitle ?? "tour-video",
+                    )}
+                    target="_blank"
+                    rel="noreferrer"
+                    download
+                  >
                     <Download className="h-4 w-4" />
                     Download video
                   </a>
                 </Button>
               )}
               {onDone && (
-                <Button type="button" variant="outline" className="h-11 sm:w-auto" onClick={onDone}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 sm:w-auto"
+                  onClick={onDone}
+                >
                   Back to workspace
                 </Button>
               )}
@@ -146,44 +208,50 @@ export function TourRenderStatusPanel({
             </div>
           )}
         </div>
-
-        <ol className="mt-8 w-full space-y-3">
-          {visibleSteps.map((step) => {
-            const index = steps.findIndex((renderStep) => renderStep.key === step.key);
-            const state = getStepState(run, index);
-            const isActive = state === "active";
-            return (
-              <li
-                key={step.key}
-                className={[
-                  "rounded-md border px-4 py-3 backdrop-blur-xl transition-colors",
-                  isActive
-                    ? "border-primary/45 bg-primary/10 text-foreground shadow-[0_0_28px_rgba(99,102,241,0.12)]"
-                    : state === "complete"
-                      ? "border-border/70 bg-background/35 text-foreground"
-                      : "border-border/50 bg-background/20 text-muted-foreground/55",
-                ].join(" ")}
-              >
-                <div className="flex items-start gap-3">
-                  <span
-                    className={[
-                      "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
-                      isActive
-                        ? "bg-primary"
-                        : state === "complete"
-                          ? "bg-foreground/45"
-                          : "bg-muted-foreground/25",
-                    ].join(" ")}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold">{step.label}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{step.detail}</p>
+        {!completed && (
+          <ol className="mt-8 w-full space-y-3">
+            {visibleSteps.map((step) => {
+              const index = steps.findIndex(
+                (renderStep) => renderStep.key === step.key,
+              );
+              const state = getStepState(run, index);
+              const isActive = state === "active";
+              return (
+                <li
+                  key={step.key}
+                  className={[
+                    "rounded-md border px-4 py-3 backdrop-blur-xl transition-colors",
+                    isActive
+                      ? "border-primary/45 bg-primary/10 text-foreground shadow-[0_0_28px_rgba(99,102,241,0.12)]"
+                      : state === "complete"
+                        ? "border-border/70 bg-background/35 text-foreground"
+                        : "border-border/50 bg-background/20 text-muted-foreground/55",
+                  ].join(" ")}
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={[
+                        "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
+                        isActive
+                          ? "bg-primary"
+                          : state === "complete"
+                            ? "bg-foreground/45"
+                            : "bg-muted-foreground/25",
+                      ].join(" ")}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold">{step.label}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {step.detail}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+        {completed && <TourRenderRunAssets run={run} />}
       </div>
     </section>
   );

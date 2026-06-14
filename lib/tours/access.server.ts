@@ -46,7 +46,7 @@ export async function requireToursAccess(
   if (user && input.projectId) {
     const { data, error } = await supabase
       .from("tours_projects")
-      .select("id, status")
+      .select("id, name, status")
       .eq("id", input.projectId)
       .eq("user_id", user.id)
       .maybeSingle<ToursAccessProject>();

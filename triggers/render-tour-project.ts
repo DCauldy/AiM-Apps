@@ -56,7 +56,10 @@ export const renderTourSceneClipTask = task({
   },
 });
 
-export type RenderTourProjectPayload = Omit<GenerateTourProjectVideoInput, "progress">;
+export type RenderTourProjectPayload = Omit<
+  GenerateTourProjectVideoInput,
+  "progress"
+>;
 
 export const renderTourProjectTask = task({
   id: "render-tour-project",
@@ -79,7 +82,8 @@ export const renderTourProjectTask = task({
       renderRunId: payload.renderRunId,
       triggerRunId: ctx.run.id,
       renderMode: payload.options?.renderMode ?? "ken_burns_ffmpeg",
-      sceneClipProviderModelId: payload.options?.sceneClipProviderModelId ?? null,
+      sceneClipProviderModelId:
+        payload.options?.sceneClipProviderModelId ?? null,
       reuseExistingAssets: payload.options?.reuseExistingAssets,
     });
 
@@ -100,9 +104,10 @@ export const renderTourProjectTask = task({
           apiKey: process.env.OPENROUTER_API_KEY ?? "",
         }),
         voiceoverProvider: createElevenLabsVoiceoverProvider(),
-        transitionDetectionProvider: createOpenRouterTransitionDetectionProvider({
-          apiKey: process.env.OPENROUTER_API_KEY ?? "",
-        }),
+        transitionDetectionProvider:
+          createOpenRouterTransitionDetectionProvider({
+            apiKey: process.env.OPENROUTER_API_KEY ?? "",
+          }),
         imageToVideoProvider: createOpenRouterImageToVideoProvider({
           apiKey: process.env.OPENROUTER_API_KEY ?? "",
         }),
@@ -119,7 +124,7 @@ export const renderTourProjectTask = task({
                   "render-tour-scene-clip",
                 ],
               },
-            }))
+            })),
           );
 
           return batch.runs.map((run, resultIndex) => {
@@ -136,8 +141,10 @@ export const renderTourProjectTask = task({
             throw new Error("A scene clip child task failed.");
           });
         },
-        ...(isAvatarRender ? { avatarProvider: createHeyGenAvatarProvider() } : {}),
-      }
+        ...(isAvatarRender
+          ? { avatarProvider: createHeyGenAvatarProvider() }
+          : {}),
+      },
     );
 
     metadata.set("status", run?.status ?? "failed");

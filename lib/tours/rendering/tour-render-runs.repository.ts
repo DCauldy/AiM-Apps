@@ -15,6 +15,7 @@ export function createTourRenderRunsRepository(
   TourRenderRepository,
   | "createRenderRun"
   | "getRenderRun"
+  | "getRenderRunByIdForUser"
   | "listRecentRenderRuns"
   | "attachTriggerRunId"
   | "updateProgress"
@@ -57,6 +58,21 @@ export function createTourRenderRunsRepository(
         .select(RUN_SELECT)
         .eq("id", input.runId)
         .eq("project_id", input.projectId)
+        .eq("user_id", input.userId)
+        .maybeSingle<TourRenderRunRow>();
+
+      if (error || !data) {
+        return null;
+      }
+
+      return mapRenderRun(data);
+    },
+
+    async getRenderRunByIdForUser(input) {
+      const { data, error } = await supabase
+        .from("tour_render_runs")
+        .select(RUN_SELECT)
+        .eq("id", input.runId)
         .eq("user_id", input.userId)
         .maybeSingle<TourRenderRunRow>();
 

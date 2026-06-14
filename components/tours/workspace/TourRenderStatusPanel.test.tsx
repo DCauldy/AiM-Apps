@@ -4,7 +4,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
-import { TourRenderStatusPanel } from "./TourRenderStatusPanel";
+import { appendDownloadTitle, TourRenderStatusPanel } from "./TourRenderStatusPanel";
 
 afterEach(() => cleanup());
 
@@ -41,6 +41,7 @@ test("shows completed render download and done controls", async () => {
   render(
     <TourRenderStatusPanel
       run={completedRun()}
+      downloadTitle="Lake House Tour"
       onDone={() => {
         doneClicks += 1;
       }}
@@ -51,8 +52,18 @@ test("shows completed render download and done controls", async () => {
   assert.ok(screen.getByRole("heading", { name: "Done" }));
 
   const download = screen.getByRole("link", { name: "Download video" });
-  assert.equal(download.getAttribute("href"), "https://storage.example.test/signed-final-video");
+  assert.equal(
+    download.getAttribute("href"),
+    "https://storage.example.test/signed-final-video?download=Lake+House+Tour.mp4"
+  );
 
   await user.click(screen.getByRole("button", { name: "Back to workspace" }));
   assert.equal(doneClicks, 1);
+});
+
+test("appends download title without dropping signed URL params", () => {
+  assert.equal(
+    appendDownloadTitle("https://storage.example.test/final.mp4?token=abc", "Listing Video"),
+    "https://storage.example.test/final.mp4?token=abc&download=Listing+Video.mp4"
+  );
 });

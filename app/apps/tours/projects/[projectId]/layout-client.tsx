@@ -97,6 +97,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
           )}
           <ProjectActionsMenu
             latestDownloadUrl={latestDownloadUrl}
+            downloadTitle={viewModel.project.name}
             canGenerateReuseAssets={
               viewModel.tourScenes.length > 0 &&
               !renderRuns.isCreatingAnyRenderRun &&

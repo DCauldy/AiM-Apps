@@ -106,6 +106,7 @@ function createQueryBuilder(result: { data: unknown; error: unknown } = { data: 
   const chain: Record<string, unknown> = {};
   chain.select = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
+  chain.in = vi.fn(() => chain);
   chain.is = vi.fn(() => chain);
   chain.order = vi.fn(() => chain);
   chain.limit = vi.fn(() => chain);
@@ -117,6 +118,7 @@ function createListBuilder(result: { data: unknown[] | null; error: unknown } = 
   const chain: Record<string, unknown> = {};
   chain.select = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
+  chain.in = vi.fn(() => chain);
   chain.order = vi.fn(() => chain);
   return {
     chain,
@@ -439,5 +441,37 @@ describe("tour render repository", () => {
     expect(invalidateAssetsQuery.update).toHaveBeenCalledWith({ reusable: false });
     expect(invalidateAssetsQuery.eq).toHaveBeenCalledWith("project_id", "project-1");
     expect(invalidateAssetsQuery.eq).toHaveBeenCalledWith("reusable", true);
+  });
+
+  test("lists run assets in run usage order scoped to the project", async () => {
+    const runAssetsQuery = createListBuilder().chain;
+    (runAssetsQuery.order as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [
+        { asset_id: "asset-2", created_at: "2026-06-13T12:00:02.000Z" },
+        { asset_id: "asset-1", created_at: "2026-06-13T12:00:01.000Z" },
+      ],
+      error: null,
+    });
+    const assetsQuery = createListBuilder().chain;
+    (assetsQuery.in as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: [
+        assetRow({ id: "asset-1", storage_path: "user-1/project-1/run-1/script-plan.json" }),
+        assetRow({ id: "asset-2", kind: "final_video", storage_path: "user-1/project-1/run-1/final.mp4" }),
+      ],
+      error: null,
+    });
+    const from = vi.fn().mockReturnValueOnce(runAssetsQuery).mockReturnValueOnce(assetsQuery);
+    const repository = createTourRenderRepositoryFromSupabase({ from } as never);
+
+    const assets = await repository.listRunAssets({
+      runId: "run-1",
+      projectId: "project-1",
+    });
+
+    expect(assets.map((asset) => asset.id)).toEqual(["asset-2", "asset-1"]);
+    expect(runAssetsQuery.eq).toHaveBeenCalledWith("run_id", "run-1");
+    expect(runAssetsQuery.order).toHaveBeenCalledWith("created_at", { ascending: true });
+    expect(assetsQuery.eq).toHaveBeenCalledWith("project_id", "project-1");
+    expect(assetsQuery.in).toHaveBeenCalledWith("id", ["asset-2", "asset-1"]);
   });
 });
