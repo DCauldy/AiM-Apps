@@ -221,7 +221,7 @@ export function PackConfigTab() {
           saving={saving}
           onUpdate={updateEdit}
           onSave={savePack}
-          sizeField="none"
+          sizeField="radar"
         />
       </AccordionSection>
 
@@ -296,7 +296,7 @@ function PackGrid({
   saving: string | null;
   onUpdate: (packId: string, field: keyof PackEdit, value: string | boolean) => void;
   onSave: (packId: string) => void;
-  sizeField: "size" | "frequency" | "hyperlocal" | "tours" | "none";
+  sizeField: "size" | "frequency" | "hyperlocal" | "tours" | "radar" | "none";
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -308,9 +308,8 @@ function PackGrid({
           !edit.stripe_price_id || edit.stripe_price_id === "price_TODO";
 
         // `none` is for apps whose admin_pack_configs rows don't carry
-        // a size/frequency/meter field — currently Radar + CMA. The
-        // per-tier limits live in the lib/<app>-packs.ts files until
-        // we add dedicated DB columns for those meters.
+        // a size/frequency/meter field — currently just CMA. Radar +
+        // Tours store their primary dial in the `size` column.
         const sizeChip =
           sizeField === "size"
             ? `${pack.size} prompts`
@@ -318,9 +317,11 @@ function PackGrid({
               ? `${pack.frequency}x/week`
               : sizeField === "tours"
                 ? `${pack.size} tours/mo`
-                : sizeField === "hyperlocal"
-                  ? formatHyperlocalMeters(pack)
-                  : "limits in code";
+                : sizeField === "radar"
+                  ? `${pack.size} prompts`
+                  : sizeField === "hyperlocal"
+                    ? formatHyperlocalMeters(pack)
+                    : "limits in code";
 
         return (
           <div key={pack.id} className="border rounded-lg p-4 space-y-3">
