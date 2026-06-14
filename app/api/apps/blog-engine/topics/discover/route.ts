@@ -1,11 +1,9 @@
+import { tasks } from "@trigger.dev/sdk/v3";
 import { createClient } from "@/lib/supabase/server";
-import { inngest } from "@/lib/inngest/client";
-import { discoverTopicsForUser } from "@/lib/blog-engine/discover-topics";
 import { NextRequest } from "next/server";
+import type { blogTopicsDiscoverTask } from "@/triggers/blog-engine";
 
 export const dynamic = "force-dynamic";
-
-const isDev = process.env.NODE_ENV === "development";
 
 // POST /api/apps/blog-engine/topics/discover
 //
@@ -21,22 +19,10 @@ export async function POST(_req: NextRequest) {
     } = await supabase.auth.getUser();
     if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (isDev) {
-      // Fire-and-forget — the topics page polls for the resulting "unused"
-      // rows. Errors get logged but don't fail the request.
-      discoverTopicsForUser(user.id).catch((err) => {
-        console.error("[topics-discover] dev run failed:", err);
-      });
-      return Response.json({
-        success: true,
-        message: "Discovery started (dev mode)",
-      });
-    }
-
-    await inngest.send({
-      name: "blog-engine/topics.discover.requested",
-      data: { userId: user.id },
-    });
+    await tasks.trigger<typeof blogTopicsDiscoverTask>(
+      "blog-engine-topics-discover",
+      { userId: user.id },
+    );
 
     return Response.json({
       success: true,

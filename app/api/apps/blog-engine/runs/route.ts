@@ -1,16 +1,13 @@
+import { tasks } from "@trigger.dev/sdk/v3";
 import { createClient } from "@/lib/supabase/server";
-import { inngest } from "@/lib/inngest/client";
 import {
   getBofuUsage,
   reserveBlogSlot,
-  refundBlogSlot,
 } from "@/lib/blog-engine/usage";
-import { runBlogPipeline } from "@/lib/blog-engine/run-pipeline";
 import { NextRequest } from "next/server";
+import type { blogPipelineTask } from "@/triggers/blog-engine";
 
 export const dynamic = "force-dynamic";
-
-const isDev = process.env.NODE_ENV === "development";
 
 /**
  * POST /api/apps/blog-engine/runs
@@ -52,33 +49,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (isDev) {
-      // Dev mode: run pipeline directly in background, return immediately.
-      // Refund the reserved slot if the pipeline blows up.
-      runBlogPipeline({
-        userId: user.id,
-        triggeredBy: "manual",
-        topicId,
-        runId: `dev-${Date.now()}`,
-      }).catch(async (err) => {
-        console.error("[Blog Engine] Pipeline failed:", err);
-        await refundBlogSlot(user.id, !!reservation.used_bonus);
-      });
-
-      return Response.json({ success: true, message: "Pipeline started (dev mode)" });
-    }
-
-    // Production: hand off to Inngest with the reservation metadata so
-    // the pipeline's catch path can refund if needed.
-    await inngest.send({
-      name: "blog-engine/run.requested",
-      data: {
-        userId: user.id,
-        triggeredBy: "manual",
-        topicId,
-        slotPreReserved: true,
-        usedBonus: !!reservation.used_bonus,
-      },
+    // Hand off to the Trigger.dev pipeline task with reservation
+    // metadata so its catch path can refund if needed. Dev runs the
+    // task locally via the Trigger CLI; prod runs it on Trigger Cloud.
+    await tasks.trigger<typeof blogPipelineTask>("blog-pipeline", {
+      userId: user.id,
+      triggeredBy: "manual",
+      topicId,
+      slotPreReserved: true,
+      usedBonus: !!reservation.used_bonus,
     });
 
     return Response.json({ success: true, message: "Pipeline started" });
