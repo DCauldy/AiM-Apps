@@ -184,10 +184,19 @@ export interface OtterlyBrandReportStats {
 // Recommendations
 // ---------------------------------------------------------------------------
 
-// Shape inferred — flesh out once we confirm a real response. Otterly
-// docs don't enumerate the fields; tracking as `unknown` until we see
-// real data.
-export type OtterlyRecommendation = Record<string, unknown>;
+// Actionable cards Otterly generates for the report (e.g. "you only
+// have 1 competitor configured, add more"). Shape captured from the
+// real /recommendations response. `data` is type-discriminated by
+// `type` but we keep it loose for now — surface in a generic
+// "suggested actions" widget; deep-link to Otterly's UI for the fix.
+export interface OtterlyRecommendation {
+  id: string;
+  type: string; // e.g. "competitors_count"
+  group: string; // e.g. "general"
+  priority: number;
+  state: "suggested" | "dismissed" | "completed";
+  data: Record<string, unknown>;
+}
 
 // ---------------------------------------------------------------------------
 // Audits
