@@ -1,0 +1,277 @@
+import "server-only";
+
+import { createServiceRoleClient } from "@/lib/supabase/server";
+import { getConnector } from "@/lib/hyperlocal/crm";
+import { filterDeliverable } from "@/lib/hyperlocal/email/validation";
+import { identifyGeographies } from "@/lib/hyperlocal/geographies";
+import {
+  computeRequiredMlsExports,
+  type MlsExportRequirement,
+} from "@/lib/hyperlocal/mls/data-requirements";
+import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
+import { UNLIMITED } from "@/lib/hyperlocal-packs";
+import type {
+  HlCampaign,
+  HlCrmConnection,
+  NormalizedContact,
+} from "@/types/hyperlocal";
+import type { PlatformCrmConnection } from "@/types/platform-connections";
+
+// ============================================================
+// runHlDiscover — fetch CRM contacts, bucket by geography, persist
+// segments + a discovery cache blob. Pure async helper called by
+// the Trigger.dev hlDiscoverTask wrapper.
+//
+// Returns a small summary plus the next-phase decision. The caller
+// (the task wrapper) is responsible for chaining to the generate
+// task when nextPhase === "generate".
+// ============================================================
+
+export type HlDiscoverNextPhase =
+  | "awaiting_service_area"
+  | "awaiting_mls"
+  | "generate"
+  | "failed";
+
+export interface RunHlDiscoverResult {
+  nextPhase: HlDiscoverNextPhase;
+  contactsFetched: number;
+  segmentsCount: number;
+  pendingSegmentsCount: number;
+  hasServiceArea: boolean;
+  requirements: MlsExportRequirement[];
+  /** Set when nextPhase === "failed". */
+  failureReason?: string;
+}
+
+export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult> {
+  const supabase = createServiceRoleClient();
+
+  // ---- 1. Load run context ----
+  const { data: runRow, error: runErr } = await supabase
+    .from("hl_runs")
+    .select("*")
+    .eq("id", runId)
+    .single();
+  if (runErr || !runRow) {
+    throw new Error(`Run ${runId} not found: ${runErr?.message ?? ""}`);
+  }
+  if (!runRow.campaign_id) throw new Error("Run has no campaign_id");
+  if (!runRow.crm_connection_id) {
+    throw new Error("Run has no crm_connection_id");
+  }
+
+  const [{ data: campaignRow }, { data: connRow }] = await Promise.all([
+    supabase
+      .from("hl_campaigns")
+      .select("*")
+      .eq("id", runRow.campaign_id)
+      .single(),
+    supabase
+      .from("hl_crm_connections")
+      .select("*")
+      .eq("id", runRow.crm_connection_id)
+      .single(),
+  ]);
+  if (!campaignRow) throw new Error("Campaign not found");
+  if (!connRow) throw new Error("CRM connection not found");
+
+  const campaign = campaignRow as HlCampaign;
+  const crmConnection = connRow as HlCrmConnection;
+
+  // ---- 2. Fetch + filter + bucket + persist ----
+  // HL still reads from hl_crm_connections (pre-Wave 9 shape) while
+  // the connector layer now expects PlatformCrmConnection. The two
+  // are structurally compatible at runtime — same platform name +
+  // encrypted api key — so cast through unknown to bridge until the
+  // wider hl_crm_connections → platform_crm_connections migration
+  // lands. (The old Inngest fn had `step: any` masking this.)
+  const connector = getConnector(crmConnection.platform);
+  const fetched = await connector.fetchContacts(
+    crmConnection as unknown as PlatformCrmConnection,
+    { limit: 25_000 },
+  );
+
+  // Touch CRM connection metadata
+  await supabase
+    .from("hl_crm_connections")
+    .update({
+      last_synced_at: new Date().toISOString(),
+      last_error: null,
+    })
+    .eq("id", crmConnection.id);
+
+  // Free in-house list hygiene — syntax + typo + MX. Drops dead
+  // emails before they enter segmentation so the customer's Resend
+  // bounce rate stays clean.
+  const { deliverable: contacts, removed } = await filterDeliverable(fetched);
+  if (removed.length > 0) {
+    console.log(
+      `[hl-discover] hygiene removed ${removed.length}/${fetched.length} contacts ` +
+        `for run ${runId}`,
+    );
+  }
+
+  const hasServiceArea =
+    Array.isArray(campaign.service_area_zips) &&
+    campaign.service_area_zips.length > 0;
+
+  if (contacts.length === 0) {
+    await supabase
+      .from("hl_runs")
+      .update({
+        phase: "failed",
+        error: "No contacts returned from CRM",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId);
+    return {
+      nextPhase: "failed",
+      contactsFetched: 0,
+      segmentsCount: 0,
+      pendingSegmentsCount: 0,
+      hasServiceArea,
+      requirements: [],
+      failureReason: "no_contacts",
+    };
+  }
+
+  // Bucket by geography — filter to service area if campaign has one set
+  const rawBuckets = identifyGeographies(
+    contacts,
+    campaign,
+    hasServiceArea ? campaign.service_area_zips : undefined,
+  );
+
+  // Pack-tier cap on segments per campaign.
+  const usage = await getHyperlocalUsage(runRow.user_id);
+  const segmentsCap = usage.segmentsPerCampaign;
+  const buckets =
+    segmentsCap === UNLIMITED || rawBuckets.length <= (segmentsCap as number)
+      ? rawBuckets
+      : [...rawBuckets]
+          .sort((a, b) => b.contact_ids.length - a.contact_ids.length)
+          .slice(0, segmentsCap as number);
+  if (
+    segmentsCap !== UNLIMITED &&
+    rawBuckets.length > (segmentsCap as number)
+  ) {
+    console.log(
+      `[hl-discover] segments cap (${segmentsCap}) — dropped ${
+        rawBuckets.length - (segmentsCap as number)
+      } of ${rawBuckets.length} buckets for run ${runId}`,
+    );
+  }
+
+  if (buckets.length === 0) {
+    await supabase
+      .from("hl_runs")
+      .update({
+        phase: "failed",
+        contacts_fetched: contacts.length,
+        error:
+          "Pulled contacts but none mapped to a segment. Check your campaign's segmentation setting and that contacts have addresses/search areas.",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", runId);
+    return {
+      nextPhase: "failed",
+      contactsFetched: contacts.length,
+      segmentsCount: 0,
+      pendingSegmentsCount: 0,
+      hasServiceArea,
+      requirements: [],
+      failureReason: "no_segments",
+    };
+  }
+
+  // Write discovery cache to Supabase Storage (the generate phase
+  // reads this back to know which recipient belongs to which segment)
+  const contactsById: Record<string, NormalizedContact> = {};
+  for (const c of contacts) contactsById[c.external_id] = c;
+  const cache = {
+    contacts: contactsById,
+    segments: buckets.map((b) => ({
+      geo_key: b.geo_key,
+      seller_contact_ids: b.seller_contact_ids,
+      buyer_contact_ids: b.buyer_contact_ids,
+      contact_ids: b.contact_ids,
+    })),
+  };
+  const path = `${runRow.user_id}/${runId}/discovery.json`;
+  const { error: uploadError } = await supabase.storage
+    .from("hyperlocal-uploads")
+    .upload(path, JSON.stringify(cache), {
+      contentType: "application/json",
+      upsert: true,
+    });
+  if (uploadError && !uploadError.message.includes("Duplicate")) {
+    throw new Error(`upload discovery.json: ${uploadError.message}`);
+  }
+
+  // Insert one hl_segments row per bucket
+  const segmentRows = buckets.map((b) => ({
+    run_id: runId,
+    geo_key: b.geo_key,
+    geo_label: b.geo_label,
+    geo_type: b.geo_type,
+    contact_count: b.contact_ids.length,
+    seller_contact_count: b.seller_contact_ids.length,
+    buyer_contact_count: b.buyer_contact_ids.length,
+    status: b.below_min_size ? "ready" : "pending",
+    rolled_up_into: b.rolled_up_into ?? null,
+    below_min_size: b.below_min_size,
+  }));
+  const { error: segErr } = await supabase
+    .from("hl_segments")
+    .insert(segmentRows);
+  if (segErr) throw new Error(`insert hl_segments: ${segErr.message}`);
+
+  // Run counters
+  await supabase
+    .from("hl_runs")
+    .update({
+      contacts_fetched: contacts.length,
+      segments_count: buckets.length,
+    })
+    .eq("id", runId);
+
+  // Compute MLS requirements (only for full-size segments)
+  const pendingBuckets = buckets.filter((b) => !b.below_min_size);
+  const requirements = computeRequiredMlsExports(pendingBuckets, campaign);
+
+  // ---- 3. Transition phase ----
+  //
+  // Three possible next states:
+  //   - awaiting_service_area: campaign has no service_area_zips set,
+  //       user must pick which ZIPs to send to from the discovered list
+  //   - awaiting_mls: service area known + at least one full-size
+  //       segment needs market data
+  //   - generate: service area known + every segment is sub-threshold
+  //       (no MLS needed because Claude writes without numbers)
+  let nextPhase: HlDiscoverNextPhase;
+  if (!hasServiceArea) {
+    nextPhase = "awaiting_service_area";
+  } else if (pendingBuckets.length > 0) {
+    nextPhase = "awaiting_mls";
+  } else {
+    nextPhase = "generate";
+  }
+
+  await supabase
+    .from("hl_runs")
+    .update({
+      phase: nextPhase,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", runId);
+
+  return {
+    nextPhase,
+    contactsFetched: contacts.length,
+    segmentsCount: buckets.length,
+    pendingSegmentsCount: pendingBuckets.length,
+    hasServiceArea,
+    requirements,
+  };
+}
