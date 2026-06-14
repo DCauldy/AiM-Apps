@@ -140,7 +140,7 @@
     display: inline-block;
     max-width: 100%;
     z-index: 50;
-    background: white;
+    background: hsl(var(--card));
     overflow: hidden;
   }
   
@@ -170,14 +170,14 @@
     position: absolute;
     inset: 3px;
     border-radius: calc(0.5rem - 3px);
-    background: white;
+    background: hsl(var(--card));
     z-index: 1;
   }
-  
+
   .rotating-gradient-border-wrapper > * {
     position: relative;
     z-index: 2;
-    background: white;
+    background: hsl(var(--card));
     border-radius: calc(0.5rem - 3px);
   }
   
