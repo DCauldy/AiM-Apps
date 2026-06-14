@@ -2,18 +2,16 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Plus, Sparkles, Bookmark, Library, AlertTriangle, BarChart3, Lock } from "lucide-react";
+import { Plus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThreadList } from "./ThreadList";
 import { useThreads } from "@/hooks/useThreads";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/toast";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogClose } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { UpgradeModal } from "@/components/trial/UpgradeModal";
 import { FEATURES } from "@/lib/feature-flags";
-import { AppSwitcher } from "@/components/layout/AppSwitcher";
 import dynamic from "next/dynamic";
 
 const PurchasePackModal = FEATURES.PROMPT_PACKS
@@ -143,82 +141,35 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
     }
   };
 
-  const isLibraryActive    = pathname === "/apps/prompt-studio/library";
-  const isSavedActive      = pathname === "/apps/prompt-studio/saved";
-  const isAimLibraryActive = pathname === "/apps/prompt-studio/aim-library";
-  const isStandalone       = user?.app_metadata?.account_type === "standalone";
+  // Per-route active flags (library / saved / aim-library) used to
+  // live here when those nav items rendered inside the sidebar.
+  // Those moved to the header (PromptStudioHeader), so the sidebar
+  // is purely a chat-threads + new-chat surface now. `user` is kept
+  // available for any future per-tier UI we add to the sidebar.
+  void user;
+  void pathname;
 
   return (
     <>
-      {/* Sidebar */}
+      {/* Sidebar — chat threads + new-chat. Sits inside the page
+          area below the PromptStudioHeader; tucks under the
+          fixed-height header on desktop. */}
       <aside
         className={cn(
-          "top-0 left-0 z-40 h-screen border-r bg-background flex flex-col",
+          "top-14 left-0 z-30 border-r border-border bg-card flex flex-col",
+          "h-[calc(100vh-3.5rem)]",
           "w-[280px]",
           isOpen ? "sm:w-80" : "sm:w-64",
           "fixed transition-all duration-300 ease-in-out",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        {/* App Switcher */}
-        <div className="p-3 border-b">
-          <AppSwitcher />
-        </div>
-
-        <div className="p-4 border-b space-y-2">
+        <div className="p-3 border-b border-border">
           <Button onClick={handleNewThread} className="w-full" variant="default">
             <Plus className="mr-2 h-4 w-4" />
-            New Prompt
+            New chat
           </Button>
-          <div className="flex flex-col gap-2">
-            {isStandalone ? (
-              <Button
-                variant="outline"
-                className="w-full justify-start opacity-50 cursor-not-allowed"
-                disabled
-                title="Available to AiM members"
-              >
-                <Lock className="mr-2 h-4 w-4" />
-                Community Prompts
-              </Button>
-            ) : (
-              <Button
-                variant={isLibraryActive ? "default" : "outline"}
-                className="w-full justify-start"
-                onClick={() => {
-                  router.push("/apps/prompt-studio/library");
-                  if (window.innerWidth < 1024) onToggle?.();
-                }}
-              >
-                <Sparkles className="mr-2 h-4 w-4" />
-                Community Prompts
-              </Button>
-            )}
-            <Button
-              variant={isAimLibraryActive ? "default" : "outline"}
-              className="w-full justify-start"
-              onClick={() => {
-                router.push("/apps/prompt-studio/aim-library");
-                if (window.innerWidth < 1024) onToggle?.();
-              }}
-            >
-              <Library className="mr-2 h-4 w-4" />
-              AiM Library
-            </Button>
-            <Button
-              variant={isSavedActive ? "default" : "outline"}
-              className="w-full justify-start"
-              onClick={() => {
-                router.push("/apps/prompt-studio/saved");
-                if (window.innerWidth < 1024) onToggle?.();
-              }}
-            >
-              <Bookmark className="mr-2 h-4 w-4" />
-              Bookmarked
-            </Button>
-          </div>
         </div>
-        <Separator />
         <ThreadList
           threads={threads}
           activeThreadId={activeThreadId}
