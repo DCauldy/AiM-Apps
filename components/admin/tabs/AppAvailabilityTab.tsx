@@ -33,6 +33,10 @@ const APP_FLAGS: Record<string, { label: string; description: string }> = {
     description:
       "Neighborhood market-report email campaigns sent through the user's own ESP.",
   },
+  TOURS: {
+    label: "Tours",
+    description: "Listing tour projects with scene planning and render workflow.",
+  },
 };
 
 export function AppAvailabilityTab() {

@@ -25,6 +25,7 @@ export default async function AppsPage() {
     "blog-engine": null,
     "radar": null,
     "hyperlocal": null,
+    "tours": null,
   };
 
   if (user) {

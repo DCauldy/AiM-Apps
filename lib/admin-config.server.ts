@@ -13,6 +13,15 @@ import {
   type HyperlocalPack,
 } from "@/lib/hyperlocal-packs";
 
+export const FEATURE_FLAG_DEFAULTS: Record<string, boolean> = {
+  PROMPT_PACKS: FEATURES.PROMPT_PACKS,
+  BLOG_ENGINE: FEATURES.BLOG_ENGINE,
+  PROMPT_STUDIO: FEATURES.PROMPT_STUDIO,
+  RADAR: FEATURES.RADAR,
+  HYPERLOCAL: FEATURES.HYPERLOCAL,
+  TOURS: FEATURES.TOURS,
+};
+
 // `cache()` dedupes within a single SSR render. Both the layout and the
 // page often look up the same feature flag — wrapping collapses those to
 // one admin_settings hit.
@@ -35,12 +44,7 @@ export const getFeatureFlag = cache(async function getFeatureFlag(
     // DB unavailable — fall through to env var
   }
 
-  if (key === "PROMPT_PACKS") return FEATURES.PROMPT_PACKS;
-  if (key === "BLOG_ENGINE") return FEATURES.BLOG_ENGINE;
-  if (key === "PROMPT_STUDIO") return FEATURES.PROMPT_STUDIO;
-  if (key === "RADAR") return FEATURES.RADAR;
-  if (key === "HYPERLOCAL") return FEATURES.HYPERLOCAL;
-  return false;
+  return FEATURE_FLAG_DEFAULTS[key] ?? false;
 });
 
 /** Bulk read all feature flags from admin_settings */
@@ -62,13 +66,7 @@ export const getFeatureFlags = cache(async function getFeatureFlags(): Promise<
     // DB unavailable — fall through to env vars
   }
 
-  return {
-    PROMPT_PACKS: FEATURES.PROMPT_PACKS,
-    BLOG_ENGINE: FEATURES.BLOG_ENGINE,
-    PROMPT_STUDIO: FEATURES.PROMPT_STUDIO,
-    RADAR: FEATURES.RADAR,
-    HYPERLOCAL: FEATURES.HYPERLOCAL,
-  };
+  return { ...FEATURE_FLAG_DEFAULTS };
 });
 
 /** Read prompt packs from DB, falling back to hardcoded array */

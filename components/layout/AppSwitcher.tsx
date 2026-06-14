@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, Sparkles, FileText, Radar, Mail, Lock, ExternalLink, LayoutGrid, Building2 } from "lucide-react";
+import { ChevronDown, Sparkles, FileText, Radar, Mail, Video, Lock, ExternalLink, LayoutGrid, Building2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/components/profile/ProfileProvider";
 import { cn } from "@/lib/utils";
+import { startNavigationProgress } from "@/lib/navigation-progress";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,6 +73,15 @@ const APPS: AppDefinition[] = [
     requiresPro: true,
     iconClassName: "bg-gradient-to-br from-[#E11D48] to-[#7C3AED]",
   },
+  {
+    id: "tours",
+    name: "Tours",
+    description: "Listing tour project workspace",
+    route: "/apps/tours",
+    icon: <Video className="h-4 w-4" />,
+    requiresPro: true,
+    iconClassName: "bg-gradient-to-br from-[#2563EB] to-[#7C3AED]",
+  },
 ];
 
 export function AppSwitcher() {
@@ -121,6 +131,7 @@ export function AppSwitcher() {
       setProModalOpen(true);
       return;
     }
+    startNavigationProgress();
     router.push(app.route);
   };
 

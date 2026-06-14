@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
 import { BlogUpgradeModal } from "@/components/blog-engine/BlogUpgradeModal";
 import { RadarUpgradeModal } from "@/components/radar/RadarUpgradeModal";
+import { startNavigationProgress } from "@/lib/navigation-progress";
 
 interface AppCard {
   id: string;
@@ -185,7 +186,10 @@ export function AppsLandingGrid({ flags, subscriptionTier, usageStats }: AppsLan
                 {isAccessible ? (
                   <>
                     <button
-                      onClick={() => router.push(app.route)}
+                      onClick={() => {
+                        startNavigationProgress();
+                        router.push(app.route);
+                      }}
                       className="flex-1 rounded-lg bg-gradient-to-r from-[#17A697] to-[#1B7FB5] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90"
                     >
                       Open

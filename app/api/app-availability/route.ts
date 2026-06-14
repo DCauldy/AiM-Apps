@@ -24,6 +24,7 @@ export async function GET() {
       "blog-engine": flags["BLOG_ENGINE"] === true,
       "radar": flags["RADAR"] === true,
       "hyperlocal": flags["HYPERLOCAL"] === true,
+      "tours": flags["TOURS"] === true,
     },
   });
 }

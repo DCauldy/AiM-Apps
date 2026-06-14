@@ -1,0 +1,139 @@
+import type {
+  TourProjectRow,
+  TourRenderAsset,
+  TourRenderAssetRow,
+  TourRenderPreflightProject,
+  TourRenderPreflightScene,
+  TourRenderRun,
+  TourRenderRunRow,
+  TourSceneFactRow,
+  TourSceneRow,
+  TourSceneSourcePhotoRow,
+} from "./tour-render.repository.types";
+
+export const PROJECT_SELECT = "id, user_id, name, property_address, listing_url, tour_type, status";
+export const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion";
+export const SOURCE_PHOTO_SELECT =
+  "id, project_id, scene_id, storage_path, file_name, content_type, byte_size, width, height, priority, created_at";
+export const FACT_SELECT = "id, scene_id, fact_text, source_photo_id, sort_order, created_at";
+export const RUN_SELECT =
+  "id, project_id, user_id, trigger_run_id, status, current_step, current_step_label, progress_percent, scene_clip_completed_count, scene_clip_total_count, options, error_message, result_asset_id, started_at, completed_at, heartbeat_at, created_at, updated_at";
+export const ASSET_SELECT =
+  "id, created_by_run_id, project_id, scene_id, kind, storage_bucket, storage_path, content_type, fingerprint_hash, fingerprint, reusable, metadata, created_at";
+
+export function safeRenderMessage(message: string | null | undefined): string | null {
+  const trimmed = message?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.slice(0, 500);
+}
+
+export function mapRenderRun(row: TourRenderRunRow): TourRenderRun {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    userId: row.user_id,
+    triggerRunId: row.trigger_run_id,
+    status: row.status,
+    currentStep: row.current_step,
+    currentStepLabel: row.current_step_label,
+    progressPercent: row.progress_percent,
+    sceneClipCompletedCount: row.scene_clip_completed_count,
+    sceneClipTotalCount: row.scene_clip_total_count,
+    options: row.options,
+    errorMessage: row.error_message,
+    resultAssetId: row.result_asset_id,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    heartbeatAt: row.heartbeat_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapRenderAsset(row: TourRenderAssetRow): TourRenderAsset {
+  return {
+    id: row.id,
+    createdByRunId: row.created_by_run_id,
+    projectId: row.project_id,
+    sceneId: row.scene_id,
+    kind: row.kind,
+    storageBucket: row.storage_bucket,
+    storagePath: row.storage_path,
+    contentType: row.content_type,
+    fingerprintHash: row.fingerprint_hash,
+    fingerprint: row.fingerprint,
+    reusable: row.reusable,
+    metadata: row.metadata,
+    createdAt: row.created_at,
+  };
+}
+
+export function mapTourRenderPreflightProject(input: {
+  project: TourProjectRow;
+  scenes: TourSceneRow[];
+  sourcePhotos: TourSceneSourcePhotoRow[];
+  facts: TourSceneFactRow[];
+}): TourRenderPreflightProject {
+  const sourcePhotosBySceneId = new Map<string, TourSceneSourcePhotoRow[]>();
+  for (const sourcePhoto of input.sourcePhotos) {
+    const scenePhotos = sourcePhotosBySceneId.get(sourcePhoto.scene_id) ?? [];
+    scenePhotos.push(sourcePhoto);
+    sourcePhotosBySceneId.set(sourcePhoto.scene_id, scenePhotos);
+  }
+
+  const proofedFactsBySceneId = new Map<string, TourSceneFactRow[]>();
+  for (const fact of input.facts) {
+    const sceneFacts = proofedFactsBySceneId.get(fact.scene_id) ?? [];
+    sceneFacts.push(fact);
+    proofedFactsBySceneId.set(fact.scene_id, sceneFacts);
+  }
+
+  const scenes = [...input.scenes]
+    .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
+    .map((scene) => {
+      const [authoritativePhoto] = [...(sourcePhotosBySceneId.get(scene.id) ?? [])].sort(
+        (a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at)
+      );
+      return {
+        id: scene.id,
+        title: scene.title,
+        sortOrder: scene.sort_order,
+        included: scene.included,
+        cameraMotion: scene.camera_motion,
+        authoritativePhoto: authoritativePhoto
+          ? {
+              id: authoritativePhoto.id,
+              storagePath: authoritativePhoto.storage_path,
+              fileName: authoritativePhoto.file_name,
+              contentType: authoritativePhoto.content_type,
+              byteSize: authoritativePhoto.byte_size,
+              width: authoritativePhoto.width,
+              height: authoritativePhoto.height,
+            }
+          : null,
+        proofedFacts: [...(proofedFactsBySceneId.get(scene.id) ?? [])]
+          .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at))
+          .map((fact) => ({
+            id: fact.id,
+            text: fact.fact_text,
+            sortOrder: fact.sort_order,
+            sourcePhotoId: fact.source_photo_id,
+          })),
+      } satisfies TourRenderPreflightScene;
+    });
+
+  return {
+    project: {
+      id: input.project.id,
+      userId: input.project.user_id,
+      name: input.project.name,
+      propertyAddress: input.project.property_address,
+      listingUrl: input.project.listing_url,
+      tourType: input.project.tour_type,
+      status: input.project.status ?? "open",
+    },
+    scenes,
+  };
+}

@@ -80,7 +80,7 @@ agent will. Pitch it accordingly.
 A materialized view over `hl_email_events` per recipient:
 
 ```
-score = (recent_opens × 3 + recent_clicks × 5 + replies × 10) 
+score = (recent_opens × 3 + recent_clicks × 5 + replies × 10)
         × recency_decay(last_engagement_at)
 ```
 
