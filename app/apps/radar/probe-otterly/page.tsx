@@ -62,7 +62,7 @@ const COMMON_PATHS: Array<{
   { category: "Brand Reports", label: "List prompts", path: `/v1/reports/brand/{reportId}/prompts${RANGE_QS}`, method: "GET" },
   { category: "Brand Reports", label: "Get prompt", path: "/v1/reports/brand/{reportId}/prompts/{promptId}", method: "GET" },
   { category: "Brand Reports", label: "Prompt responses", path: `/v1/reports/brand/{reportId}/prompts/{promptId}/responses${RANGE_QS}`, method: "GET" },
-  { category: "Brand Reports", label: "Recommendations", path: `/v1/reports/brand/{reportId}/recommendations`, method: "GET" },
+  { category: "Brand Reports", label: "Recommendations", path: `/v1/reports/brand/{reportId}/recommendations?country=${DEFAULT_COUNTRY}`, method: "GET" },
 
   // ─── GEO audits (content + crawlability checks, URL-driven) ───
   { category: "Audits", label: "List content checks", path: "/v1/audits/geo/content-checks", method: "GET" },
