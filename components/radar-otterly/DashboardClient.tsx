@@ -236,9 +236,20 @@ function KpiStrip({
         Icon={TrendingUp}
         accent="text-emerald-400"
       />
+      {/* Brand Coverage = % of tracked prompts that mention the brand
+          at all (any engine). Distinct from Citation Rate (which is
+          domain-based — % where caldwellrg.com appears as a cited
+          source). Replaces Otterly's opaque Visibility Score composite
+          which customers couldn't reason about. */}
       <KpiTile
-        label="Visibility Score"
-        value={mainBrand?.visibilityScore ?? "—"}
+        label="Brand Coverage"
+        value={
+          mainBrand?.brandCoverage != null
+            ? `${Math.round(mainBrand.brandCoverage)}%`
+            : stats.summary.brandCoverage != null
+              ? `${Math.round(stats.summary.brandCoverage)}%`
+              : "—"
+        }
         Icon={Eye}
         accent="text-sky-400"
       />
