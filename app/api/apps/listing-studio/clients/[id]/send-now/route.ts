@@ -1,13 +1,14 @@
 import "server-only";
 
 import { NextRequest } from "next/server";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { inngest } from "@/lib/inngest/client";
 import {
   getListingStudioUsage,
   getMonthStart,
 } from "@/lib/listing-studio/usage";
 import { UNLIMITED } from "@/lib/hyperlocal-packs";
+import type { cmaDeliverTask } from "@/triggers/cma-deliver";
 
 export const dynamic = "force-dynamic";
 
@@ -72,15 +73,12 @@ export async function POST(
     );
   }
 
-  // 3. Fire the event. The Inngest fn handles the heavy lifting +
-  //    bumps the meter via cma_increment_delivery_count.
+  // 3. Fire the Trigger.dev task. The runCmaDelivery helper inside
+  //    the task bumps the meter via cma_increment_delivery_count.
   try {
-    await inngest.send({
-      name: "cma/deliver.requested",
-      data: {
-        clientId: id,
-        triggerSource: "manual",
-      },
+    await tasks.trigger<typeof cmaDeliverTask>("cma-deliver", {
+      clientId: id,
+      triggerSource: "manual",
     });
   } catch (e) {
     return Response.json(

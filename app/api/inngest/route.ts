@@ -11,7 +11,7 @@ import { hlSend } from "@/lib/inngest/functions/hl-send";
 import { hlSendOne } from "@/lib/inngest/functions/hl-send-one";
 import { cmaCadenceTick } from "@/lib/inngest/functions/cma-cadence-tick";
 import { cmaCrmSync } from "@/lib/inngest/functions/cma-crm-sync";
-import { cmaDeliver } from "@/lib/inngest/functions/cma-deliver";
+// cma-deliver migrated to Trigger.dev — see triggers/cma-deliver.ts.
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -27,6 +27,5 @@ export const { GET, POST, PUT } = serve({
     hlSendOne,
     cmaCadenceTick,
     cmaCrmSync,
-    cmaDeliver,
   ],
 });

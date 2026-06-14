@@ -1,5 +1,7 @@
+import { tasks } from "@trigger.dev/sdk/v3";
 import { inngest } from "@/lib/inngest/client";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import type { cmaDeliverTask } from "@/triggers/cma-deliver";
 
 // ---------------------------------------------------------------------------
 // CMA cadence tick — finds clients whose cadence has come due and
@@ -88,19 +90,25 @@ export const cmaCadenceTick = inngest.createFunction(
 
     const toFire = candidates.filter((c) => !skip.has(c.id));
 
-    // 3. Enqueue events — Inngest dedupes by event id within a short
-    //    window but doesn't have a content-based key, so we hash the
-    //    client id into the event id so a same-tick duplicate (e.g.
-    //    operator hits the cron URL twice) collapses to one fire.
+    // 3. Enqueue Trigger.dev tasks — one per due client. Same-tick
+    //    duplicate collapsing is handled by Trigger.dev's
+    //    idempotencyKey: we key on (clientId, hour-bucket) so an
+    //    operator hitting the cron URL twice within the hour produces
+    //    one task per client, not two.
     if (toFire.length > 0) {
       await step.run("enqueue-deliveries", async () => {
-        await inngest.send(
+        const hourBucket = now.slice(0, 13);
+        await tasks.batchTrigger<typeof cmaDeliverTask>(
+          "cma-deliver",
           toFire.map((c) => ({
-            id: `cma-deliver-${c.id}-${now.slice(0, 13)}`, // bucket per hour
-            name: "cma/deliver.requested",
-            data: {
+            payload: {
               clientId: c.id,
               triggerSource: "cadence" as const,
+            },
+            options: {
+              idempotencyKey: `cma-deliver-${c.id}-${hourBucket}`,
+              idempotencyKeyTTL: "2h",
+              tags: [`cma-client:${c.id}`, "cma-trigger:cadence"],
             },
           })),
         );
