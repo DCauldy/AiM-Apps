@@ -14,6 +14,7 @@ import {
   renderSceneClipBatchItem,
   type SceneClipBatchItem,
 } from "@/lib/tours/rendering/tour-scene-clips";
+import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/tour-render-retention";
 
 export const renderTourSceneClipTask = task({
   id: "render-tour-scene-clip",
@@ -60,6 +61,49 @@ export type RenderTourProjectPayload = Omit<
   GenerateTourProjectVideoInput,
   "progress"
 >;
+
+export type CleanupSupersededFreshRenderPayload = {
+  projectId: string;
+  userId: string;
+  renderRunId: string;
+};
+
+export const cleanupSupersededFreshRenderAssetsTask = task({
+  id: "cleanup-superseded-fresh-render-assets",
+  queue: {
+    name: "tour-render-asset-cleanup",
+    concurrencyLimit: 1,
+  },
+  machine: "small-1x",
+  maxDuration: 10 * 60,
+  run: async (payload: CleanupSupersededFreshRenderPayload, { ctx }) => {
+    metadata.set("product", "tours");
+    metadata.set("projectId", payload.projectId);
+    metadata.set("renderRunId", payload.renderRunId);
+    metadata.set("triggerRunId", ctx.run.id);
+    metadata.set("step", "cleanup_superseded_assets");
+
+    logger.log("Tours fresh render asset cleanup started.", payload);
+
+    const result = await cleanupSupersededFreshRenderAssets({
+      projectId: payload.projectId,
+      userId: payload.userId,
+      runId: payload.renderRunId,
+    });
+
+    metadata.set("status", result.ok ? "completed" : "failed");
+    metadata.set("scanned", result.scanned);
+    metadata.set("storageDeleted", result.storageDeleted);
+    metadata.set("softDeleted", result.softDeleted);
+    metadata.set("skipped", result.skipped);
+    metadata.set("failed", result.failed);
+    metadata.set("skippedReason", result.skippedReason ?? "");
+    await metadata.flush();
+
+    logger.log("Tours fresh render asset cleanup finished.", result);
+    return result;
+  },
+});
 
 export const renderTourProjectTask = task({
   id: "render-tour-project",
@@ -148,6 +192,35 @@ export const renderTourProjectTask = task({
     );
 
     metadata.set("status", run?.status ?? "failed");
+    if (run?.status === "completed" && run.resultAssetId && payload.options?.reuseExistingAssets === false) {
+      try {
+        await cleanupSupersededFreshRenderAssetsTask.trigger(
+          {
+            projectId: payload.projectId,
+            userId: payload.userId,
+            renderRunId: payload.renderRunId,
+          },
+          {
+            idempotencyKey: `tour-render-cleanup:${payload.renderRunId}`,
+            concurrencyKey: `tour-project-cleanup:${payload.projectId}`,
+            tags: [
+              `user:${payload.userId}`,
+              `tour-project:${payload.projectId}`,
+              `tour-render:${payload.renderRunId}`,
+              "cleanup-superseded-fresh-render-assets",
+            ],
+          }
+        );
+      } catch (error) {
+        logger.error("Tours fresh render asset cleanup enqueue failed.", {
+          projectId: payload.projectId,
+          renderRunId: payload.renderRunId,
+          triggerRunId: ctx.run.id,
+          error,
+        });
+      }
+    }
+
     if (run?.status === "failed") {
       logger.error("Tours render task finished failed.", {
         projectId: payload.projectId,

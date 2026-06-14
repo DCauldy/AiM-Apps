@@ -118,6 +118,9 @@ const sceneClipAsset: TourRenderAsset = {
   fingerprint: {},
   reusable: true,
   metadata: {},
+  deletedAt: null,
+  storageDeletedAt: null,
+  deleteReason: null,
   createdAt: "2026-06-13T12:00:00.000Z",
 };
 

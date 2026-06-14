@@ -19,7 +19,7 @@ export const FACT_SELECT = "id, scene_id, fact_text, source_photo_id, sort_order
 export const RUN_SELECT =
   "id, project_id, user_id, trigger_run_id, status, current_step, current_step_label, progress_percent, scene_clip_completed_count, scene_clip_total_count, options, error_message, result_asset_id, started_at, completed_at, heartbeat_at, created_at, updated_at";
 export const ASSET_SELECT =
-  "id, created_by_run_id, project_id, scene_id, kind, storage_bucket, storage_path, content_type, fingerprint_hash, fingerprint, reusable, metadata, created_at";
+  "id, created_by_run_id, project_id, scene_id, kind, storage_bucket, storage_path, content_type, fingerprint_hash, fingerprint, reusable, metadata, deleted_at, storage_deleted_at, delete_reason, created_at";
 
 export function safeRenderMessage(message: string | null | undefined): string | null {
   const trimmed = message?.trim();
@@ -66,6 +66,9 @@ export function mapRenderAsset(row: TourRenderAssetRow): TourRenderAsset {
     fingerprint: row.fingerprint,
     reusable: row.reusable,
     metadata: row.metadata,
+    deletedAt: row.deleted_at,
+    storageDeletedAt: row.storage_deleted_at,
+    deleteReason: row.delete_reason,
     createdAt: row.created_at,
   };
 }

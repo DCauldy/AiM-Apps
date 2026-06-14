@@ -45,6 +45,10 @@ const TRIGGER_ATTACH_TIMEOUT_MS = 3_000;
 const RENDER_TASK_ENQUEUE_FAILED_MESSAGE =
   "Could not start the render task. Try again.";
 
+function isRenderAssetDeleted(asset: TourRenderAsset): boolean {
+  return Boolean(asset.deletedAt || asset.storageDeletedAt);
+}
+
 const TIMELINE_STEP_DETAILS: Record<TourRenderStep, TourRenderTimelineStep> = {
   queued: {
     key: "queued",
@@ -340,7 +344,7 @@ export async function listTourRenderRunAssetsWithUrls(
   });
   const assetsWithUrls = await Promise.all(
     assets.map(async (asset) => {
-      if (asset.storageBucket !== "tours-generated-media" || !asset.storagePath) {
+      if (isRenderAssetDeleted(asset) || asset.storageBucket !== "tours-generated-media" || !asset.storagePath) {
         return null;
       }
 
@@ -387,6 +391,7 @@ export async function getTourRenderRunResultUrl(
 
   if (
     !asset ||
+    isRenderAssetDeleted(asset) ||
     asset.kind !== "final_video" ||
     asset.storageBucket !== "tours-generated-media" ||
     !asset.storagePath

@@ -118,6 +118,9 @@ export type TourRenderAsset = {
   fingerprint: Record<string, unknown>;
   reusable: boolean;
   metadata: Record<string, unknown>;
+  deletedAt: string | null;
+  storageDeletedAt: string | null;
+  deleteReason: string | null;
   createdAt: string;
 };
 
@@ -214,6 +217,9 @@ export type TourRenderAssetRow = {
   fingerprint: Record<string, unknown>;
   reusable: boolean;
   metadata: Record<string, unknown>;
+  deleted_at: string | null;
+  storage_deleted_at: string | null;
+  delete_reason: string | null;
   created_at: string;
 };
 
@@ -233,6 +239,31 @@ export type UpdateTourRenderProgressInput = {
   progressPercent: number;
   sceneClipCompletedCount?: number;
   sceneClipTotalCount?: number;
+};
+
+export type DeleteTourRenderAssetReason = "fresh_render_superseded" | "retention_expired" | (string & {});
+
+export type DeleteGeneratedAssetsResult = {
+  scanned: number;
+  storageDeleted: number;
+  softDeleted: number;
+  skipped: number;
+  failed: number;
+  failures: Array<{ assetId: string; message: string }>;
+};
+
+export type SupersededFreshRenderAssetCandidates = {
+  candidateAssetIds: string[];
+  keepAssetIds: string[];
+  activeAssetIds: string[];
+};
+
+export type RetentionExpiredAssetCandidates = {
+  candidateAssetIds: string[];
+  currentFinalAssetIds: string[];
+  activeAssetIds: string[];
+  scanned: number;
+  nextCursor: { createdAt: string; id: string } | null;
 };
 
 export type CreateTourRenderAssetInput = {
@@ -367,4 +398,19 @@ export type TourRenderRepository = {
   markProjectAssetsNonReusable(input: {
     projectId: string;
   }): Promise<boolean>;
+  deleteGeneratedAssets(input: {
+    assetIds: string[];
+    reason: DeleteTourRenderAssetReason;
+    batchSize?: number;
+  }): Promise<DeleteGeneratedAssetsResult>;
+  listSupersededFreshRenderAssetIds(input: {
+    projectId: string;
+    completedRunId: string;
+    resultAssetId: string;
+  }): Promise<SupersededFreshRenderAssetCandidates>;
+  listRetentionExpiredAssetIds(input: {
+    cutoffIso: string;
+    limit: number;
+    cursor?: { createdAt: string; id: string } | null;
+  }): Promise<RetentionExpiredAssetCandidates>;
 };

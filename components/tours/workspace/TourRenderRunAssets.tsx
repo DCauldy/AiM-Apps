@@ -8,6 +8,8 @@ import { Code, Download, File, Image, Music, Video } from "lucide-react";
 import { useState } from "react";
 import { useTourRenderRunAssets } from "./useTourRenderRunAssets";
 
+const GENERATED_ASSET_RETENTION_DAYS = 30;
+
 export function TourRenderRunAssets({
   run,
 }: {
@@ -15,59 +17,98 @@ export function TourRenderRunAssets({
 }) {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const { runAssets, isLoadingRunAssets } = useTourRenderRunAssets(run.id);
+  const assetCountLabel = `${runAssets.length} downloadable asset${runAssets.length === 1 ? "" : "s"}`;
+  const hasDownloadableAssets = runAssets.length > 0;
+  const retentionDateLabel = formatGeneratedAssetRetentionDate(run.updatedAt);
+  const buttonLabel = hasDownloadableAssets
+    ? `View ${assetCountLabel}`
+    : "Assets expired for download";
+  const retentionLabel = hasDownloadableAssets
+    ? `Expires ${retentionDateLabel}`
+    : `Expired ${retentionDateLabel}`;
+
   return (
     <div className="mt-5 overflow-hidden rounded-md bg-background shadow-sm">
       <Button
         variant="outline"
-        onClick={() => setIsOpen((isOpen) => !isOpen)}
-        disabled={isLoadingRunAssets}
+        onClick={() => {
+          if (hasDownloadableAssets) {
+            setIsOpen((isOpen) => !isOpen);
+          }
+        }}
+        disabled={isLoadingRunAssets || !hasDownloadableAssets}
         className={cn(
-          "w-full justify-start text-left py-8",
+          "flex min-h-16 w-full items-center justify-between gap-4 px-4 py-4 text-left",
           isOpen && !isLoadingRunAssets && "rounded-b-none",
         )}
       >
-        {isLoadingRunAssets
-          ? "Loading Assets..."
-          : isOpen
-            ? `Close Asset list`
-            : `View ${runAssets.length} asset${runAssets.length === 1 ? "" : "s"}`}
+        <span className="min-w-0 truncate">
+          {isLoadingRunAssets ? "Loading assets..." : isOpen ? "Close asset list" : buttonLabel}
+        </span>
+        {!isLoadingRunAssets ? (
+          <span className="shrink-0 text-xs font-normal text-muted-foreground/70">
+            {retentionLabel}
+          </span>
+        ) : null}
       </Button>
       {!isLoadingRunAssets && isOpen ? (
         <div className="mt-0 overflow-hidden rounded-md rounded-t-none border border-t-0 border-border bg-background pt-0 shadow-sm">
-          {runAssets.map((asset) => (
-            <div
-              key={asset.id}
-              className="flex items-center justify-between gap-4 border-b border-border/70 px-4 py-3 last:border-b-0"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <AssetIcon asset={asset} />
-                <p className="truncate text-sm font-medium text-foreground">
-                  {asset.name}
-                </p>
-              </div>
-              <Button
-                asChild
-                variant="outline"
-                size="icon"
-                className="h-8 w-8 shrink-0"
+          {runAssets.length > 0 ? (
+            runAssets.map((asset) => (
+              <div
+                key={asset.id}
+                className="flex items-center justify-between gap-4 border-b border-border/70 px-4 py-3 last:border-b-0"
               >
-                <a
-                  href={asset.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  download
-                  aria-label={`Download ${asset.name}`}
-                  title={`Download ${asset.name}`}
+                <div className="flex min-w-0 items-center gap-3">
+                  <AssetIcon asset={asset} />
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {asset.name}
+                  </p>
+                </div>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
                 >
-                  <Download className="h-4 w-4" />
-                </a>
-              </Button>
-            </div>
-          ))}
+                  <a
+                    href={asset.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    download
+                    aria-label={`Download ${asset.name}`}
+                    title={`Download ${asset.name}`}
+                  >
+                    <Download className="h-4 w-4" />
+                  </a>
+                </Button>
+              </div>
+            ))
+          ) : (
+            <p className="px-4 py-3 text-sm text-muted-foreground">
+              No downloadable intermediate assets remain for this render.
+            </p>
+          )}
         </div>
       ) : null}
     </div>
   );
+}
+
+function formatGeneratedAssetRetentionDate(updatedAt: string): string {
+  const updatedAtTime = new Date(updatedAt).getTime();
+  if (!Number.isFinite(updatedAtTime)) {
+    return "after 30 days";
+  }
+
+  const retentionDate = new Date(
+    updatedAtTime + GENERATED_ASSET_RETENTION_DAYS * 24 * 60 * 60 * 1000
+  );
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(retentionDate);
 }
 
 const IS_VIDEO = (asset: TourRenderAsset) =>

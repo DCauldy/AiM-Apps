@@ -60,6 +60,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
   const isProjectRendering =
     renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
   const latestDownloadUrl = renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
+  const renderingHref = `/apps/tours/projects/${viewModel.project.id}/rendering`;
 
   return (
     <PageFrame className="max-w-none px-4 py-4 sm:px-6 lg:px-8">
@@ -84,7 +85,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {isProjectRendering ? (
             <Button asChild variant="secondary" size="sm">
-              <Link href={`/apps/tours/projects/${viewModel.project.id}/rendering`}>
+              <Link href={renderingHref}>
                 <Video className="h-4 w-4" />
                 View progress
               </Link>
@@ -97,6 +98,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
           )}
           <ProjectActionsMenu
             latestDownloadUrl={latestDownloadUrl}
+            renderingHref={renderingHref}
             downloadTitle={viewModel.project.name}
             canGenerateReuseAssets={
               viewModel.tourScenes.length > 0 &&

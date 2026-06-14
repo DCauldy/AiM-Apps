@@ -114,6 +114,8 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     listRunAssets: vi.fn(),
     findReusableAsset: vi.fn(),
     markProjectAssetsNonReusable: vi.fn().mockResolvedValue(true),
+    deleteGeneratedAssets: vi.fn(),
+    listSupersededFreshRenderAssetIds: vi.fn(),
     ...overrides,
   } as TourRenderRepository;
 }
@@ -290,9 +292,21 @@ describe("getTourRenderRunResultUrl", () => {
     const repository = createRepository({
       getAsset: vi.fn().mockResolvedValue({
         id: "asset-final",
+        createdByRunId: "run-1",
+        projectId: "project-1",
+        sceneId: null,
         kind: "final_video",
         storageBucket: "tours-generated-media",
         storagePath: "user-1/project-1/run-1/final.mp4",
+        contentType: "video/mp4",
+        fingerprintHash: "fingerprint-final",
+        fingerprint: {},
+        reusable: true,
+        metadata: {},
+        deletedAt: null,
+        storageDeletedAt: null,
+        deleteReason: null,
+        createdAt: "2026-06-13T12:00:00.000Z",
       }),
       createSignedGeneratedMediaUrl: vi.fn().mockResolvedValue({
         storageBucket: "tours-generated-media",
@@ -321,6 +335,43 @@ describe("getTourRenderRunResultUrl", () => {
       downloadTitle: "Lake House Tour.mp4",
     });
   });
+
+  it("does not sign deleted final video assets", async () => {
+    const repository = createRepository({
+      getAsset: vi.fn().mockResolvedValue({
+        id: "asset-final",
+        createdByRunId: "run-1",
+        projectId: "project-1",
+        sceneId: null,
+        kind: "final_video",
+        storageBucket: "tours-generated-media",
+        storagePath: "user-1/project-1/run-1/final.mp4",
+        contentType: "video/mp4",
+        fingerprintHash: "fingerprint-final",
+        fingerprint: {},
+        reusable: false,
+        metadata: {},
+        deletedAt: "2026-06-14T12:00:00.000Z",
+        storageDeletedAt: null,
+        deleteReason: "fresh_render_superseded",
+        createdAt: "2026-06-13T12:00:00.000Z",
+      }),
+      createSignedGeneratedMediaUrl: vi.fn(),
+    });
+
+    const result = await getTourRenderRunResultUrl(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        runId: "run-1",
+        resultAssetId: "asset-final",
+      },
+      { repository }
+    );
+
+    expect(result).toBeNull();
+    expect(repository.createSignedGeneratedMediaUrl).not.toHaveBeenCalled();
+  });
 });
 
 describe("listTourRenderRunAssetsWithUrls", () => {
@@ -345,6 +396,27 @@ describe("listTourRenderRunAssetsWithUrls", () => {
           fingerprint: {},
           reusable: true,
           metadata: {},
+          deletedAt: null,
+          storageDeletedAt: null,
+          deleteReason: null,
+          createdAt: "2026-06-13T12:00:00.000Z",
+        },
+        {
+          id: "asset-deleted",
+          createdByRunId: "run-1",
+          projectId: "project-1",
+          sceneId: null,
+          kind: "voiceover_audio",
+          storageBucket: "tours-generated-media",
+          storagePath: "user-1/project-1/run-1/deleted.mp3",
+          contentType: "audio/mpeg",
+          fingerprintHash: "fingerprint-deleted",
+          fingerprint: {},
+          reusable: false,
+          metadata: {},
+          deletedAt: null,
+          storageDeletedAt: "2026-06-14T12:00:00.000Z",
+          deleteReason: "retention_expired",
           createdAt: "2026-06-13T12:00:00.000Z",
         },
         {
@@ -360,6 +432,9 @@ describe("listTourRenderRunAssetsWithUrls", () => {
           fingerprint: {},
           reusable: true,
           metadata: {},
+          deletedAt: null,
+          storageDeletedAt: null,
+          deleteReason: null,
           createdAt: "2026-06-13T12:00:00.000Z",
         },
       ]),
@@ -393,6 +468,7 @@ describe("listTourRenderRunAssetsWithUrls", () => {
       runId: "run-1",
       projectId: "project-1",
     });
+    expect(repository.createSignedGeneratedMediaUrl).toHaveBeenCalledTimes(1);
     expect(repository.createSignedGeneratedMediaUrl).toHaveBeenCalledWith({
       storageBucket: "tours-generated-media",
       storagePath: "user-1/project-1/run-1/script-plan.json",

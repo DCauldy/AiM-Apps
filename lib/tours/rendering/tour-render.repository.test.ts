@@ -97,6 +97,9 @@ function assetRow(overrides = {}) {
     fingerprint: { projectVersion: 1 },
     reusable: true,
     metadata: { provider: "test" },
+    deleted_at: null,
+    storage_deleted_at: null,
+    delete_reason: null,
     created_at: now,
     ...overrides,
   };
@@ -119,6 +122,7 @@ function createListBuilder(result: { data: unknown[] | null; error: unknown } = 
   chain.select = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
   chain.in = vi.fn(() => chain);
+  chain.is = vi.fn(() => chain);
   chain.order = vi.fn(() => chain);
   return {
     chain,
@@ -152,7 +156,40 @@ function createUpdateBuilder(result: { error: unknown } = { error: null }) {
   return chain;
 }
 
+function createDeleteLoadBuilder(result: { data: unknown[] | null; error: unknown }) {
+  const chain: Record<string, unknown> = {};
+  chain.select = vi.fn(() => chain);
+  chain.in = vi.fn().mockResolvedValue(result);
+  return chain;
+}
+
+function createSingleEqUpdateBuilder(result: { error: unknown } = { error: null }) {
+  const chain: Record<string, unknown> = {};
+  chain.update = vi.fn(() => chain);
+  chain.eq = vi.fn().mockResolvedValue(result);
+  return chain;
+}
+
 describe("tour render repository", () => {
+  test("gets only available assets for download lookups", async () => {
+    const assetQuery = createQueryBuilder({ data: assetRow(), error: null });
+    const from = vi.fn().mockReturnValueOnce(assetQuery);
+    const repository = createTourRenderRepositoryFromSupabase({ from } as never);
+
+    const asset = await repository.getAsset({
+      assetId: "asset-1",
+      projectId: "project-1",
+    });
+
+    expect(asset?.id).toBe("asset-1");
+    expect(asset?.deletedAt).toBeNull();
+    expect(asset?.storageDeletedAt).toBeNull();
+    expect(assetQuery.eq).toHaveBeenCalledWith("id", "asset-1");
+    expect(assetQuery.eq).toHaveBeenCalledWith("project_id", "project-1");
+    expect(assetQuery.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(assetQuery.is).toHaveBeenCalledWith("storage_deleted_at", null);
+  });
+
   test("loads a renderable project view scoped by project id and user id", async () => {
     const projectQuery = createQueryBuilder({ data: projectRow(), error: null });
 
@@ -437,10 +474,190 @@ describe("tour render repository", () => {
     expect(reusableQuery.eq).toHaveBeenCalledWith("kind", "script_plan");
     expect(reusableQuery.eq).toHaveBeenCalledWith("fingerprint_hash", "fingerprint-1");
     expect(reusableQuery.eq).toHaveBeenCalledWith("reusable", true);
+    expect(reusableQuery.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(reusableQuery.is).toHaveBeenCalledWith("storage_deleted_at", null);
     expect(reusableQuery.is).toHaveBeenCalledWith("scene_id", null);
     expect(invalidateAssetsQuery.update).toHaveBeenCalledWith({ reusable: false });
     expect(invalidateAssetsQuery.eq).toHaveBeenCalledWith("project_id", "project-1");
     expect(invalidateAssetsQuery.eq).toHaveBeenCalledWith("reusable", true);
+  });
+
+  test("deletes generated storage objects before soft-deleting asset rows", async () => {
+    const loadQuery = createDeleteLoadBuilder({
+      data: [assetRow({ id: "asset-1", storage_path: "user-1/project-1/run-1/script-plan.json" })],
+      error: null,
+    });
+    const updateQuery = createSingleEqUpdateBuilder({ error: null });
+    const remove = vi.fn().mockResolvedValue({ data: [], error: null });
+    const storageFrom = vi.fn().mockReturnValue({ remove });
+    const from = vi.fn().mockReturnValueOnce(loadQuery).mockReturnValueOnce(updateQuery);
+    const repository = createTourRenderRepositoryFromSupabase({
+      from,
+      storage: { from: storageFrom },
+    } as never);
+
+    const result = await repository.deleteGeneratedAssets({
+      assetIds: ["asset-1"],
+      reason: "fresh_render_superseded",
+      batchSize: 10,
+    });
+
+    expect(result).toEqual({
+      scanned: 1,
+      storageDeleted: 1,
+      softDeleted: 1,
+      skipped: 0,
+      failed: 0,
+      failures: [],
+    });
+    expect(loadQuery.in).toHaveBeenCalledWith("id", ["asset-1"]);
+    expect(storageFrom).toHaveBeenCalledWith("tours-generated-media");
+    expect(remove).toHaveBeenCalledWith(["user-1/project-1/run-1/script-plan.json"]);
+    expect(updateQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reusable: false,
+        deleted_at: expect.any(String),
+        storage_deleted_at: expect.any(String),
+        delete_reason: "fresh_render_superseded",
+      })
+    );
+    expect(updateQuery.eq).toHaveBeenCalledWith("id", "asset-1");
+  });
+
+  test("treats missing generated storage objects as deleted for retry safety", async () => {
+    const loadQuery = createDeleteLoadBuilder({
+      data: [assetRow({ id: "asset-1", storage_path: "user-1/project-1/run-1/missing.json" })],
+      error: null,
+    });
+    const updateQuery = createSingleEqUpdateBuilder({ error: null });
+    const remove = vi.fn().mockResolvedValue({
+      data: null,
+      error: { statusCode: 404, message: "Object not found" },
+    });
+    const repository = createTourRenderRepositoryFromSupabase({
+      from: vi.fn().mockReturnValueOnce(loadQuery).mockReturnValueOnce(updateQuery),
+      storage: { from: vi.fn().mockReturnValue({ remove }) },
+    } as never);
+
+    const result = await repository.deleteGeneratedAssets({
+      assetIds: ["asset-1"],
+      reason: "retention_expired",
+    });
+
+    expect(result.failed).toBe(0);
+    expect(result.storageDeleted).toBe(1);
+    expect(result.softDeleted).toBe(1);
+    expect(updateQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({ reusable: false, delete_reason: "retention_expired" })
+    );
+  });
+
+  test("reports partial storage failures without soft-deleting failed rows", async () => {
+    const loadQuery = createDeleteLoadBuilder({
+      data: [
+        assetRow({ id: "asset-ok", storage_path: "user-1/project-1/run-1/ok.json" }),
+        assetRow({ id: "asset-fail", storage_path: "user-1/project-1/run-1/fail.json" }),
+      ],
+      error: null,
+    });
+    const updateQuery = createSingleEqUpdateBuilder({ error: null });
+    const remove = vi
+      .fn()
+      .mockResolvedValueOnce({ data: [], error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: "storage unavailable" } });
+    const repository = createTourRenderRepositoryFromSupabase({
+      from: vi.fn().mockReturnValueOnce(loadQuery).mockReturnValueOnce(updateQuery),
+      storage: { from: vi.fn().mockReturnValue({ remove }) },
+    } as never);
+
+    const result = await repository.deleteGeneratedAssets({
+      assetIds: ["asset-ok", "asset-fail"],
+      reason: "retention_expired",
+    });
+
+    expect(result.softDeleted).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(result.failures).toEqual([
+      { assetId: "asset-fail", message: "Failed to delete generated storage object: storage unavailable" },
+    ]);
+    expect(updateQuery.eq).toHaveBeenCalledTimes(1);
+    expect(updateQuery.eq).toHaveBeenCalledWith("id", "asset-ok");
+  });
+
+  test("soft-deletes rows without storage paths and skips unsafe or already deleted rows", async () => {
+    const loadQuery = createDeleteLoadBuilder({
+      data: [
+        assetRow({ id: "asset-no-storage", storage_bucket: null, storage_path: null }),
+        assetRow({ id: "asset-source", storage_bucket: "tours-listing-media", storage_path: "source.jpg" }),
+        assetRow({ id: "asset-deleted", deleted_at: "2026-06-14T12:00:00.000Z", reusable: false }),
+      ],
+      error: null,
+    });
+    const updateQuery = createSingleEqUpdateBuilder({ error: null });
+    const remove = vi.fn();
+    const repository = createTourRenderRepositoryFromSupabase({
+      from: vi.fn().mockReturnValueOnce(loadQuery).mockReturnValueOnce(updateQuery),
+      storage: { from: vi.fn().mockReturnValue({ remove }) },
+    } as never);
+
+    const result = await repository.deleteGeneratedAssets({
+      assetIds: ["asset-no-storage", "asset-source", "asset-deleted"],
+      reason: "retention_expired",
+    });
+
+    expect(result).toEqual({
+      scanned: 3,
+      storageDeleted: 0,
+      softDeleted: 1,
+      skipped: 2,
+      failed: 0,
+      failures: [],
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(updateQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reusable: false,
+        deleted_at: expect.any(String),
+        storage_deleted_at: null,
+        delete_reason: "retention_expired",
+      })
+    );
+  });
+
+  test("retries DB soft-delete after storage was already removed", async () => {
+    const loadQuery = createDeleteLoadBuilder({
+      data: [
+        assetRow({
+          id: "asset-retry",
+          storage_path: "user-1/project-1/run-1/retry.json",
+          storage_deleted_at: "2026-06-14T12:00:00.000Z",
+          deleted_at: null,
+        }),
+      ],
+      error: null,
+    });
+    const updateQuery = createSingleEqUpdateBuilder({ error: null });
+    const remove = vi.fn();
+    const repository = createTourRenderRepositoryFromSupabase({
+      from: vi.fn().mockReturnValueOnce(loadQuery).mockReturnValueOnce(updateQuery),
+      storage: { from: vi.fn().mockReturnValue({ remove }) },
+    } as never);
+
+    const result = await repository.deleteGeneratedAssets({
+      assetIds: ["asset-retry"],
+      reason: "fresh_render_superseded",
+    });
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(result.storageDeleted).toBe(0);
+    expect(result.softDeleted).toBe(1);
+    expect(updateQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reusable: false,
+        storage_deleted_at: "2026-06-14T12:00:00.000Z",
+        delete_reason: "fresh_render_superseded",
+      })
+    );
   });
 
   test("lists run assets in run usage order scoped to the project", async () => {
@@ -453,13 +670,15 @@ describe("tour render repository", () => {
       error: null,
     });
     const assetsQuery = createListBuilder().chain;
-    (assetsQuery.in as ReturnType<typeof vi.fn>).mockResolvedValue({
-      data: [
-        assetRow({ id: "asset-1", storage_path: "user-1/project-1/run-1/script-plan.json" }),
-        assetRow({ id: "asset-2", kind: "final_video", storage_path: "user-1/project-1/run-1/final.mp4" }),
-      ],
-      error: null,
-    });
+    (assetsQuery.is as ReturnType<typeof vi.fn>)
+      .mockReturnValueOnce(assetsQuery)
+      .mockResolvedValueOnce({
+        data: [
+          assetRow({ id: "asset-1", storage_path: "user-1/project-1/run-1/script-plan.json" }),
+          assetRow({ id: "asset-2", kind: "final_video", storage_path: "user-1/project-1/run-1/final.mp4" }),
+        ],
+        error: null,
+      });
     const from = vi.fn().mockReturnValueOnce(runAssetsQuery).mockReturnValueOnce(assetsQuery);
     const repository = createTourRenderRepositoryFromSupabase({ from } as never);
 
@@ -473,5 +692,7 @@ describe("tour render repository", () => {
     expect(runAssetsQuery.order).toHaveBeenCalledWith("created_at", { ascending: true });
     expect(assetsQuery.eq).toHaveBeenCalledWith("project_id", "project-1");
     expect(assetsQuery.in).toHaveBeenCalledWith("id", ["asset-2", "asset-1"]);
+    expect(assetsQuery.is).toHaveBeenCalledWith("deleted_at", null);
+    expect(assetsQuery.is).toHaveBeenCalledWith("storage_deleted_at", null);
   });
 });

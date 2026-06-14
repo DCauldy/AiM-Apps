@@ -11,6 +11,8 @@ import type {
 export type {
   CreateTourRenderAssetInput,
   CreateTourRenderRunInput,
+  DeleteGeneratedAssetsResult,
+  DeleteTourRenderAssetReason,
   RenderableTourProject,
   RenderableTourScene,
   SignedGeneratedMediaUrl,

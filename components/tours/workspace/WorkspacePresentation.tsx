@@ -2,7 +2,19 @@
 
 import { FormEvent, type ReactNode } from "react";
 import { useDropzone } from "react-dropzone";
-import { Download, EllipsisVertical, ImagePlus, Loader2, Pencil, Plus, RefreshCw, Trash2, UploadCloud } from "lucide-react";
+import Link from "next/link";
+import {
+  Download,
+  EllipsisVertical,
+  Images,
+  ImagePlus,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
 import type { TourScene } from "@/lib/tours/workspace";
 import { Button } from "@/components/ui/button";
 import {
@@ -254,6 +266,7 @@ export function SceneImageRail({
 
 export function ProjectActionsMenu({
   latestDownloadUrl,
+  renderingHref,
   downloadTitle,
   canGenerateReuseAssets = false,
   isGeneratingReuseAssets = false,
@@ -262,6 +275,7 @@ export function ProjectActionsMenu({
   onDelete,
 }: {
   latestDownloadUrl?: string | null;
+  renderingHref: string;
   downloadTitle: string;
   canGenerateReuseAssets?: boolean;
   isGeneratingReuseAssets?: boolean;
@@ -305,6 +319,14 @@ export function ProjectActionsMenu({
               <Download className="mr-2 h-4 w-4" />
               Download render
             </a>
+          </DropdownMenuItem>
+        ) : null}
+        {latestDownloadUrl ? (
+          <DropdownMenuItem asChild>
+            <Link href={renderingHref}>
+              <Images className="mr-2 h-4 w-4" />
+              View render assets
+            </Link>
           </DropdownMenuItem>
         ) : null}
         {hasRenderActions ? <DropdownMenuSeparator /> : null}
