@@ -16,7 +16,12 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/inngest") ||
     pathname.startsWith("/api/cron/") ||
     pathname.startsWith("/api/hyperlocal/unsubscribe") ||
-    pathname.startsWith("/hyperlocal/unsubscribe")
+    pathname.startsWith("/hyperlocal/unsubscribe") ||
+    // Public Radar share links — sanitized read-only dashboards
+    // accessed via opaque token. Both the page route and its
+    // backing API endpoint are intentionally unauthenticated.
+    pathname.startsWith("/r/") ||
+    pathname.startsWith("/api/public/")
   ) {
     return;
   }

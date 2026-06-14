@@ -189,18 +189,53 @@ function Header({
     : 0;
 
   return (
-    <div className="flex items-end justify-between gap-4 flex-wrap">
-      <div>
-        <h1 className="text-2xl font-bold">Research</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {report?.brand ?? "Your brand"} · {prompts.length} prompts tracked
-          across AI engines · last 30 days
-        </p>
+    <div className="space-y-3">
+      <div className="flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold">Research</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {report?.brand ?? "Your brand"} · {prompts.length} prompts tracked
+            across AI engines · last 30 days
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <Stat label="Mention rate" value={`${coverageRate}%`} accent="text-emerald-400" />
+          <Stat label="Total mentions" value={totalMentions} accent="text-sky-400" />
+          <Stat label="Total citations" value={totalCitations} accent="text-amber-400" />
+        </div>
       </div>
-      <div className="flex items-center gap-2 text-xs">
-        <Stat label="Mention rate" value={`${coverageRate}%`} accent="text-emerald-400" />
-        <Stat label="Total mentions" value={totalMentions} accent="text-sky-400" />
-        <Stat label="Total citations" value={totalCitations} accent="text-amber-400" />
+      <TrackedEnginesBar />
+    </div>
+  );
+}
+
+// Engines covered for US accounts. Hardcoded because Otterly's
+// /v1/engines endpoint returns the same list per country, and per-
+// engine attribution data isn't exposed on the public API at our
+// tier — so the most truthful surface is "here's what's being
+// tracked" rather than fake per-engine numbers.
+const TRACKED_ENGINES = [
+  "ChatGPT",
+  "Perplexity",
+  "Gemini",
+  "Google AI Mode",
+  "Copilot",
+  "Google",
+];
+
+function TrackedEnginesBar() {
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <span className="uppercase tracking-wide">Engines tracked</span>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {TRACKED_ENGINES.map((e) => (
+          <span
+            key={e}
+            className="px-1.5 py-0.5 rounded bg-muted text-foreground/80"
+          >
+            {e}
+          </span>
+        ))}
       </div>
     </div>
   );

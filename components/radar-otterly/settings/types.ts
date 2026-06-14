@@ -33,11 +33,17 @@ export interface SettingsResponse {
   error?: { message: string; status: number };
 }
 
-export type Tab = "tracking" | "quota" | "notifications" | "upgrade";
+export type Tab =
+  | "tracking"
+  | "quota"
+  | "notifications"
+  | "share"
+  | "upgrade";
 
 export const TABS: { id: Tab; label: string }[] = [
   { id: "tracking", label: "Tracking" },
   { id: "quota", label: "Quota" },
   { id: "notifications", label: "Notifications" },
+  { id: "share", label: "Share" },
   { id: "upgrade", label: "Upgrade" },
 ];

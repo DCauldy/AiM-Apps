@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Radar, Sparkles, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { TopicList } from "@/components/blog-engine/topics/TopicList";
 import { useToast } from "@/components/ui/toast";
 import type { BofuTopic } from "@/types/blog-engine";
@@ -11,11 +12,24 @@ const POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
 export default function TopicsPage() {
   const { addToast } = useToast();
+  const searchParams = useSearchParams();
+  // Optional ?suggest= param — set when the customer clicks
+  // "Write about this" from the Radar Optimize tab. Surfaces a
+  // banner above the topic list nudging them to discover topics
+  // around the suggested prompt.
+  const [suggestedFromRadar, setSuggestedFromRadar] = useState<string | null>(
+    null,
+  );
   const [topics, setTopics] = useState<BofuTopic[]>([]);
   const [loading, setLoading] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [discovering, setDiscovering] = useState(false);
+
+  useEffect(() => {
+    const s = searchParams.get("suggest");
+    if (s && s.trim()) setSuggestedFromRadar(s.trim());
+  }, [searchParams]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seenGeneratingRef = useRef(false);
@@ -265,6 +279,35 @@ export default function TopicsPage() {
             {discovering ? "Discovering…" : "Discover Topics"}
           </button>
         </div>
+
+        {/* Radar-suggested topic banner — surfaced when the customer
+            arrived from /apps/radar/optimize via "Write about this". */}
+        {suggestedFromRadar && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 mb-6">
+            <Radar className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-foreground">
+                Radar suggested this topic
+              </div>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                <span className="text-foreground">
+                  &ldquo;{suggestedFromRadar}&rdquo;
+                </span>
+                {" "}— click <strong>Discover Topics</strong> to research
+                blog ideas around it, or use it as inspiration when
+                writing your next post.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSuggestedFromRadar(null)}
+              className="shrink-0 text-muted-foreground hover:text-foreground"
+              title="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
 
         {/* Pipeline activity banner */}
         {generating && (

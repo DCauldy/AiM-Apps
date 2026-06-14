@@ -11,6 +11,7 @@ import { GateState, SettingsSkeleton, statusTitle } from "./settings/shared";
 import { TrackingTab } from "./settings/TrackingTab";
 import { QuotaTab } from "./settings/QuotaTab";
 import { NotificationsTab } from "./settings/NotificationsTab";
+import { ShareTab } from "./settings/ShareTab";
 import { UpgradeTab } from "./settings/UpgradeTab";
 
 // ============================================================
@@ -118,6 +119,7 @@ export function RadarSettingsClient() {
         )}
         {activeTab === "quota" && <QuotaTab />}
         {activeTab === "notifications" && <NotificationsTab />}
+        {activeTab === "share" && <ShareTab />}
         {activeTab === "upgrade" && <UpgradeTab />}
       </div>
     </div>

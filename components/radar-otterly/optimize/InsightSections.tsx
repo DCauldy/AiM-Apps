@@ -1,7 +1,9 @@
 "use client";
 
-import { Sparkles, TrendingDown, Trophy } from "lucide-react";
+import { PenSquare, Sparkles, TrendingDown, Trophy } from "lucide-react";
+import Link from "next/link";
 
+import { FEATURES } from "@/lib/feature-flags";
 import type { PromptInsight } from "./types";
 
 // Three side-by-side cards rendered as a grid in OptimizeClient:
@@ -52,7 +54,10 @@ export function QuickWinsSection({
               <span className="text-[10px] tabular-nums text-amber-500 bg-amber-500/15 px-1.5 py-0.5 rounded shrink-0">
                 {p.brandRank != null ? `#${p.brandRank}` : "miss"}
               </span>
-              <span className="text-foreground line-clamp-2">{p.prompt}</span>
+              <span className="text-foreground line-clamp-2 flex-1">
+                {p.prompt}
+              </span>
+              <WriteAboutThisLink prompt={p.prompt} />
             </div>
             {p.intentVolume > 0 && (
               <div className="text-[10px] text-muted-foreground mt-0.5 ml-9">
@@ -81,7 +86,10 @@ export function GapsSection({ gaps }: { gaps: PromptInsight[] }) {
               <span className="text-[10px] tabular-nums text-rose-500 bg-rose-500/15 px-1.5 py-0.5 rounded shrink-0">
                 miss
               </span>
-              <span className="text-foreground line-clamp-2">{p.prompt}</span>
+              <span className="text-foreground line-clamp-2 flex-1">
+                {p.prompt}
+              </span>
+              <WriteAboutThisLink prompt={p.prompt} />
             </div>
             {p.topCompetitor && (
               <div className="text-[10px] text-muted-foreground mt-0.5 ml-9">
@@ -92,6 +100,25 @@ export function GapsSection({ gaps }: { gaps: PromptInsight[] }) {
         ))}
       </ul>
     </InsightCard>
+  );
+}
+
+// Cross-app deep link: if the customer has Blog Engine, surface a
+// "Write about this" CTA next to each prompt. Routes to the Topic
+// Bank with the prompt pre-loaded as a suggestion (banner appears
+// on landing). The platform-moat play — Radar identifies, Blog
+// Engine acts.
+function WriteAboutThisLink({ prompt }: { prompt: string }) {
+  if (!FEATURES.BLOG_ENGINE) return null;
+  const href = `/apps/blog-engine/topics?suggest=${encodeURIComponent(prompt)}`;
+  return (
+    <Link
+      href={href}
+      className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+      title="Write a blog post about this with Blog Engine"
+    >
+      <PenSquare className="h-3.5 w-3.5" />
+    </Link>
   );
 }
 

@@ -157,6 +157,8 @@ function ReadyDashboard({ data }: { data: DashboardResponse }) {
     <div className="h-full overflow-auto">
       <div className="container max-w-6xl mx-auto px-4 py-6 space-y-6">
         <Header report={report} stats={stats} />
+        <WhatChangedBanner stats={stats} brandName={report.brand} />
+
         <KpiStrip stats={stats} mainBrand={mainBrand} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -177,6 +179,183 @@ function ReadyDashboard({ data }: { data: DashboardResponse }) {
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// What changed this week — compact diff banner above the KPI strip.
+// Computes deltas from the stats time-series we already pull. Hides
+// if there's no comparable week (first week of tracking) or no
+// notable change.
+// ---------------------------------------------------------------------------
+
+interface WeekChange {
+  type: "rank_improved" | "rank_dropped" | "mentions_up" | "mentions_down" | "coverage_up" | "coverage_down" | "new_competitor";
+  icon: React.ComponentType<{ className?: string }>;
+  text: string;
+  accent: string;
+}
+
+function WhatChangedBanner({
+  stats,
+  brandName,
+}: {
+  stats: OtterlyBrandReportStats;
+  brandName: string;
+}) {
+  const changes = computeWeekChanges(stats, brandName);
+
+  // No comparable data yet — surface a friendly "tracking just started"
+  // hint instead of hiding entirely. Reassures customers in week 1.
+  if (changes === "insufficient_data") {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-4 py-2.5 text-sm text-muted-foreground">
+        <Sparkles className="h-4 w-4 text-amber-400 shrink-0" />
+        <span>
+          Tracking just started — week-over-week changes will surface here
+          once you have 14 days of history.
+        </span>
+      </div>
+    );
+  }
+
+  if (changes.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border bg-card px-4 py-3">
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+        This week
+      </span>
+      {changes.slice(0, 3).map((c, i) => {
+        const Icon = c.icon;
+        return (
+          <span
+            key={i}
+            className={cn("inline-flex items-center gap-1.5 text-sm", c.accent)}
+          >
+            <Icon className="h-4 w-4" />
+            {c.text}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function computeWeekChanges(
+  stats: OtterlyBrandReportStats,
+  brandName: string,
+): WeekChange[] | "insufficient_data" {
+  // Pick the brand-coverage time-series as the canonical history feed
+  // — most other fields share the same shape and date axis.
+  const history = stats.competitorBrandsAnalysis.brandCoverageHistory ?? [];
+  if (history.length < 7) {
+    return "insufficient_data";
+  }
+  // Sort oldest → newest so the slice math is intuitive.
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const thisWeek = sorted.slice(-7);
+  const lastWeek = sorted.slice(-14, -7);
+  if (lastWeek.length < 3) {
+    return "insufficient_data";
+  }
+
+  const changes: WeekChange[] = [];
+  const lower = brandName.toLowerCase();
+
+  // Rank: average brand rank across each window. Lower is better.
+  const rankHistory = stats.allBrandsAnalysis.brandRankHistory ?? [];
+  const rankSorted = [...rankHistory].sort((a, b) =>
+    a.date.localeCompare(b.date),
+  );
+  const rankThis = rankSorted.slice(-7);
+  const rankLast = rankSorted.slice(-14, -7);
+  const avgRank = (
+    points: { brands: Array<{ brand: string; rank?: number }> }[],
+  ) => {
+    const values = points
+      .map((d) => d.brands.find((b) => b.brand.toLowerCase() === lower)?.rank)
+      .filter((v): v is number => typeof v === "number");
+    if (values.length === 0) return null;
+    return values.reduce((s, v) => s + v, 0) / values.length;
+  };
+  const rThis = avgRank(rankThis);
+  const rLast = avgRank(rankLast);
+  if (rThis != null && rLast != null && Math.abs(rThis - rLast) >= 0.5) {
+    if (rThis < rLast) {
+      changes.push({
+        type: "rank_improved",
+        icon: ArrowUp,
+        text: `Rank improved ${Math.round(rLast)} → ${Math.round(rThis)}`,
+        accent: "text-emerald-500",
+      });
+    } else {
+      changes.push({
+        type: "rank_dropped",
+        icon: ArrowDown,
+        text: `Rank fell ${Math.round(rLast)} → ${Math.round(rThis)}`,
+        accent: "text-rose-500",
+      });
+    }
+  }
+
+  // Coverage %: average brand coverage across each window.
+  const avgCoverage = (
+    points: { brands: Array<{ brand: string; coverage?: number; brandCoverage?: number }> }[],
+  ) => {
+    const values = points
+      .map((d) => {
+        const b = d.brands.find((b) => b.brand.toLowerCase() === lower);
+        return b?.brandCoverage ?? b?.coverage;
+      })
+      .filter((v): v is number => typeof v === "number");
+    if (values.length === 0) return null;
+    return values.reduce((s, v) => s + v, 0) / values.length;
+  };
+  const cThis = avgCoverage(thisWeek);
+  const cLast = avgCoverage(lastWeek);
+  if (cThis != null && cLast != null && Math.abs(cThis - cLast) >= 3) {
+    const delta = Math.round(cThis - cLast);
+    changes.push({
+      type: delta > 0 ? "coverage_up" : "coverage_down",
+      icon: delta > 0 ? TrendingUp : ArrowDown,
+      text: `Brand coverage ${delta > 0 ? "+" : ""}${delta} pts`,
+      accent: delta > 0 ? "text-emerald-500" : "text-rose-500",
+    });
+  }
+
+  // New competitor surfaced this week (in detected brands but not in
+  // last week's history slice).
+  const lastWeekBrands = new Set<string>();
+  for (const d of lastWeek) {
+    for (const b of d.brands) {
+      if (b.brand.toLowerCase() !== lower) lastWeekBrands.add(b.brand);
+    }
+  }
+  const newBrandsThisWeek = new Set<string>();
+  for (const d of thisWeek) {
+    for (const b of d.brands) {
+      if (
+        b.brand.toLowerCase() !== lower &&
+        !lastWeekBrands.has(b.brand)
+      ) {
+        newBrandsThisWeek.add(b.brand);
+      }
+    }
+  }
+  if (newBrandsThisWeek.size > 0) {
+    const first = Array.from(newBrandsThisWeek)[0];
+    changes.push({
+      type: "new_competitor",
+      icon: Sparkles,
+      text:
+        newBrandsThisWeek.size === 1
+          ? `New brand detected: ${first}`
+          : `${newBrandsThisWeek.size} new brands detected (${first} +${newBrandsThisWeek.size - 1})`,
+      accent: "text-amber-500",
+    });
+  }
+
+  return changes;
 }
 
 // ---------------------------------------------------------------------------
