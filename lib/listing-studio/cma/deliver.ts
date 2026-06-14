@@ -306,12 +306,9 @@ export async function runCmaDelivery(
       { lastSendAt: now, lastError: null },
     );
 
-    // Monthly meter — informational, distinguishes cadence vs manual.
-    await supabase.rpc("cma_increment_delivery_count", {
-      p_user_id: client.user_id,
-      p_month_start: monthStart(now),
-      p_is_manual: triggerSource === "manual",
-    });
+    // No monthly-counter bump — the dashboard reads
+    // deliveries_sent / manual_sends live from cma_client_deliveries
+    // now, so the delivery row insert above IS the increment.
   } else {
     const errorMsg = sendResult.error ?? "Unknown send error";
     await supabase
@@ -361,12 +358,6 @@ async function resolveCadenceDays(
 function clientFullName(c: CmaClient): string | null {
   const name = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
   return name || null;
-}
-
-function monthStart(iso: string): string {
-  const d = new Date(iso);
-  const ms = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
-  return ms.toISOString().split("T")[0];
 }
 
 /** Neutral placeholder when the agent has no platform_profile yet —

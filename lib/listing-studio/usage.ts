@@ -96,13 +96,31 @@ export async function getListingStudioUsage(
     .eq("enrolled", true);
   const activeClients = activeCountRaw ?? 0;
 
-  // 4. Monthly counter — informational only.
-  const { data: usage } = await supabase
-    .from("ls_usage")
-    .select("deliveries_sent, manual_sends")
-    .eq("user_id", userId)
-    .eq("month_start", periodStart)
-    .maybeSingle();
+  // 4. Monthly counters — derived live from cma_client_deliveries
+  //    (joined through cma_clients for the user_id scope). No cached
+  //    counter to drift out of sync when clients/deliveries get
+  //    deleted during testing or by the agent. Two parallel count
+  //    queries; both hit the indexed (client_id, created_at) path.
+  const periodStartIso = `${periodStart}T00:00:00.000Z`;
+  const [deliveriesSentRes, manualSendsRes] = await Promise.all([
+    supabase
+      .from("cma_client_deliveries")
+      .select("id, cma_clients!inner(user_id)", {
+        count: "exact",
+        head: true,
+      })
+      .eq("cma_clients.user_id", userId)
+      .gte("created_at", periodStartIso),
+    supabase
+      .from("cma_client_deliveries")
+      .select("id, cma_clients!inner(user_id)", {
+        count: "exact",
+        head: true,
+      })
+      .eq("cma_clients.user_id", userId)
+      .eq("trigger_source", "manual")
+      .gte("created_at", periodStartIso),
+  ]);
 
   const limit = limits.activeClientsLimit;
   const remaining: number | "unlimited" =
@@ -112,8 +130,8 @@ export async function getListingStudioUsage(
     activeClients,
     activeClientsLimit: limit,
     activeClientsRemaining: remaining,
-    deliveriesSent: usage?.deliveries_sent ?? 0,
-    manualSends: usage?.manual_sends ?? 0,
+    deliveriesSent: deliveriesSentRes.count ?? 0,
+    manualSends: manualSendsRes.count ?? 0,
     manualSendsLimit: limits.manualSendsPerMonth,
     tier,
     periodStart,
@@ -178,20 +196,3 @@ export async function releaseClientSlot(
     .eq("user_id", userId);
 }
 
-/**
- * Bump the monthly delivery counter. Called once per delivery actually
- * sent. `isManual` distinguishes force-sends from cadence-driven sends
- * so the agent's soft cap on manual overrides can be enforced.
- */
-export async function incrementDeliveryCount(
-  userId: string,
-  isManual: boolean = false,
-): Promise<void> {
-  const supabase = createServiceRoleClient();
-  const monthStart = getMonthStart();
-  await supabase.rpc("cma_increment_delivery_count", {
-    p_user_id: userId,
-    p_month_start: monthStart,
-    p_is_manual: isManual,
-  });
-}
