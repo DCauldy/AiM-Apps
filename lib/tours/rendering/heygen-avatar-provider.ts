@@ -3,7 +3,7 @@ import path from "node:path";
 import {
   TourAvatarError,
   type HeyGenAvatarProvider,
-} from "./tour-avatar";
+} from "./tour-avatar.types";
 
 export function createHeyGenAvatarProvider(options: { fetch?: typeof fetch } = {}): HeyGenAvatarProvider {
   const fetchImpl = options.fetch ?? fetch;

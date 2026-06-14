@@ -17,17 +17,17 @@ type RenderRunResponse = {
 };
 
 type CreateRenderRunInput = {
-  fresh?: boolean;
+  restitch?: boolean;
 };
 
-const FRESH_RENDER_OPTIONS = {
+export const RESTITCH_RENDER_OPTIONS = {
   renderMode: "ken_burns_ffmpeg",
-  reuseExistingAssets: false,
+  reuseExistingAssets: true,
   reuse: {
-    scriptPlan: false,
-    voiceover: false,
-    avatar: false,
-    sceneClips: false,
+    scriptPlan: true,
+    voiceover: true,
+    avatar: true,
+    sceneClips: true,
     finalVideo: false,
   },
 } as const;
@@ -68,7 +68,7 @@ async function createRenderRun(
   const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input.fresh ? { options: FRESH_RENDER_OPTIONS } : {}),
+    body: JSON.stringify(input.restitch ? { options: RESTITCH_RENDER_OPTIONS } : {}),
   });
   const payload = await readJsonResponse<RenderRunResponse>(
     response,
@@ -148,12 +148,12 @@ export function useTourRenderRuns(projectId: string) {
     isLoadingRecentRuns: recentRunsQuery.isLoading,
     isPollingActiveRun: activeRunQuery.fetchStatus === "fetching" && Boolean(activeRunId),
     error: recentRunsQuery.error ?? activeRunQuery.error ?? createRenderRunMutation.error,
-    createRenderRun: () => createRenderRunMutation.mutate({ fresh: false }),
-    createFreshRenderRun: () => createRenderRunMutation.mutate({ fresh: true }),
+    createRenderRun: () => createRenderRunMutation.mutate({ restitch: false }),
+    createFreshRenderRun: () => createRenderRunMutation.mutate({ restitch: true }),
     isCreatingRenderRun:
-      createRenderRunMutation.isPending && !createRenderRunMutation.variables?.fresh,
+      createRenderRunMutation.isPending && !createRenderRunMutation.variables?.restitch,
     isCreatingFreshRenderRun:
-      createRenderRunMutation.isPending && Boolean(createRenderRunMutation.variables?.fresh),
+      createRenderRunMutation.isPending && Boolean(createRenderRunMutation.variables?.restitch),
     isCreatingAnyRenderRun: createRenderRunMutation.isPending,
   };
 }

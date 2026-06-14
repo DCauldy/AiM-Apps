@@ -95,6 +95,8 @@ export function createTourRenderProjectRepository(
           propertyAddress: preflightProject.project.propertyAddress,
           listingUrl: preflightProject.project.listingUrl,
           tourType: preflightProject.project.tourType,
+          heyGenAvatarId: preflightProject.project.heyGenAvatarId,
+          heyGenAvatarPlacement: preflightProject.project.heyGenAvatarPlacement,
         },
         scenes: preflightProject.scenes.filter(
           (scene): scene is RenderableTourScene => scene.authoritativePhoto !== null

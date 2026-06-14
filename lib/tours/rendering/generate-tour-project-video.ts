@@ -603,6 +603,13 @@ export async function generateTourProjectVideo(
           "Voiceover audio could not be signed for avatar rendering."
         );
       }
+      if (!isProviderReachableUrl(signedVoiceoverAudio.signedUrl)) {
+        return markShellFailed(
+          repository,
+          input,
+          "Voiceover audio is not reachable by HeyGen. Set PROVIDER_VISIBLE_SUPABASE_URL for local avatar renders."
+        );
+      }
 
       await recordProgress(repository, input, {
         step: "generating_avatar",
@@ -823,5 +830,14 @@ export async function generateTourProjectVideo(
       stack: error instanceof Error ? error.stack : null,
     });
     return markShellFailed(repository, input, safeErrorMessage(error));
+  }
+}
+
+function isProviderReachableUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return !["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
   }
 }

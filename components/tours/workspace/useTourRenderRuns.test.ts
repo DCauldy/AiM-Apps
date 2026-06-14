@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
-import { pickLatestDownloadableRenderRun } from "./useTourRenderRuns";
+import { RESTITCH_RENDER_OPTIONS, pickLatestDownloadableRenderRun } from "./useTourRenderRuns";
 
 function renderRun(
   overrides: Partial<TourRenderRunStatusResponse> = {}
@@ -65,4 +65,18 @@ test("ignores completed renders without signed download URLs", () => {
     ]),
     null
   );
+});
+
+test("restitch render options reuse generated assets and regenerate only the final video", () => {
+  assert.deepEqual(RESTITCH_RENDER_OPTIONS, {
+    renderMode: "ken_burns_ffmpeg",
+    reuseExistingAssets: true,
+    reuse: {
+      scriptPlan: true,
+      voiceover: true,
+      avatar: true,
+      sceneClips: true,
+      finalVideo: false,
+    },
+  });
 });

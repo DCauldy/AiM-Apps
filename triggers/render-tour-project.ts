@@ -68,6 +68,17 @@ export type CleanupSupersededFreshRenderPayload = {
   renderRunId: string;
 };
 
+function getProviderVisibleSupabaseUrlForLog(): string | null {
+  const value = process.env.PROVIDER_VISIBLE_SUPABASE_URL?.trim();
+  if (!value) return null;
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "invalid";
+  }
+}
+
 export const cleanupSupersededFreshRenderAssetsTask = task({
   id: "cleanup-superseded-fresh-render-assets",
   queue: {
@@ -129,6 +140,7 @@ export const renderTourProjectTask = task({
       sceneClipProviderModelId:
         payload.options?.sceneClipProviderModelId ?? null,
       reuseExistingAssets: payload.options?.reuseExistingAssets,
+      providerVisibleSupabaseUrl: getProviderVisibleSupabaseUrlForLog(),
     });
 
     const isAvatarRender = payload.options?.tourType === "tour_video_avatar";

@@ -1,5 +1,6 @@
 import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
 import { resolveProfileIdForRender } from "@/lib/profiles/resolve-for-render";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
 import type { TourProjectType } from "../project-types";
 import { getRequiredProviderKeysForTourType } from "../tour-type-availability";
 import {
@@ -12,6 +13,7 @@ import type {
   HeyGenAvatarPositioningInput,
   HeyGenAvatarSize,
 } from "./tour-avatar";
+import { mergeProjectAvatarSettingsIntoRenderOptions } from "./avatar-project-render-options";
 
 export type TourRenderMode = "ken_burns_ffmpeg" | "provider_image_to_video";
 
@@ -65,6 +67,7 @@ export type TourRenderOptions = {
     audioBitrate?: string;
   };
   heyGenAvatarId?: string;
+  heyGenAvatarProjectPlacement?: HeyGenAvatarProjectPosition;
   heyGenAvatarSize?: HeyGenAvatarSize;
   heyGenAvatarPositioning?: HeyGenAvatarPositioningInput;
   heyGenAvatarGeneration?: Partial<HeyGenAvatarGenerationOptions>;
@@ -79,6 +82,7 @@ export type TourRenderPreflightIssueCode =
   | "missing_elevenlabs_voice_id"
   | "missing_heygen_key"
   | "missing_heygen_avatar_id"
+  | "missing_heygen_avatar_placement"
   | "unsupported_render_mode"
   | "listing_media_unreadable"
   | "provider_media_unreachable"
@@ -166,7 +170,7 @@ export async function preflightTourRender(
   const getStatusMap = serviceOptions.getProviderKeyStatusMap ?? getProfileApiKeyStatusMap;
   const resolveProfileId =
     serviceOptions.resolveProfileId ?? resolveProfileIdForRender;
-  const options = input.options ?? {};
+  let options = input.options ?? {};
   const issues: TourRenderPreflightIssue[] = [];
 
   const project = await repository.getTourRenderPreflightProject({
@@ -185,6 +189,11 @@ export async function preflightTourRender(
       ],
     };
   }
+
+  options = mergeProjectAvatarSettingsIntoRenderOptions({
+    options,
+    project: project.project,
+  });
 
   if (project.project.status !== "open") {
     issues.push(
@@ -259,16 +268,24 @@ export async function preflightTourRender(
     );
   }
 
-  if (
-    project.project.tourType === "tour_video_avatar" &&
-    !(options.heyGenAvatarId ?? process.env.HEYGEN_AVATAR_ID ?? "").trim()
-  ) {
-    issues.push(
-      issue(
-        "missing_heygen_avatar_id",
-        "Configure a HeyGen avatar id before rendering an avatar tour."
-      )
-    );
+  if (project.project.tourType === "tour_video_avatar") {
+    if (!(options.heyGenAvatarId ?? process.env.HEYGEN_AVATAR_ID ?? "").trim()) {
+      issues.push(
+        issue(
+          "missing_heygen_avatar_id",
+          "Configure a HeyGen avatar id before rendering an avatar tour."
+        )
+      );
+    }
+
+    if (!options.heyGenAvatarPositioning) {
+      issues.push(
+        issue(
+          "missing_heygen_avatar_placement",
+          "Configure HeyGen avatar placement before rendering an avatar tour."
+        )
+      );
+    }
   }
 
   const readableSourcePaths = includedScenes

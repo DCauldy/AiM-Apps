@@ -276,4 +276,51 @@ describe("planTourScriptStage", () => {
       usage: "created",
     });
   });
+
+  it("normalizes clean spoken text separately from ElevenLabs v3 prompt text", async () => {
+    const repository = createRepository();
+    const provider = createProvider({
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Clean kitchen narration.",
+        voicePromptScript: "[bright, confident real estate host] Clean kitchen narration.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            spokenText: "Clean kitchen narration.",
+            voicePromptText: "[bright, confident real estate host] Clean kitchen narration.",
+            deliveryTags: ["[bright, confident real estate host]"],
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    });
+
+    await planTourScriptStage({
+      project,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      provider,
+      options: { reuseExistingAssets: false },
+    });
+
+    expect(repository.uploadRenderAssetJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: expect.objectContaining({
+          fullScript: "Clean kitchen narration.",
+          voicePromptScript: "[bright, confident real estate host] Clean kitchen narration.",
+          sceneTimings: [
+            expect.objectContaining({
+              sceneId: "scene-1",
+              spokenText: "Clean kitchen narration.",
+              scriptText: "Clean kitchen narration.",
+              voicePromptText: "[bright, confident real estate host] Clean kitchen narration.",
+              deliveryTags: ["[bright, confident real estate host]"],
+            }),
+          ],
+        }),
+      })
+    );
+  });
 });

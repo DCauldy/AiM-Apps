@@ -7,16 +7,21 @@ import type {
 } from "./tour-render.repository";
 
 export const DEFAULT_TOUR_SCRIPT_PLANNING_MODEL = "google/gemini-2.5-flash";
-export const TOUR_SCRIPT_PLANNING_PROMPT_VERSION = "tour-script-plan-v1";
+export const TOUR_SCRIPT_PLANNING_PROMPT_VERSION = "tour-script-plan-v2-elevenlabs-v3-tags";
 
 export type TourScriptSceneTiming = {
   sceneId: string;
+  spokenText?: string;
+  voicePromptText?: string;
+  deliveryTags?: string[];
+  /** @deprecated Use spokenText for clean narration and voicePromptText for ElevenLabs v3. */
   scriptText: string;
   durationSeconds: number;
 };
 
 export type TourScriptPlan = {
   fullScript: string;
+  voicePromptScript?: string;
   sceneTimings: TourScriptSceneTiming[];
   model: string;
   usage?: unknown;
@@ -217,17 +222,22 @@ export function normalizeTourScriptPlan(input: {
   const bySceneId = new Map(input.parsed.sceneTimings.map((timing) => [timing.sceneId, timing]));
   const sceneTimings = input.scenes.map((scene) => {
     const timing = bySceneId.get(scene.id);
-    const scriptText = timing?.scriptText?.trim();
-    if (!scriptText) {
+    const spokenText = normalizeSpokenText(timing);
+    if (!spokenText) {
       throw new TourScriptPlanningError(
-        `Script plan missing scriptText for scene "${scene.title}" (${scene.id}).`,
+        `Script plan missing spoken narration for scene "${scene.title}" (${scene.id}).`,
         "PROVIDER_RESPONSE_INVALID"
       );
     }
+    const deliveryTags = normalizeDeliveryTags(timing?.deliveryTags);
+    const voicePromptText = normalizeVoicePromptText(timing, spokenText, deliveryTags);
 
     return {
       sceneId: scene.id,
-      scriptText,
+      spokenText,
+      voicePromptText,
+      deliveryTags,
+      scriptText: spokenText,
       durationSeconds: clampDuration(
         timing?.durationSeconds,
         input.timing.fallbackDurationSeconds,
@@ -238,7 +248,8 @@ export function normalizeTourScriptPlan(input: {
   });
 
   return {
-    fullScript: sceneTimings.map((timing) => timing.scriptText).join(" "),
+    fullScript: sceneTimings.map((timing) => timing.spokenText).join(" "),
+    voicePromptScript: sceneTimings.map((timing) => timing.voicePromptText).join("\n\n"),
     sceneTimings,
     model: input.modelId,
     usage: input.usage,
@@ -426,6 +437,34 @@ function buildScriptPlanningSceneInputs(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function normalizeSpokenText(
+  timing: Partial<TourScriptSceneTiming> | undefined
+): string {
+  const source = timing?.spokenText ?? timing?.scriptText;
+  return typeof source === "string" ? source.trim() : "";
+}
+
+function normalizeVoicePromptText(
+  timing: Partial<TourScriptSceneTiming> | undefined,
+  spokenText: string,
+  deliveryTags: string[]
+): string {
+  const source = timing?.voicePromptText;
+  if (typeof source === "string" && source.trim()) {
+    return source.trim();
+  }
+  return [deliveryTags[0], spokenText].filter(Boolean).join(" ");
+}
+
+function normalizeDeliveryTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((tag): tag is string => typeof tag === "string")
+    .map((tag) => tag.trim())
+    .filter((tag) => /^\[[^\]\n]{2,120}\]$/.test(tag))
+    .slice(0, 2);
 }
 
 function clampDuration(

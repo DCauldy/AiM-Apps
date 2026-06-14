@@ -20,6 +20,7 @@ type TourWorkspaceResponse = {
 
 export type TourProjectDetailsUpdate = ProjectDetailsForm & {
   elevenLabsVoiceId?: string | null;
+  heyGenAvatarId?: string | null;
 };
 
 type SceneFactResponse = {
@@ -222,6 +223,8 @@ export function TourProjectWorkspaceProvider({
     propertyAddress: viewModel.listing.address,
     listingUrl: viewModel.listing.listingUrl ?? "",
     elevenLabsVoiceId: viewModel.project.elevenLabsVoiceId ?? "",
+    heyGenAvatarId: viewModel.project.heyGenAvatarId ?? "",
+    heyGenAvatarPlacement: viewModel.project.heyGenAvatarPlacement,
   });
 
   useEffect(() => {
@@ -234,12 +237,16 @@ export function TourProjectWorkspaceProvider({
       propertyAddress: viewModel.listing.address,
       listingUrl: viewModel.listing.listingUrl ?? "",
       elevenLabsVoiceId: viewModel.project.elevenLabsVoiceId ?? "",
+      heyGenAvatarId: viewModel.project.heyGenAvatarId ?? "",
+      heyGenAvatarPlacement: viewModel.project.heyGenAvatarPlacement,
     });
   }, [
     isProjectDetailsOpen,
     viewModel.listing.address,
     viewModel.listing.listingUrl,
     viewModel.project.elevenLabsVoiceId,
+    viewModel.project.heyGenAvatarId,
+    viewModel.project.heyGenAvatarPlacement,
     viewModel.project.name,
   ]);
 

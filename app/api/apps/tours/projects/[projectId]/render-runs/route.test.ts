@@ -101,6 +101,56 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     );
   });
 
+  it("uses project voice and avatar settings when render options do not specify them", async () => {
+    const placement = {
+      frame: { width: 1080, height: 1920 },
+      offsets: { top: 240, left: 540, bottom: 120, right: 40 },
+    };
+    const expectedOptions = {
+      elevenLabsVoiceId: "voice-project-1",
+      heyGenAvatarId: "avatar-look-1",
+      heyGenAvatarProjectPlacement: placement,
+      heyGenAvatarPositioning: {
+        anchor: "bottom-right",
+        rightMargin: 40,
+        bottomMargin: 120,
+        basis: "videoLayer",
+        avatarWidth: 500,
+        alphaThreshold: 16,
+      },
+    };
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.getTourRenderProjectSettings.mockResolvedValue({
+      elevenLabsVoiceId: "voice-project-1",
+      heyGenAvatarId: "avatar-look-1",
+      heyGenAvatarPlacement: placement,
+    });
+    mocks.preflightTourRenderRun.mockResolvedValue({
+      ok: true,
+      summary: { projectId: "project-1" },
+    });
+    mocks.createTourRenderRun.mockResolvedValue(run);
+
+    const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
+      params: Promise.resolve({ projectId: "project-1" }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      options: expectedOptions,
+    });
+    expect(mocks.createTourRenderRun).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: expectedOptions,
+      },
+      { skipPreflight: true }
+    );
+  });
+
   it("uses the project voice ID when render options do not specify one", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
     mocks.getTourRenderProjectSettings.mockResolvedValue({ elevenLabsVoiceId: "voice-project-1" });

@@ -8,7 +8,7 @@
     "tunnel": "scripts/cloudflared-tunnel.sh",
     "dev:tunnel": "scripts/dev-with-supabase-tunnel.sh",
     "dev:trigger": "npx trigger.dev@latest dev",
-    "dev:tours": "concurrently --kill-others --names TRIGGER,AIM_APP --prefix-colors magenta,cyan --timestamp-format \"HH:mm:ss\" --prefix \"[{name}: {time}]\" \"npm run dev:trigger\" \"npm run dev:tunnel\"",
+    "dev:tours": "scripts/dev-tours-with-supabase-tunnel.sh",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

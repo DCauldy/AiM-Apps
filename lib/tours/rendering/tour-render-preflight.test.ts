@@ -5,6 +5,11 @@ vi.mock("server-only", () => ({}));
 import { preflightTourRender, type TourRenderOptions } from "./tour-render-preflight";
 import type { TourRenderPreflightProject, TourRenderRepository } from "./tour-render.repository";
 
+const avatarPlacement = {
+  frame: { width: 1080 as const, height: 1920 as const },
+  offsets: { top: 240, left: 540, bottom: 0, right: 40 },
+};
+
 const baseProject: TourRenderPreflightProject = {
   project: {
     id: "project-1",
@@ -184,21 +189,21 @@ describe("preflightTourRender", () => {
     });
 
     await expect(
-      runPreflight(repository, { heyGenAvatarId: "avatar-1" }, { elevenlabs: true })
+      runPreflight(repository, { heyGenAvatarId: "avatar-1", heyGenAvatarProjectPlacement: avatarPlacement }, { elevenlabs: true })
     ).resolves.toMatchObject({
       ok: false,
       issues: [{ code: "missing_heygen_key", severity: "blocking" }],
     });
 
     await expect(
-      runPreflight(repository, { heyGenAvatarId: "avatar-1" }, { heygen: true })
+      runPreflight(repository, { heyGenAvatarId: "avatar-1", heyGenAvatarProjectPlacement: avatarPlacement }, { heygen: true })
     ).resolves.toMatchObject({
       ok: false,
       issues: [{ code: "missing_elevenlabs_key", severity: "blocking" }],
     });
 
     await expect(
-      runPreflight(repository, { heyGenAvatarId: "avatar-1" }, { elevenlabs: true, heygen: true })
+      runPreflight(repository, { heyGenAvatarId: "avatar-1", heyGenAvatarProjectPlacement: avatarPlacement }, { elevenlabs: true, heygen: true })
     ).resolves.toMatchObject({
       ok: true,
       summary: {
@@ -207,7 +212,7 @@ describe("preflightTourRender", () => {
     });
   });
 
-  test("requires a configured HeyGen avatar id for avatar tours", async () => {
+  test("requires configured HeyGen avatar id and placement for avatar tours", async () => {
     const repository = createRepository({
       ...baseProject,
       project: { ...baseProject.project, tourType: "tour_video_avatar" },
@@ -217,7 +222,17 @@ describe("preflightTourRender", () => {
       runPreflight(repository, {}, { elevenlabs: true, heygen: true })
     ).resolves.toMatchObject({
       ok: false,
-      issues: [{ code: "missing_heygen_avatar_id", severity: "blocking" }],
+      issues: [
+        { code: "missing_heygen_avatar_id", severity: "blocking" },
+        { code: "missing_heygen_avatar_placement", severity: "blocking" },
+      ],
+    });
+
+    await expect(
+      runPreflight(repository, { heyGenAvatarId: "avatar-1" }, { elevenlabs: true, heygen: true })
+    ).resolves.toMatchObject({
+      ok: false,
+      issues: [{ code: "missing_heygen_avatar_placement", severity: "blocking" }],
     });
   });
 

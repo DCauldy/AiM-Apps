@@ -173,6 +173,61 @@ describe("createTourRenderRun", () => {
     });
   });
 
+  it("merges project avatar settings into persisted run and Trigger payload options", async () => {
+    const placement = {
+      frame: { width: 1080 as const, height: 1920 as const },
+      offsets: { top: 240, left: 540, bottom: 120, right: 40 },
+    };
+    const repository = createRepository({
+      getRenderableTourProject: vi.fn().mockResolvedValue({
+        ...renderableProject,
+        project: {
+          ...renderableProject.project,
+          tourType: "tour_video_avatar",
+          heyGenAvatarId: "avatar-look-1",
+          heyGenAvatarPlacement: placement,
+        },
+      }),
+    });
+    const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
+
+    await createTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+      },
+      {
+        repository,
+        triggerTask,
+        skipPreflight: true,
+      }
+    );
+
+    const expectedOptions = {
+      renderMode: "ken_burns_ffmpeg",
+      reuseExistingAssets: true,
+      heyGenAvatarId: "avatar-look-1",
+      heyGenAvatarProjectPlacement: placement,
+      heyGenAvatarPositioning: {
+        anchor: "bottom-right",
+        rightMargin: 40,
+        bottomMargin: 120,
+        basis: "videoLayer",
+        avatarWidth: 500,
+        alphaThreshold: 16,
+      },
+      tourType: "tour_video_avatar",
+    };
+    expect(repository.createRenderRun).toHaveBeenCalledWith(
+      expect.objectContaining({ options: expectedOptions })
+    );
+    expect(triggerTask).toHaveBeenCalledWith(
+      "render-tour-project",
+      expect.objectContaining({ options: expectedOptions }),
+      expect.any(Object)
+    );
+  });
+
   it("marks existing project assets non-reusable before creating a fresh run", async () => {
     const repository = createRepository();
     const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
@@ -217,6 +272,51 @@ describe("createTourRenderRun", () => {
           tourType: "tour_video",
         }),
       })
+    );
+  });
+
+  it("keeps reusable assets available when only the final video is regenerated", async () => {
+    const repository = createRepository();
+    const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
+    const reuseOptions = {
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: true,
+        finalVideo: false,
+      },
+    };
+
+    await createTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: reuseOptions,
+      },
+      {
+        repository,
+        triggerTask,
+        skipPreflight: true,
+      }
+    );
+
+    expect(repository.markProjectAssetsNonReusable).not.toHaveBeenCalled();
+    expect(repository.createRenderRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          ...reuseOptions,
+          tourType: "tour_video",
+        }),
+      })
+    );
+    expect(triggerTask).toHaveBeenCalledWith(
+      "render-tour-project",
+      expect.objectContaining({
+        options: expect.objectContaining(reuseOptions),
+      }),
+      expect.any(Object)
     );
   });
 

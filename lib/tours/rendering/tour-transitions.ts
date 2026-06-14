@@ -181,23 +181,28 @@ export function buildTranscriptChunks(transcript: VoiceoverTranscript): Transcri
     );
   }
 
-  return transcript.map((item, index) => {
+  const chunks: TranscriptChunk[] = [];
+  for (const item of transcript) {
     const text = item.text?.trim();
     const from = item.offsets?.from;
     const to = item.offsets?.to;
-    if (!text || !Number.isFinite(from) || !Number.isFinite(to) || to <= from) {
-      throw new TourTransitionDetectionError(
-        `Voiceover transcript chunk ${index} has invalid text or timing.`,
-        "TRANSCRIPT_INVALID"
-      );
+    if (text && Number.isFinite(from) && Number.isFinite(to) && to > from) {
+      chunks.push({
+        id: chunks.length,
+        text,
+        offsets: { from, to },
+      });
     }
+  }
 
-    return {
-      id: index,
-      text,
-      offsets: { from, to },
-    };
-  });
+  if (chunks.length === 0) {
+    throw new TourTransitionDetectionError(
+      "Voiceover transcript did not include any usable chunks for scene transition detection.",
+      "TRANSCRIPT_INVALID"
+    );
+  }
+
+  return chunks;
 }
 
 export function normalizeVoiceoverTranscript(value: unknown): VoiceoverTranscript {
@@ -291,13 +296,18 @@ export function normalizeSceneTransitions(input: {
     };
   });
 
-  validateTransitionsInSceneOrder({
+  const normalizedTransitions = anchorFirstTransitionToTranscriptStart(
     transitions,
+    input.transcriptChunks
+  );
+
+  validateTransitionsInSceneOrder({
+    transitions: normalizedTransitions,
     scenes: input.scenes,
     transcriptChunks: input.transcriptChunks,
   });
 
-  return transitions;
+  return normalizedTransitions;
 }
 
 export function deriveSceneDurations(input: {
@@ -632,10 +642,8 @@ export function createOpenRouterTransitionDetectionProvider(options: {
         );
       }
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
+      const parsed = parseJsonObjectContent(content);
+      if (!parsed) {
         throw new TourTransitionDetectionError(
           "OpenRouter transition detection response was not valid JSON.",
           "PROVIDER_RESPONSE_INVALID"
@@ -648,6 +656,34 @@ export function createOpenRouterTransitionDetectionProvider(options: {
       };
     },
   };
+}
+
+function parseJsonObjectContent(content: string): unknown | null {
+  const trimmed = content.trim();
+  if (!trimmed) return null;
+
+  const direct = parseJsonObject(trimmed);
+  if (direct) return direct;
+
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
+  if (fenced) {
+    const parsed = parseJsonObject(fenced.trim());
+    if (parsed) return parsed;
+  }
+
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  return parseJsonObject(trimmed.slice(start, end + 1));
+}
+
+function parseJsonObject(value: string): unknown | null {
+  try {
+    const parsed = JSON.parse(value);
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseTransitionProviderOutput(value: unknown): { transitions: unknown[] } {
@@ -714,6 +750,25 @@ function validateTransitionsInSceneOrder(input: {
       );
     }
   }
+}
+
+function anchorFirstTransitionToTranscriptStart(
+  transitions: SceneTransition[],
+  transcriptChunks: TranscriptChunk[]
+): SceneTransition[] {
+  const firstChunk = transcriptChunks[0];
+  const firstTransition = transitions[0];
+  if (!firstChunk || !firstTransition || firstTransition.chunkId === firstChunk.id) {
+    return transitions;
+  }
+
+  return [
+    {
+      ...firstTransition,
+      chunkId: firstChunk.id,
+    },
+    ...transitions.slice(1),
+  ];
 }
 
 function normalizeStoredTransitions(

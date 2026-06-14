@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { TourAvatarError } from "./tour-avatar";
+import { TourAvatarError } from "./tour-avatar.types";
 
 export async function probeHeyGenAvatarVideo(
   videoPath: string

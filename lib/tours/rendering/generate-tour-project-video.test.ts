@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { generateTourProjectVideo } from "./generate-tour-project-video";
+import type { HeyGenAvatarProvider } from "./tour-avatar";
 import type { FinalVideoRenderer } from "./tour-final-render";
 import type {
   RenderableTourProject,
@@ -484,6 +485,102 @@ describe("generateTourProjectVideo", () => {
       expect.objectContaining({
         step: "failed",
         safeMessage: "Tour render failed before rendering could complete.",
+      })
+    );
+  });
+
+  it("fails avatar renders before HeyGen when voiceover audio is not provider-reachable", async () => {
+    const repository = createRepository({
+      getRenderableTourProject: vi.fn().mockResolvedValue({
+        ...baseProject,
+        project: {
+          ...baseProject.project,
+          tourType: "tour_video_avatar",
+        },
+      }),
+      createSignedGeneratedMediaUrl: vi.fn().mockResolvedValue({
+        storageBucket: "tours-generated-media",
+        storagePath: voiceoverAudioAsset.storagePath,
+        signedUrl: "http://127.0.0.1:54321/storage/v1/object/sign/tours-generated-media/user-1/project-1/run-1/voiceover.mp3?token=local",
+      }),
+    });
+    const scriptPlanningProvider: TourScriptPlanningProvider = {
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Welcome to the kitchen.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            scriptText: "Welcome to the kitchen.",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    };
+    const voiceoverProvider: VoiceoverProvider = {
+      generateVoiceover: vi.fn(async (input) => {
+        await writeFile(input.outputAudioPath, Buffer.from("mp3-bytes"));
+        return {
+          audioFilePath: input.outputAudioPath,
+          transcript: [
+            { text: "Welcome to the kitchen.", offsets: { from: 0, to: 1500 } },
+          ],
+        };
+      }),
+    };
+    const transitionDetectionProvider: TransitionDetectionProvider = {
+      detectTransitions: vi.fn().mockResolvedValue({
+        transitions: [{ sceneId: "scene-1", chunkId: 0 }],
+      }),
+    };
+    const avatarProvider: HeyGenAvatarProvider = {
+      createAvatarVideo: vi.fn(),
+      getAvatarVideo: vi.fn(),
+      downloadAvatarVideo: vi.fn(),
+    };
+    const preflight = vi.fn().mockResolvedValue({
+      ok: true,
+      summary: {
+        projectId: "project-1",
+        tourType: "tour_video_avatar",
+        renderMode: "ken_burns_ffmpeg",
+        includedSceneCount: 1,
+        sourcePhotoCount: 1,
+        proofedFactCount: 1,
+        requiredProviderKeys: ["elevenlabs", "heygen"],
+      },
+    });
+
+    const result = await generateTourProjectVideo(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        renderRunId: "run-1",
+        options: {
+          renderMode: "ken_burns_ffmpeg",
+          reuseExistingAssets: false,
+          elevenLabsVoiceId: "voice-1",
+          heyGenAvatarId: "avatar-1",
+        },
+      },
+      {
+        repository,
+        preflight,
+        scriptPlanningProvider,
+        voiceoverProvider,
+        transitionDetectionProvider,
+        avatarProvider,
+        getApiKey: vi.fn().mockResolvedValue("provider-key"),
+      }
+    );
+
+    expect(result?.status).toBe("failed");
+    expect(avatarProvider.createAvatarVideo).not.toHaveBeenCalled();
+    expect(repository.markFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: "failed",
+        safeMessage:
+          "Voiceover audio is not reachable by HeyGen. Set PROVIDER_VISIBLE_SUPABASE_URL for local avatar renders.",
       })
     );
   });

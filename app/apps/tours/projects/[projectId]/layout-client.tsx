@@ -57,6 +57,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
   const supportsVoiceId =
     viewModel.project.tourType === "tour_video_voice_over" ||
     viewModel.project.tourType === "tour_video_avatar";
+  const supportsAvatarSettings = viewModel.project.tourType === "tour_video_avatar";
   const isProjectRendering =
     renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
   const latestDownloadUrl = renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
@@ -129,6 +130,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
         open={isProjectDetailsOpen}
         details={projectDetails}
         showVoiceId={supportsVoiceId}
+        showAvatarSettings={supportsAvatarSettings}
         error={updateProjectMutation.error}
         isSaving={updateProjectMutation.isPending}
         onOpenChange={setIsProjectDetailsOpen}

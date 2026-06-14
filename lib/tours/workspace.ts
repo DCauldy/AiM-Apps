@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
 import { LISTING_MEDIA_ACKNOWLEDGEMENT_COPY } from "@/lib/tours/listing-media-authorization";
 import { listTourSceneFactsForProject } from "@/lib/tours/facts";
 import type { TourProjectType } from "@/lib/tours/project-types";
@@ -49,6 +50,8 @@ export type TourProjectWorkspaceViewModel = {
     lifecycleStatus: "open";
     tourType: TourProjectType;
     elevenLabsVoiceId: string | null;
+    heyGenAvatarId: string | null;
+    heyGenAvatarPlacement: HeyGenAvatarProjectPosition | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -83,6 +86,8 @@ type TourProjectRow = {
   status: "open" | "archived";
   listing_media_acknowledged_at: string | null;
   elevenlabs_voice_id: string | null;
+  heygen_avatar_id: string | null;
+  heygen_avatar_placement: HeyGenAvatarProjectPosition | null;
   created_at: string;
   updated_at: string;
 };
@@ -101,7 +106,7 @@ export async function getTourProjectWorkspaceViewModel(
 
   const { data: project } = await supabase
     .from("tours_projects")
-    .select("id, name, property_address, listing_url, tour_type, status, listing_media_acknowledged_at, elevenlabs_voice_id, created_at, updated_at")
+    .select("id, name, property_address, listing_url, tour_type, status, listing_media_acknowledged_at, elevenlabs_voice_id, heygen_avatar_id, heygen_avatar_placement, created_at, updated_at")
     .eq("id", projectId)
     .eq("user_id", user.id)
     .eq("status", "open")
@@ -176,6 +181,8 @@ export async function getTourProjectWorkspaceViewModel(
       lifecycleStatus: "open",
       tourType: project.tour_type,
       elevenLabsVoiceId: project.elevenlabs_voice_id,
+      heyGenAvatarId: project.heygen_avatar_id,
+      heyGenAvatarPlacement: project.heygen_avatar_placement,
       createdAt: project.created_at,
       updatedAt: project.updated_at,
     },

@@ -34,6 +34,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ElevenLabsVoiceSelector } from "./ElevenLabsVoiceSelector";
+import { HeyGenAvatarSelector } from "./HeyGenAvatarSelector";
+import type { HeyGenAvatarProjectPosition } from "./avatar-positioning";
 import { appendDownloadTitle } from "./TourRenderStatusPanel";
 
 export type ProjectDetailsForm = {
@@ -41,6 +43,8 @@ export type ProjectDetailsForm = {
   propertyAddress: string;
   listingUrl: string;
   elevenLabsVoiceId: string;
+  heyGenAvatarId: string;
+  heyGenAvatarPlacement: HeyGenAvatarProjectPosition | null;
 };
 
 type TourScenePhoto = TourScene["sourcePhotos"][number];
@@ -408,6 +412,7 @@ export function ProjectDetailsDialog({
   open,
   details,
   showVoiceId = false,
+  showAvatarSettings = false,
   error,
   isSaving,
   onOpenChange,
@@ -417,6 +422,7 @@ export function ProjectDetailsDialog({
   open: boolean;
   details: ProjectDetailsForm;
   showVoiceId?: boolean;
+  showAvatarSettings?: boolean;
   error: Error | null;
   isSaving: boolean;
   onOpenChange: (open: boolean) => void;
@@ -424,8 +430,10 @@ export function ProjectDetailsDialog({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const isVoiceSelectionRequired = showVoiceId && !details.elevenLabsVoiceId.trim();
+  const isAvatarSelectionRequired =
+    showAvatarSettings && (!details.heyGenAvatarId.trim() || !details.heyGenAvatarPlacement);
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    if (isVoiceSelectionRequired) {
+    if (isVoiceSelectionRequired || isAvatarSelectionRequired) {
       event.preventDefault();
       return;
     }
@@ -485,13 +493,37 @@ export function ProjectDetailsDialog({
                 ) : null}
               </div>
             ) : null}
+            {showAvatarSettings ? (
+              <div className="block text-sm font-medium text-foreground">
+                <span>HeyGen avatar look</span>
+                <div className="mt-1">
+                  <HeyGenAvatarSelector
+                    value={details.heyGenAvatarId}
+                    placement={details.heyGenAvatarPlacement}
+                    disabled={isSaving}
+                    onCommit={({ avatarId, placement }) =>
+                      onChange({
+                        ...details,
+                        heyGenAvatarId: avatarId,
+                        heyGenAvatarPlacement: placement,
+                      })
+                    }
+                  />
+                </div>
+                {isAvatarSelectionRequired ? (
+                  <p className="mt-1 text-xs text-destructive">
+                    Select and position a HeyGen avatar before saving.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSaving || isVoiceSelectionRequired}>
+            <Button type="submit" disabled={isSaving || isVoiceSelectionRequired || isAvatarSelectionRequired}>
               {isSaving ? "Saving..." : "Save details"}
             </Button>
           </DialogFooter>

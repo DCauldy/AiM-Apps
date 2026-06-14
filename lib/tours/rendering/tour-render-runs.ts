@@ -15,6 +15,7 @@ import {
   type TourRenderRun,
   type TourRenderStep,
 } from "./tour-render.repository";
+import { mergeProjectAvatarSettingsIntoRenderOptions } from "./avatar-project-render-options";
 import {
   preflightTourRender,
   type TourRenderOptions,
@@ -134,10 +135,7 @@ function getPipelineStepsForTourType(tourType: TourProjectType): TourRenderTimel
 }
 
 function shouldInvalidateReusableAssets(options: TourRenderOptions): boolean {
-  return (
-    options.reuseExistingAssets === false ||
-    Object.values(options.reuse ?? {}).some((reuse) => reuse === false)
-  );
+  return options.reuseExistingAssets === false;
 }
 
 export function toTourRenderRunStatusResponse(run: TourRenderRun): TourRenderRunStatusResponse {
@@ -216,13 +214,17 @@ export async function createTourRenderRun(
   if (!renderableProject) {
     return null;
   }
+  const resolvedRenderOptions = mergeProjectAvatarSettingsIntoRenderOptions({
+    options: renderOptions,
+    project: renderableProject.project,
+  });
 
   const run = await repository.createRenderRun({
     projectId: input.projectId,
     userId: input.userId,
     sceneClipTotalCount: renderableProject.scenes.filter((scene) => scene.included).length,
     options: {
-      ...renderOptions,
+      ...resolvedRenderOptions,
       tourType: renderableProject.project.tourType,
     },
   });
@@ -240,7 +242,7 @@ export async function createTourRenderRun(
         userId: input.userId,
         renderRunId: run.id,
         options: {
-          ...renderOptions,
+          ...resolvedRenderOptions,
           tourType: renderableProject.project.tourType,
         },
       },

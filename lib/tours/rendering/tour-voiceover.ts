@@ -6,12 +6,13 @@ import { getProfileApiKey } from "@/lib/user-api-keys/service";
 import type { TourScriptPlan } from "./tour-script-planning";
 import type { TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
 
-export const ELEVENLABS_VOICEOVER_PROVIDER_VERSION = "elevenlabs-voiceover-v1";
-export const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_multilingual_v2";
+export const ELEVENLABS_VOICEOVER_PROVIDER_VERSION = "elevenlabs-voiceover-v2-eleven-v3-tags";
+export const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_v3";
 export const DEFAULT_ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128";
 
 export type ElevenLabsVoiceSettings = {
   stability?: number;
+  similarity_boost?: number;
   style?: number;
   use_speaker_boost?: boolean;
 };
@@ -36,6 +37,7 @@ export type VoiceoverProviderInput = {
   apiKey: string;
   voiceId: string;
   text: string;
+  transcriptText?: string;
   outputAudioPath: string;
   modelId: string;
   outputFormat: string;
@@ -68,6 +70,7 @@ export type VoiceoverFingerprint = {
   provider: "elevenlabs";
   providerModuleVersion: string;
   fullScript: string;
+  spokenScript: string;
   voiceId: string;
   modelId: string;
   outputFormat: string;
@@ -132,8 +135,9 @@ type PhraseBoundary = {
 };
 
 const DEFAULT_VOICE_SETTINGS: ElevenLabsVoiceSettings = {
-  stability: 0.45,
-  style: 0.2,
+  stability: 0.22,
+  similarity_boost: 0.74,
+  style: 0.5,
   use_speaker_boost: true,
 };
 
@@ -171,6 +175,8 @@ export function resolveVoiceoverStageOptions(
 
 export function buildVoiceoverFingerprint(input: {
   scriptPlan: TourScriptPlan;
+  voicePromptScript?: string;
+  spokenScript?: string;
   voiceId: string;
   modelId: string;
   outputFormat: string;
@@ -182,7 +188,8 @@ export function buildVoiceoverFingerprint(input: {
     version: 1,
     provider: "elevenlabs",
     providerModuleVersion: ELEVENLABS_VOICEOVER_PROVIDER_VERSION,
-    fullScript: input.scriptPlan.fullScript,
+    fullScript: input.voicePromptScript ?? getVoiceoverPromptText(input.scriptPlan),
+    spokenScript: input.spokenScript ?? input.scriptPlan.fullScript,
     voiceId: input.voiceId,
     modelId: input.modelId,
     outputFormat: input.outputFormat,
@@ -210,8 +217,9 @@ export async function generateVoiceoverStage(input: {
   options?: VoiceoverStageOptions;
 }): Promise<VoiceoverStageResult> {
   const resolvedOptions = resolveVoiceoverStageOptions(input.options);
-  const fullScript = input.scriptPlan.fullScript.trim();
-  if (!fullScript) {
+  const voicePromptScript = getVoiceoverPromptText(input.scriptPlan);
+  const spokenScript = input.scriptPlan.fullScript.trim();
+  if (!voicePromptScript) {
     throw new TourVoiceoverError("Voiceover generation requires script text.", "MISSING_SCRIPT_TEXT");
   }
   if (!resolvedOptions.voiceId.trim()) {
@@ -220,6 +228,8 @@ export async function generateVoiceoverStage(input: {
 
   const fingerprint = buildVoiceoverFingerprint({
     scriptPlan: input.scriptPlan,
+    voicePromptScript,
+    spokenScript,
     voiceId: resolvedOptions.voiceId,
     modelId: resolvedOptions.modelId,
     outputFormat: resolvedOptions.outputFormat,
@@ -280,7 +290,8 @@ export async function generateVoiceoverStage(input: {
     const generated = await input.provider.generateVoiceover({
       apiKey,
       voiceId: resolvedOptions.voiceId,
-      text: fullScript,
+      text: voicePromptScript,
+      transcriptText: spokenScript,
       outputAudioPath,
       modelId: resolvedOptions.modelId,
       outputFormat: resolvedOptions.outputFormat,
@@ -448,6 +459,7 @@ export function createElevenLabsVoiceoverProvider(
         audioFilePath: input.outputAudioPath,
         transcript: buildPhraseLevelTranscript({
           text: input.text,
+          transcriptText: input.transcriptText,
           response: payload,
           options: input.transcript,
         }),
@@ -458,6 +470,7 @@ export function createElevenLabsVoiceoverProvider(
 
 function buildPhraseLevelTranscript(input: {
   text: string;
+  transcriptText?: string;
   response: ElevenLabsTtsWithTimestampsResponse;
   options: Required<ElevenLabsTranscriptOptions>;
 }): VoiceoverTranscript {
@@ -469,7 +482,7 @@ function buildPhraseLevelTranscript(input: {
   assertUsableAlignment(alignment);
 
   const alignmentCharacters = alignment.characters;
-  const textCharacters = Array.from(input.text);
+  const textCharacters = Array.from(input.transcriptText ?? stripElevenLabsAudioTags(input.text));
   const displayCharacters =
     input.options.useNormalizedAlignment || textCharacters.length !== alignmentCharacters.length
       ? alignmentCharacters
@@ -501,6 +514,14 @@ function buildPhraseLevelTranscript(input: {
       },
     };
   });
+}
+
+function getVoiceoverPromptText(scriptPlan: TourScriptPlan): string {
+  return (scriptPlan.voicePromptScript ?? scriptPlan.fullScript).trim();
+}
+
+function stripElevenLabsAudioTags(text: string): string {
+  return text.replace(/\[[^\]\n]{1,160}\]\s*/g, "").trim();
 }
 
 function isElevenLabsTtsWithTimestampsResponse(

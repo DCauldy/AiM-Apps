@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   buildTranscriptChunks,
+  createOpenRouterTransitionDetectionProvider,
   deriveSceneDurations,
   detectTransitionsAndDurationsStage,
   normalizeSceneTransitions,
@@ -278,6 +279,70 @@ describe("tour transition detection", () => {
     ).toThrow(/not valid JSON/);
   });
 
+  it("accepts fenced JSON from the OpenRouter transition provider", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: [
+                  "```json",
+                  "{\"transitions\":[{\"sceneId\":\"scene-1\",\"chunkId\":0},{\"sceneId\":\"scene-2\",\"chunkId\":2}]}",
+                  "```",
+                ].join("\n"),
+              },
+            },
+          ],
+          usage: { total_tokens: 25 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const provider = createOpenRouterTransitionDetectionProvider({
+      apiKey: "openrouter-key",
+      fetcher: fetcher as typeof globalThis.fetch,
+    });
+
+    await expect(
+      provider.detectTransitions({
+        transcriptChunks: buildTranscriptChunks(transcript),
+        scenes: scenes(),
+        modelId: "openrouter/transition-model",
+        promptVersion: "test-prompt",
+      })
+    ).resolves.toEqual({
+      transitions: [
+        { sceneId: "scene-1", chunkId: 0 },
+        { sceneId: "scene-2", chunkId: 2 },
+      ],
+      usage: { total_tokens: 25 },
+    });
+  });
+
+  it("skips unusable transcript chunks before transition detection", () => {
+    expect(
+      buildTranscriptChunks([
+        { text: "Welcome", offsets: { from: 0, to: 500 } },
+        { text: " ", offsets: { from: 500, to: 520 } },
+        { text: ".", offsets: { from: 520, to: 520 } },
+        { text: "inside", offsets: { from: 520, to: 900 } },
+      ])
+    ).toEqual([
+      { id: 0, text: "Welcome", offsets: { from: 0, to: 500 } },
+      { id: 1, text: "inside", offsets: { from: 520, to: 900 } },
+    ]);
+  });
+
+  it("rejects transcripts with no usable chunks", () => {
+    expect(() =>
+      buildTranscriptChunks([
+        { text: " ", offsets: { from: 0, to: 10 } },
+        { text: ".", offsets: { from: 20, to: 20 } },
+      ])
+    ).toThrow(/did not include any usable chunks/);
+  });
+
   it("rejects missing scene mapping", () => {
     expect(() =>
       normalizeSceneTransitions({
@@ -293,19 +358,37 @@ describe("tour transition detection", () => {
     ).toThrow(/expected scene-2/);
   });
 
-  it("rejects out-of-order transitions", () => {
-    expect(() =>
+  it("anchors the first scene transition to the first transcript chunk", () => {
+    expect(
       normalizeSceneTransitions({
         providerOutput: {
           transitions: [
-            { sceneId: "scene-1", chunkId: 2 },
-            { sceneId: "scene-2", chunkId: 1 },
+            { sceneId: "scene-1", chunkId: 1 },
+            { sceneId: "scene-2", chunkId: 2 },
           ],
         },
         scenes: scenes(),
         transcriptChunks: buildTranscriptChunks(transcript),
       })
-    ).toThrow(/first transcript chunk|strictly increasing/);
+    ).toEqual([
+      { sceneId: "scene-1", chunkId: 0, text: undefined },
+      { sceneId: "scene-2", chunkId: 2, text: undefined },
+    ]);
+  });
+
+  it("rejects out-of-order transitions", () => {
+    expect(() =>
+      normalizeSceneTransitions({
+        providerOutput: {
+          transitions: [
+            { sceneId: "scene-1", chunkId: 1 },
+            { sceneId: "scene-2", chunkId: 0 },
+          ],
+        },
+        scenes: scenes(),
+        transcriptChunks: buildTranscriptChunks(transcript),
+      })
+    ).toThrow(/strictly increasing/);
   });
 
   it("derives scene durations deterministically from transition boundaries", () => {

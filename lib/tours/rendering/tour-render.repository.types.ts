@@ -1,4 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
 import type { TourProjectType } from "@/lib/tours/project-types";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 
@@ -46,6 +47,8 @@ export type RenderableTourProject = {
     propertyAddress: string;
     listingUrl: string | null;
     tourType: TourProjectType;
+    heyGenAvatarId?: string | null;
+    heyGenAvatarPlacement?: HeyGenAvatarProjectPosition | null;
   };
   scenes: RenderableTourScene[];
 };
@@ -149,6 +152,8 @@ export type TourProjectRow = {
   listing_url: string | null;
   tour_type: TourProjectType;
   status?: "open" | "archived";
+  heygen_avatar_id: string | null;
+  heygen_avatar_placement: HeyGenAvatarProjectPosition | null;
 };
 
 export type TourSceneRow = {

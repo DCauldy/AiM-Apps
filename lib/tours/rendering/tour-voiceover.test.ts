@@ -15,9 +15,13 @@ import type { TourScriptPlan } from "./tour-script-planning";
 
 const scriptPlan: TourScriptPlan = {
   fullScript: "Welcome to the kitchen. Notice the quartz counters.",
+  voicePromptScript: "[bright, confident real estate host] Welcome to the kitchen. Notice the quartz counters.",
   sceneTimings: [
     {
       sceneId: "scene-1",
+      spokenText: "Welcome to the kitchen. Notice the quartz counters.",
+      voicePromptText: "[bright, confident real estate host] Welcome to the kitchen. Notice the quartz counters.",
+      deliveryTags: ["[bright, confident real estate host]"],
       scriptText: "Welcome to the kitchen. Notice the quartz counters.",
       durationSeconds: 5,
     },
@@ -201,7 +205,8 @@ describe("generateVoiceoverStage", () => {
       expect.objectContaining({
         apiKey: "elevenlabs-key",
         voiceId: "voice-1",
-        text: scriptPlan.fullScript,
+        text: scriptPlan.voicePromptScript,
+        transcriptText: scriptPlan.fullScript,
         modelId: "eleven-test",
       })
     );
@@ -229,12 +234,13 @@ describe("generateVoiceoverStage", () => {
         kind: "voiceover_audio",
         storagePath: "new/voiceover.mp3",
         fingerprint: expect.objectContaining({
-          fullScript: scriptPlan.fullScript,
+          fullScript: scriptPlan.voicePromptScript,
+          spokenScript: scriptPlan.fullScript,
           voiceId: "voice-1",
           modelId: "eleven-test",
           voiceSettings: expect.objectContaining({ stability: 0.3 }),
           transcript: expect.objectContaining({ phraseMode: "word-count" }),
-          providerModuleVersion: "elevenlabs-voiceover-v1",
+          providerModuleVersion: "elevenlabs-voiceover-v2-eleven-v3-tags",
         }),
       })
     );
@@ -264,6 +270,13 @@ describe("generateVoiceoverStage", () => {
 
     expect(provider.generateVoiceover).toHaveBeenCalledWith(
       expect.objectContaining({
+        modelId: "eleven_v3",
+        voiceSettings: {
+          stability: 0.22,
+          similarity_boost: 0.74,
+          style: 0.5,
+          use_speaker_boost: true,
+        },
         transcript: {
           phraseMode: "word-count",
           wordsPerPhrase: 1,
@@ -279,6 +292,12 @@ describe("generateVoiceoverStage", () => {
             phraseMode: "word-count",
             wordsPerPhrase: 1,
             useNormalizedAlignment: true,
+          },
+          voiceSettings: {
+            stability: 0.22,
+            similarity_boost: 0.74,
+            style: 0.5,
+            use_speaker_boost: true,
           },
         }),
       })

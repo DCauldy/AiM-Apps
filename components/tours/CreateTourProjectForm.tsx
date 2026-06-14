@@ -7,6 +7,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Mic2, Plus, UserRound, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ElevenLabsVoiceSelector } from "@/components/tours/workspace/ElevenLabsVoiceSelector";
+import { HeyGenAvatarSelector } from "@/components/tours/workspace/HeyGenAvatarSelector";
+import type { HeyGenAvatarProjectPosition } from "@/components/tours/workspace/avatar-positioning";
 import {
   Dialog,
   DialogBody,
@@ -36,6 +38,8 @@ type CreateTourProjectInput = {
   listingUrl: string;
   tourType: TourProjectType;
   elevenLabsVoiceId?: string | null;
+  heyGenAvatarId?: string | null;
+  heyGenAvatarPlacement?: HeyGenAvatarProjectPosition | null;
 };
 
 const tourTypeOptions: Array<{
@@ -116,9 +120,14 @@ export function CreateTourProjectForm({
   const [listingUrl, setListingUrl] = useState("");
   const [tourType, setTourType] = useState<TourProjectType>(DEFAULT_TOUR_PROJECT_TYPE);
   const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState("");
+  const [heyGenAvatarId, setHeyGenAvatarId] = useState("");
+  const [heyGenAvatarPlacement, setHeyGenAvatarPlacement] =
+    useState<HeyGenAvatarProjectPosition | null>(null);
   const requiresVoiceSelection =
     tourType === "tour_video_voice_over" || tourType === "tour_video_avatar";
+  const requiresAvatarSelection = tourType === "tour_video_avatar";
   const isVoiceSelectionMissing = requiresVoiceSelection && !elevenLabsVoiceId.trim();
+  const isAvatarSelectionMissing = requiresAvatarSelection && !heyGenAvatarId.trim();
 
   const mutation = useMutation({
     mutationFn: createTourProject,
@@ -145,7 +154,7 @@ export function CreateTourProjectForm({
               id="create-tour-project-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (isVoiceSelectionMissing) {
+                if (isVoiceSelectionMissing || isAvatarSelectionMissing) {
                   return;
                 }
                 mutation.mutate({
@@ -154,6 +163,8 @@ export function CreateTourProjectForm({
                   listingUrl,
                   tourType,
                   elevenLabsVoiceId: requiresVoiceSelection ? elevenLabsVoiceId : undefined,
+                  heyGenAvatarId: requiresAvatarSelection ? heyGenAvatarId : undefined,
+                  heyGenAvatarPlacement: requiresAvatarSelection ? heyGenAvatarPlacement : undefined,
                 });
               }}
             >
@@ -273,6 +284,10 @@ export function CreateTourProjectForm({
                               if (option.value === "tour_video") {
                                 setElevenLabsVoiceId("");
                               }
+                              if (option.value !== "tour_video_avatar") {
+                                setHeyGenAvatarId("");
+                                setHeyGenAvatarPlacement(null);
+                              }
                             }}
                             className="sr-only"
                           />
@@ -302,6 +317,32 @@ export function CreateTourProjectForm({
                 </div>
               ) : null}
 
+              {requiresAvatarSelection ? (
+                <div className="mt-5 text-sm font-medium text-foreground">
+                  <span>HeyGen avatar look</span>
+                  <div className="mt-2">
+                    <HeyGenAvatarSelector
+                      value={heyGenAvatarId}
+                      placement={heyGenAvatarPlacement}
+                      disabled={mutation.isPending}
+                      onCommit={({ avatarId, placement }) => {
+                        setHeyGenAvatarId(avatarId);
+                        setHeyGenAvatarPlacement(placement);
+                      }}
+                    />
+                  </div>
+                  {isAvatarSelectionMissing ? (
+                    <p className="mt-1 text-xs text-destructive">
+                      Select a HeyGen avatar before creating this project.
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Avatar placement will be saved with this project.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
               {mutation.error && (
                 <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {mutation.error.message}
@@ -316,7 +357,7 @@ export function CreateTourProjectForm({
             <Button
               type="submit"
               form="create-tour-project-form"
-              disabled={mutation.isPending || isVoiceSelectionMissing}
+              disabled={mutation.isPending || isVoiceSelectionMissing || isAvatarSelectionMissing}
             >
               <Plus className="h-4 w-4" />
               {mutation.isPending ? "Creating..." : "Create project"}

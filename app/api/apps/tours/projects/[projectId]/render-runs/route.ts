@@ -9,6 +9,7 @@ import {
   toTourRenderRunStatusResponse,
   toTourRenderRunStatusResponseWithResultUrl,
 } from "@/lib/tours/rendering/tour-render-runs";
+import { mergeProjectAvatarSettingsIntoRenderOptions } from "@/lib/tours/rendering/avatar-project-render-options";
 import { getTourRenderProjectSettings } from "@/lib/tours/rendering/tour-render-project-settings";
 import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
 
@@ -57,14 +58,22 @@ function mergeProjectRenderSettings(
   settings: Awaited<ReturnType<typeof getTourRenderProjectSettings>>
 ): TourRenderOptions | undefined {
   const projectVoiceId = settings.elevenLabsVoiceId?.trim();
-  if (!projectVoiceId || options?.elevenLabsVoiceId) {
-    return options;
-  }
+  const voiceOptions = projectVoiceId && !options?.elevenLabsVoiceId
+    ? {
+        ...(options ?? {}),
+        elevenLabsVoiceId: projectVoiceId,
+      }
+    : options ?? {};
 
-  return {
-    ...(options ?? {}),
-    elevenLabsVoiceId: projectVoiceId,
-  };
+  const mergedOptions = mergeProjectAvatarSettingsIntoRenderOptions({
+    options: voiceOptions,
+    project: {
+      heyGenAvatarId: settings.heyGenAvatarId,
+      heyGenAvatarPlacement: settings.heyGenAvatarPlacement,
+    },
+  });
+
+  return Object.keys(mergedOptions).length > 0 ? mergedOptions : undefined;
 }
 
 async function readCreateRenderRunRequestBody(request: Request): Promise<CreateRenderRunRequestBody> {

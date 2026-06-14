@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 import {
+  getAvatarSettingsColumnsForSave,
+  getAvatarSettingsValidationError,
+  OptionalHeyGenAvatarIdSchema,
+  OptionalHeyGenAvatarProjectPositionSchema,
+} from "@/lib/tours/avatar-project-settings";
+import {
   DEFAULT_TOUR_PROJECT_TYPE,
   TOUR_PROJECT_TYPES,
   type TourProjectType,
@@ -30,6 +36,8 @@ const CreateTourProjectSchema = z.object({
     .pipe(z.string().url("Listing URL must be a valid URL").nullable()),
   tourType: z.enum(TOUR_PROJECT_TYPES).default(DEFAULT_TOUR_PROJECT_TYPE),
   elevenLabsVoiceId: OptionalElevenLabsVoiceIdSchema,
+  heyGenAvatarId: OptionalHeyGenAvatarIdSchema,
+  heyGenAvatarPlacement: OptionalHeyGenAvatarProjectPositionSchema,
 });
 
 async function getTourTypeAvailabilityError(
@@ -153,14 +161,14 @@ export async function POST(request: Request) {
     return Response.json({ error: tourTypeAvailabilityError }, { status: 422 });
   }
 
-  const requiresVoiceId =
-    parsed.data.tourType === "tour_video_voice_over" ||
-    parsed.data.tourType === "tour_video_avatar";
-  if (requiresVoiceId && !parsed.data.elevenLabsVoiceId) {
-    return Response.json(
-      { error: "Select an ElevenLabs digital twin voice before creating this project." },
-      { status: 422 }
-    );
+  const requiredSettingsError = getAvatarSettingsValidationError({
+    tourType: parsed.data.tourType,
+    elevenLabsVoiceId: parsed.data.elevenLabsVoiceId,
+    heyGenAvatarId: parsed.data.heyGenAvatarId,
+    heyGenAvatarPlacement: parsed.data.heyGenAvatarPlacement,
+  });
+  if (requiredSettingsError) {
+    return Response.json({ error: requiredSettingsError }, { status: 422 });
   }
 
   // Pin the project to the user's currently active platform_profile so
@@ -173,6 +181,12 @@ export async function POST(request: Request) {
     .eq("id", access.user.id)
     .maybeSingle();
 
+  const avatarSettingsColumns = getAvatarSettingsColumnsForSave({
+    tourType: parsed.data.tourType,
+    heyGenAvatarId: parsed.data.heyGenAvatarId,
+    heyGenAvatarPlacement: parsed.data.heyGenAvatarPlacement,
+  });
+
   const { data, error } = await access.supabase
     .from("tours_projects")
     .insert({
@@ -183,6 +197,7 @@ export async function POST(request: Request) {
       listing_url: parsed.data.listingUrl,
       tour_type: parsed.data.tourType,
       elevenlabs_voice_id: parsed.data.elevenLabsVoiceId,
+      ...avatarSettingsColumns,
     })
     .select("id")
     .single();

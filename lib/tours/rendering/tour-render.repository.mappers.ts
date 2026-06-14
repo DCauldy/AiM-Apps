@@ -11,7 +11,7 @@ import type {
   TourSceneSourcePhotoRow,
 } from "./tour-render.repository.types";
 
-export const PROJECT_SELECT = "id, user_id, name, property_address, listing_url, tour_type, status";
+export const PROJECT_SELECT = "id, user_id, name, property_address, listing_url, tour_type, status, heygen_avatar_id, heygen_avatar_placement";
 export const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion";
 export const SOURCE_PHOTO_SELECT =
   "id, project_id, scene_id, storage_path, file_name, content_type, byte_size, width, height, priority, created_at";
@@ -135,6 +135,8 @@ export function mapTourRenderPreflightProject(input: {
       propertyAddress: input.project.property_address,
       listingUrl: input.project.listing_url,
       tourType: input.project.tour_type,
+      heyGenAvatarId: input.project.heygen_avatar_id,
+      heyGenAvatarPlacement: input.project.heygen_avatar_placement,
       status: input.project.status ?? "open",
     },
     scenes,
