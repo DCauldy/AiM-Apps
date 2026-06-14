@@ -139,6 +139,9 @@ export function PackConfigTab() {
   const promptPacks = packs.filter((p) => p.app === "prompt_studio");
   const blogPacks = packs.filter((p) => p.app === "blog_engine");
   const hyperlocalPacks = packs.filter((p) => p.app === "hyperlocal");
+  const listingStudioPacks = packs.filter((p) => p.app === "listing_studio");
+  const radarPacks = packs.filter((p) => p.app === "radar");
+  const toursPacks = packs.filter((p) => p.app === "tours");
 
   return (
     <div className="space-y-3">
@@ -189,6 +192,56 @@ export function PackConfigTab() {
           sizeField="hyperlocal"
         />
       </AccordionSection>
+
+      <AccordionSection
+        title="CMA Packs"
+        count={listingStudioPacks.length}
+        isOpen={openSections.listing_studio}
+        onToggle={() => toggleSection("listing_studio")}
+      >
+        <PackGrid
+          packs={listingStudioPacks}
+          edits={edits}
+          saving={saving}
+          onUpdate={updateEdit}
+          onSave={savePack}
+          sizeField="none"
+        />
+      </AccordionSection>
+
+      <AccordionSection
+        title="Radar Packs"
+        count={radarPacks.length}
+        isOpen={openSections.radar}
+        onToggle={() => toggleSection("radar")}
+      >
+        <PackGrid
+          packs={radarPacks}
+          edits={edits}
+          saving={saving}
+          onUpdate={updateEdit}
+          onSave={savePack}
+          sizeField="none"
+        />
+      </AccordionSection>
+
+      {toursPacks.length > 0 && (
+        <AccordionSection
+          title="Tours Packs"
+          count={toursPacks.length}
+          isOpen={openSections.tours}
+          onToggle={() => toggleSection("tours")}
+        >
+          <PackGrid
+            packs={toursPacks}
+            edits={edits}
+            saving={saving}
+            onUpdate={updateEdit}
+            onSave={savePack}
+            sizeField="tours"
+          />
+        </AccordionSection>
+      )}
     </div>
   );
 }
@@ -243,7 +296,7 @@ function PackGrid({
   saving: string | null;
   onUpdate: (packId: string, field: keyof PackEdit, value: string | boolean) => void;
   onSave: (packId: string) => void;
-  sizeField: "size" | "frequency" | "hyperlocal";
+  sizeField: "size" | "frequency" | "hyperlocal" | "tours" | "none";
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -254,19 +307,28 @@ function PackGrid({
         const isPriceTodo =
           !edit.stripe_price_id || edit.stripe_price_id === "price_TODO";
 
+        // `none` is for apps whose admin_pack_configs rows don't carry
+        // a size/frequency/meter field — currently Radar + CMA. The
+        // per-tier limits live in the lib/<app>-packs.ts files until
+        // we add dedicated DB columns for those meters.
+        const sizeChip =
+          sizeField === "size"
+            ? `${pack.size} prompts`
+            : sizeField === "frequency"
+              ? `${pack.frequency}x/week`
+              : sizeField === "tours"
+                ? `${pack.size} tours/mo`
+                : sizeField === "hyperlocal"
+                  ? formatHyperlocalMeters(pack)
+                  : "limits in code";
+
         return (
           <div key={pack.id} className="border rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm font-mono text-muted-foreground">
                 {pack.id}
               </span>
-              <span className="text-xs text-muted-foreground">
-                {sizeField === "size"
-                  ? `${pack.size} prompts`
-                  : sizeField === "frequency"
-                    ? `${pack.frequency}x/week`
-                    : formatHyperlocalMeters(pack)}
-              </span>
+              <span className="text-xs text-muted-foreground">{sizeChip}</span>
             </div>
 
             <div className="grid gap-2">

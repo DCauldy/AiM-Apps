@@ -7,11 +7,13 @@ import { PackConfigTab } from "./tabs/PackConfigTab";
 import { AdminAccessTab } from "./tabs/AdminAccessTab";
 import { UserOverviewTab } from "./tabs/UserOverviewTab";
 import { StripeProductsTab } from "./tabs/StripeProductsTab";
+import { RadarRequestsClient } from "./RadarRequestsClient";
 
 const TABS = [
   { id: "availability", label: "App Availability" },
   { id: "packs", label: "App Packs" },
   { id: "stripe", label: "Global Products" },
+  { id: "radar-requests", label: "Radar Requests" },
   { id: "admins", label: "Admin Access" },
   { id: "users", label: "User Overview" },
 ] as const;
@@ -26,13 +28,13 @@ export function AdminDashboard() {
       <h1 className="text-2xl font-bold mb-6">Admin Dashboard</h1>
 
       {/* Tab buttons */}
-      <div className="flex gap-1 border-b mb-6">
+      <div className="flex gap-1 border-b mb-6 overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              "px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px",
+              "px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap",
               activeTab === tab.id
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/50"
@@ -47,6 +49,7 @@ export function AdminDashboard() {
       {activeTab === "availability" && <AppAvailabilityTab />}
       {activeTab === "packs" && <PackConfigTab />}
       {activeTab === "stripe" && <StripeProductsTab />}
+      {activeTab === "radar-requests" && <RadarRequestsClient />}
       {activeTab === "admins" && <AdminAccessTab />}
       {activeTab === "users" && <UserOverviewTab />}
     </div>
