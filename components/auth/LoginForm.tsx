@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -10,6 +11,10 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // "Redirecting" persists the loading state through the post-login
+  // navigation so the button doesn't briefly snap back to "Sign In"
+  // while /apps is loading — which felt like a stall.
+  const [redirecting, setRedirecting] = useState(false);
   const router = useRouter();
   const { addToast } = useToast();
 
@@ -30,6 +35,10 @@ export function LoginForm() {
         throw new Error(data.error || "Failed to sign in");
       }
 
+      // Switch from "Signing in" → "Redirecting" so the button keeps
+      // showing progress while /apps loads. Don't setLoading(false)
+      // on the success path — the form unmounts on navigation.
+      setRedirecting(true);
       router.push("/apps");
       router.refresh();
     } catch (error: any) {
@@ -38,10 +47,11 @@ export function LoginForm() {
         description: error.message || "Failed to sign in",
         variant: "destructive",
       });
-    } finally {
       setLoading(false);
     }
   };
+
+  const busy = loading || redirecting;
 
   return (
     <form onSubmit={handleLogin} className="space-y-4">
@@ -56,7 +66,7 @@ export function LoginForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          disabled={loading}
+          disabled={busy}
         />
       </div>
       <div className="space-y-2">
@@ -70,11 +80,16 @@ export function LoginForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          disabled={loading}
+          disabled={busy}
         />
       </div>
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Signing in..." : "Sign In"}
+      <Button type="submit" className="w-full" disabled={busy}>
+        {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+        {redirecting
+          ? "Redirecting…"
+          : loading
+            ? "Signing in…"
+            : "Sign In"}
       </Button>
     </form>
   );

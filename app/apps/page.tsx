@@ -4,6 +4,7 @@ import { getFeatureFlags } from "@/lib/admin-config.server";
 import { AppsShowcase } from "@/components/apps/AppsShowcase";
 import { ActiveProfileChip } from "@/components/profile/ActiveProfileChip";
 import { Circuitry } from "@/components/decor/Circuitry";
+import { UserMenu } from "@/components/layout/UserMenu";
 import { getTrialStatus } from "@/lib/trial";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
 import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
@@ -95,6 +96,13 @@ export default async function AppsPage() {
 
   return (
     <div className="apps-theme apps-landing-bg min-h-screen flex items-start justify-center p-4 md:p-8 md:pt-16">
+      {/* User menu — top-right floats over the landing. Contains the
+          logout action; matches the placement on the admin/header
+          layouts so customers always know where to find it. */}
+      <div className="absolute top-4 right-4 z-20">
+        <UserMenu />
+      </div>
+
       {/* Decorative circuitry — same pattern + pulse cadence as the AiM
           dashboard chatbot, positioned in opposite corners. */}
       <Circuitry

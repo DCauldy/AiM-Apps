@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -13,6 +14,9 @@ export function SignupForm() {
   const [fullName, setFullName] = useState("");
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // See LoginForm — persists button progress across the post-signup
+  // navigation so /apps loading doesn't feel like a stall.
+  const [redirecting, setRedirecting] = useState(false);
   const router = useRouter();
   const { addToast } = useToast();
 
@@ -61,6 +65,7 @@ export function SignupForm() {
         description: "Welcome to AiM Automations!",
       });
 
+      setRedirecting(true);
       router.push("/apps");
       router.refresh();
     } catch (error: any) {
@@ -69,10 +74,11 @@ export function SignupForm() {
         description: error.message || "Failed to create account",
         variant: "destructive",
       });
-    } finally {
       setLoading(false);
     }
   };
+
+  const busy = loading || redirecting;
 
   return (
     <form onSubmit={handleSignup} className="space-y-4">
@@ -87,7 +93,7 @@ export function SignupForm() {
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           required
-          disabled={loading}
+          disabled={busy}
         />
       </div>
       <div className="space-y-2">
@@ -101,7 +107,7 @@ export function SignupForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          disabled={loading}
+          disabled={busy}
         />
       </div>
       <div className="space-y-2">
@@ -116,15 +122,20 @@ export function SignupForm() {
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={6}
-          disabled={loading}
+          disabled={busy}
         />
       </div>
       <TurnstileWidget
         onVerify={handleTurnstileVerify}
         onExpire={handleTurnstileExpire}
       />
-      <Button type="submit" className="w-full" disabled={loading}>
-        {loading ? "Creating account..." : "Create Account"}
+      <Button type="submit" className="w-full" disabled={busy}>
+        {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+        {redirecting
+          ? "Redirecting…"
+          : loading
+            ? "Creating account…"
+            : "Create Account"}
       </Button>
     </form>
   );
