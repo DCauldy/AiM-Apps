@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { AppShell } from "@/components/app-shell/AppShell";
 import { PromptStudioHeader } from "@/components/prompt-studio/PromptStudioHeader";
 import { Sidebar } from "@/components/sidebar/Sidebar";
+import { ConversationHeader } from "@/components/chat/ConversationHeader";
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 
 interface ConversationContextType {
@@ -153,11 +154,38 @@ export function PromptStudioLayoutClient({
             <div
               className={
                 isSidebarOpen
-                  ? "flex-1 lg:ml-80 transition-all duration-300 min-w-0 overflow-hidden"
-                  : "flex-1 transition-all duration-300 min-w-0 overflow-hidden"
+                  ? "flex-1 lg:ml-80 transition-all duration-300 min-w-0 flex flex-col overflow-hidden"
+                  : "flex-1 transition-all duration-300 min-w-0 flex flex-col overflow-hidden"
               }
             >
-              {children}
+              {/* Conversation chrome — title + star + rename +
+                  delete. Lives in-page (matching how CMA's client
+                  detail renders the client name inline) instead of
+                  hijacking the global header. Handlers are wired
+                  into the conversation context by the chat page
+                  itself; the no-op fallbacks here cover the brief
+                  window between mount and the chat page registering
+                  its handlers. */}
+              {activeThreadId && threadData.threadId && (
+                <ConversationHeader
+                  threadId={threadData.threadId}
+                  title={threadData.threadTitle}
+                  isStarred={threadData.isStarred}
+                  onRename={
+                    handlersRef.current.onRename ??
+                    (async () => undefined)
+                  }
+                  onToggleStar={
+                    handlersRef.current.onToggleStar ??
+                    (async () => undefined)
+                  }
+                  onDelete={
+                    handlersRef.current.onDelete ??
+                    (async () => undefined)
+                  }
+                />
+              )}
+              <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
             </div>
           </div>
         ) : (
