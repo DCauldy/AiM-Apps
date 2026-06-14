@@ -1,10 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowRight, Share2, Trophy } from "lucide-react";
+import { Trophy } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { WriteAboutThisLink } from "@/components/radar-otterly/CrossAppActions";
+import {
+  ShareWinButton,
+  WriteAboutThisLink,
+} from "@/components/radar-otterly/CrossAppActions";
 import type { PromptInsight } from "./types";
 
 // Recommended Actions panel — sits at the top of Optimize, above
@@ -139,14 +141,7 @@ function ActionRow({ item }: { item: ActionItem }) {
         {item.action === "write" ? (
           <WriteAboutThisLink prompt={item.prompt} variant="label" />
         ) : (
-          <Link
-            href="/apps/radar/settings?tab=share"
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium border border-border bg-background text-foreground hover:border-primary/50 hover:text-primary transition-colors"
-          >
-            <Share2 className="h-3 w-3" />
-            Share with broker
-            <ArrowRight className="h-3 w-3" />
-          </Link>
+          <ShareWinButton prompt={item.prompt} />
         )}
       </div>
     </li>
