@@ -9,8 +9,8 @@ import { hlDiscover } from "@/lib/inngest/functions/hl-discover";
 import { hlGenerate } from "@/lib/inngest/functions/hl-generate";
 import { hlSend } from "@/lib/inngest/functions/hl-send";
 import { hlSendOne } from "@/lib/inngest/functions/hl-send-one";
-import { cmaCadenceTick } from "@/lib/inngest/functions/cma-cadence-tick";
 import { cmaCrmSync } from "@/lib/inngest/functions/cma-crm-sync";
+// cma-cadence-tick migrated to Trigger.dev (schedules.task) — see triggers/cma-cadence-tick.ts.
 // cma-deliver migrated to Trigger.dev — see triggers/cma-deliver.ts.
 
 export const { GET, POST, PUT } = serve({
@@ -25,7 +25,6 @@ export const { GET, POST, PUT } = serve({
     hlGenerate,
     hlSend,
     hlSendOne,
-    cmaCadenceTick,
     cmaCrmSync,
   ],
 });

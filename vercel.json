@@ -17,10 +17,6 @@
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/cma-tick",
-      "schedule": "0 * * * *"
-    },
-    {
       "path": "/api/cron/cma-crm-sync",
       "schedule": "15 5 * * *"
     }
