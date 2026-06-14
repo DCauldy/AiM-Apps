@@ -6,4 +6,5 @@ export const FEATURES = {
   RADAR: process.env.NEXT_PUBLIC_ENABLE_RADAR === "true",
   HYPERLOCAL: process.env.NEXT_PUBLIC_ENABLE_HYPERLOCAL === "true",
   LISTING_STUDIO: process.env.NEXT_PUBLIC_ENABLE_LISTING_STUDIO === "true",
+  TOURS: process.env.NEXT_PUBLIC_ENABLE_TOURS !== "false",
 } as const;

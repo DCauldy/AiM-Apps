@@ -8,6 +8,8 @@ import {
   Radar,
   Mail,
   MapPin,
+  Video,
+  Home,
   Lock,
   GraduationCap,
   ExternalLink,
@@ -33,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
 import { BlogUpgradeModal } from "@/components/blog-engine/BlogUpgradeModal";
 import { RadarUpgradeModal } from "@/components/radar/RadarUpgradeModal";
+import { startNavigationProgress } from "@/lib/navigation-progress";
 
 /* ── Types ── */
 
@@ -42,6 +45,7 @@ export interface UsageStats {
   "radar": { used: number; limit: number; period: string } | null;
   "hyperlocal": { used: number; limit: number; period: string } | null;
   "listing-studio": { used: number; limit: number; period: string } | null;
+  "tours": { used: number; limit: number; period: string } | null;
 }
 
 interface AppMeta {
@@ -165,10 +169,31 @@ const APPS: AppMeta[] = [
     accentColor: "#D4A35C",
     categories: ["Valuation", "Listings", "CMA"],
     features: [
-      { icon: <DollarSign className="h-4 w-4" />, text: "CMA with sales-comparison adjustment grid + price recommendation" },
-      { icon: <FileText className="h-4 w-4" />, text: "MLS Public Remarks tuned for AI-search visibility, compliance-checked" },
-      { icon: <Camera className="h-4 w-4" />, text: "Vision-AI photo ordering + captions in display sequence" },
-      { icon: <Mail className="h-4 w-4" />, text: "Branded just-listed HTML email + Deal of the Week sphere outreach" },
+      { icon: <DollarSign className="h-4 w-4" />, text: "Quarterly CMA cadence to past clients with sales-comparison adjustment grid" },
+      { icon: <Users className="h-4 w-4" />, text: "Pulls past clients automatically from FUB, Lofty, Sierra, BoldTrail" },
+      { icon: <MapPin className="h-4 w-4" />, text: "Mapbox neighborhood hero + MLS photo on every report" },
+      { icon: <Mail className="h-4 w-4" />, text: "Sends from your Resend, SendGrid, Mailchimp, or ActiveCampaign" },
+    ],
+  },
+  {
+    id: "tours",
+    name: "Tours",
+    description: "Listing tour project workspace",
+    tagline: "Plan and manage property tour projects from one focused workspace.",
+    route: "/apps/tours",
+    icon: <Video className="h-5 w-5" />,
+    previewIcon: <Home className="h-10 w-10" />,
+    flagKey: "TOURS",
+    requiresPro: true,
+    hasUpgrade: true,
+    gradient: ["#2563EB", "#7C3AED"],
+    accentColor: "#6366F1",
+    categories: ["Listings", "Video", "Workspace"],
+    features: [
+      { icon: <Home className="h-4 w-4" />, text: "Create one-property tour projects for active listings" },
+      { icon: <Target className="h-4 w-4" />, text: "Keep project status, property details, and next steps together" },
+      { icon: <Users className="h-4 w-4" />, text: "Prepare a workspace for upcoming media and scene planning" },
+      { icon: <BarChart3 className="h-4 w-4" />, text: "Archive completed projects without losing project history" },
     ],
   },
   {
@@ -275,6 +300,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
     if (appId === "prompt-studio") setShowPromptPackModal(true);
     if (appId === "blog-engine") setShowBlogUpgradeModal(true);
     if (appId === "radar") setShowRadarUpgradeModal(true);
+    if (appId === "tours") setShowRadarUpgradeModal(true);
   };
 
   const getAccessState = (app: AppMeta) => {
@@ -291,6 +317,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
     }
     const { isAccessible } = getAccessState(app);
     if (isAccessible) {
+      startNavigationProgress();
       router.push(app.route);
     }
   };

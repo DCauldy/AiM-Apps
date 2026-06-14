@@ -27,6 +27,7 @@ export default async function AppsPage() {
     "radar": null,
     "hyperlocal": null,
     "listing-studio": null,
+    "tours": null,
   };
 
   if (user) {

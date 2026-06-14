@@ -99,13 +99,22 @@ const DropdownMenuContent = React.forwardRef<
 });
 DropdownMenuContent.displayName = "DropdownMenuContent";
 
+interface DropdownMenuItemProps extends React.HTMLAttributes<HTMLDivElement> {
+  disabled?: boolean;
+}
+
 const DropdownMenuItem = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, onClick, ...props }, ref) => {
+  DropdownMenuItemProps
+>(({ className, disabled = false, onClick, ...props }, ref) => {
   const context = React.useContext(DropdownMenuContext);
   
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (disabled) {
+      e.preventDefault();
+      return;
+    }
+
     if (context) {
       context.setOpen(false);
     }
@@ -117,8 +126,10 @@ const DropdownMenuItem = React.forwardRef<
       ref={ref}
       className={cn(
         "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+        disabled && "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-current",
         className
       )}
+      aria-disabled={disabled}
       onClick={handleClick}
       {...props}
     />
@@ -158,4 +169,3 @@ export {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 };
-

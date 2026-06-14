@@ -25,6 +25,7 @@ export async function GET() {
       "radar": flags["RADAR"] === true,
       "hyperlocal": flags["HYPERLOCAL"] === true,
       "listing-studio": flags["LISTING_STUDIO"] === true,
+      "tours": flags["TOURS"] === true,
     },
   });
 }

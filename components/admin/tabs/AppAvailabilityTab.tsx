@@ -36,7 +36,11 @@ const APP_FLAGS: Record<string, { label: string; description: string }> = {
   LISTING_STUDIO: {
     label: "Listing Studio",
     description:
-      "Per-listing CMA + 6 marketing outputs (description, photo ordering/captions, DOTW + HTML emails). Nationwide via RapidAPI.",
+      "Quarterly CMA cadence to past clients. RapidAPI comps + Claude narrative + multi-CRM sync.",
+  },
+  TOURS: {
+    label: "Tours",
+    description: "Listing tour projects with scene planning and render workflow.",
   },
 };
 
