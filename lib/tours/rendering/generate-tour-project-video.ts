@@ -35,6 +35,7 @@ import {
   renderSceneClipsStage,
   TourSceneClipRenderError,
   type ImageToVideoProvider,
+  type SceneClipBatchRunner,
   type SceneClipRenderer,
 } from "./tour-scene-clips";
 import {
@@ -74,6 +75,7 @@ type GenerateTourProjectVideoOptions = {
   voiceoverProvider?: VoiceoverProvider;
   transitionDetectionProvider?: TransitionDetectionProvider;
   sceneClipRenderer?: SceneClipRenderer;
+  sceneClipBatchRunner?: SceneClipBatchRunner;
   finalVideoRenderer?: FinalVideoRenderer;
   imageToVideoProvider?: ImageToVideoProvider;
   avatarProvider?: HeyGenAvatarProvider;
@@ -667,6 +669,7 @@ export async function generateTourProjectVideo(
       durations: sceneDurations,
       renderer: options.sceneClipRenderer,
       provider: options.imageToVideoProvider,
+      batchRunner: options.sceneClipBatchRunner,
       options: {
         renderMode: input.options?.renderMode ?? preflightResult.summary.renderMode,
         reuseExistingAssets: shouldReuseAsset(input.options, "sceneClips"),

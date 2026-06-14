@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   isTourRenderRunActive,
@@ -89,6 +90,7 @@ export function pickLatestDownloadableRenderRun(
 }
 
 export function useTourRenderRuns(projectId: string) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const recentRunsQueryKey = useMemo(
     () => ["tours", "render-runs", projectId] as const,
@@ -135,6 +137,7 @@ export function useTourRenderRuns(projectId: string) {
         run,
         ...runs.filter((existingRun) => existingRun.id !== run.id),
       ]);
+      router.push(`/apps/tours/projects/${projectId}/rendering`);
     },
   });
 

@@ -214,3 +214,29 @@ export async function deleteTourSceneFact(input: {
   const repository = await createSupabaseTourSceneFactsRepository();
   return deleteTourSceneFactWithRepository(input, repository);
 }
+
+export async function approveAllTourSceneFactsForProject(input: {
+  projectId: string;
+  proofedBy: string;
+}): Promise<{ count: number }> {
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("tour_scene_facts")
+    .update({
+      proof_status: "proofed",
+      proofed_at: now,
+      proofed_by: input.proofedBy,
+      proof_metadata: { proofedBySource: "render_approve_all" },
+      updated_at: now,
+    })
+    .eq("project_id", input.projectId)
+    .neq("proof_status", "proofed")
+    .select("id");
+
+  if (error || !data) {
+    return { count: 0 };
+  }
+
+  return { count: data.length };
+}

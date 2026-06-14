@@ -5,9 +5,14 @@ import {
   getMissingProviderKeysForTourType,
   getTourTypeAvailabilityMessage,
 } from "@/lib/tours/tour-type-availability";
+import { getTourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
 
 export const dynamic = "force-dynamic";
+
+const OptionalElevenLabsVoiceIdSchema = z
+  .preprocess((value) => (value === null ? "" : value), z.string().trim().max(120, "Voice ID is too long").optional())
+  .transform((value) => (value ? value : null));
 
 const UpdateTourProjectSchema = z.object({
   name: z.string().trim().min(1, "Project name is required").max(120, "Project name is too long"),
@@ -20,6 +25,7 @@ const UpdateTourProjectSchema = z.object({
     .transform((value) => (value ? value : null))
     .pipe(z.string().url("Listing URL must be a valid URL").nullable()),
   tourType: z.enum(TOUR_PROJECT_TYPES).optional(),
+  elevenLabsVoiceId: OptionalElevenLabsVoiceIdSchema,
 });
 
 async function getTourTypeAvailabilityError(
@@ -35,6 +41,23 @@ async function getTourTypeAvailabilityError(
   }
 
   return null;
+}
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  const { projectId } = await params;
+  const workspace = await getTourProjectWorkspaceViewModel(projectId);
+
+  if (!workspace) {
+    return Response.json(
+      { error: "Tour project was not found or cannot be loaded." },
+      { status: 404 }
+    );
+  }
+
+  return Response.json({ workspace });
 }
 
 export async function PATCH(
@@ -73,12 +96,15 @@ export async function PATCH(
       property_address: parsed.data.propertyAddress,
       listing_url: parsed.data.listingUrl,
       ...(parsed.data.tourType ? { tour_type: parsed.data.tourType } : {}),
+      ...(body && typeof body === "object" && "elevenLabsVoiceId" in body
+        ? { elevenlabs_voice_id: parsed.data.elevenLabsVoiceId }
+        : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", projectId)
     .eq("user_id", access.user.id)
     .eq("status", "open")
-    .select("id, name, property_address, listing_url, tour_type, status, updated_at")
+    .select("id, name, property_address, listing_url, tour_type, elevenlabs_voice_id, status, updated_at")
     .maybeSingle();
 
   if (error) {

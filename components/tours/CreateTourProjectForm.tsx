@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Mic2, Plus, UserRound, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ElevenLabsVoiceSelector } from "@/components/tours/workspace/ElevenLabsVoiceSelector";
 import {
   Dialog,
   DialogBody,
@@ -34,6 +35,7 @@ type CreateTourProjectInput = {
   propertyAddress: string;
   listingUrl: string;
   tourType: TourProjectType;
+  elevenLabsVoiceId?: string | null;
 };
 
 const tourTypeOptions: Array<{
@@ -113,6 +115,10 @@ export function CreateTourProjectForm({
   const [propertyAddress, setPropertyAddress] = useState("");
   const [listingUrl, setListingUrl] = useState("");
   const [tourType, setTourType] = useState<TourProjectType>(DEFAULT_TOUR_PROJECT_TYPE);
+  const [elevenLabsVoiceId, setElevenLabsVoiceId] = useState("");
+  const requiresVoiceSelection =
+    tourType === "tour_video_voice_over" || tourType === "tour_video_avatar";
+  const isVoiceSelectionMissing = requiresVoiceSelection && !elevenLabsVoiceId.trim();
 
   const mutation = useMutation({
     mutationFn: createTourProject,
@@ -139,7 +145,16 @@ export function CreateTourProjectForm({
               id="create-tour-project-form"
               onSubmit={(event) => {
                 event.preventDefault();
-                mutation.mutate({ name, propertyAddress, listingUrl, tourType });
+                if (isVoiceSelectionMissing) {
+                  return;
+                }
+                mutation.mutate({
+                  name,
+                  propertyAddress,
+                  listingUrl,
+                  tourType,
+                  elevenLabsVoiceId: requiresVoiceSelection ? elevenLabsVoiceId : undefined,
+                });
               }}
             >
               <p className="text-sm text-muted-foreground">
@@ -253,7 +268,12 @@ export function CreateTourProjectForm({
                             name="tourType"
                             value={option.value}
                             checked={selected}
-                            onChange={() => setTourType(option.value)}
+                            onChange={() => {
+                              setTourType(option.value);
+                              if (option.value === "tour_video") {
+                                setElevenLabsVoiceId("");
+                              }
+                            }}
                             className="sr-only"
                           />
                           {cardContent}
@@ -263,6 +283,24 @@ export function CreateTourProjectForm({
                   </div>
                 </TooltipProvider>
               </fieldset>
+
+              {requiresVoiceSelection ? (
+                <div className="mt-5 text-sm font-medium text-foreground">
+                  <span>ElevenLabs digital twin voice</span>
+                  <div className="mt-2">
+                    <ElevenLabsVoiceSelector
+                      value={elevenLabsVoiceId}
+                      disabled={mutation.isPending}
+                      onChange={setElevenLabsVoiceId}
+                    />
+                  </div>
+                  {isVoiceSelectionMissing ? (
+                    <p className="mt-1 text-xs text-destructive">
+                      Select a digital twin voice before creating this project.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {mutation.error && (
                 <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -275,7 +313,11 @@ export function CreateTourProjectForm({
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" form="create-tour-project-form" disabled={mutation.isPending}>
+            <Button
+              type="submit"
+              form="create-tour-project-form"
+              disabled={mutation.isPending || isVoiceSelectionMissing}
+            >
               <Plus className="h-4 w-4" />
               {mutation.isPending ? "Creating..." : "Create project"}
             </Button>

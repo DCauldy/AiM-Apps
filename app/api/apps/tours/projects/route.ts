@@ -13,6 +13,10 @@ import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
 
 export const dynamic = "force-dynamic";
 
+const OptionalElevenLabsVoiceIdSchema = z
+  .preprocess((value) => (value === null ? "" : value), z.string().trim().max(120, "Voice ID is too long").optional())
+  .transform((value) => (value ? value : null));
+
 const CreateTourProjectSchema = z.object({
   name: z.string().trim().min(1, "Project name is required").max(120, "Project name is too long"),
   propertyAddress: z.string().trim().min(1, "Property address is required").max(240, "Property address is too long"),
@@ -24,6 +28,7 @@ const CreateTourProjectSchema = z.object({
     .transform((value) => (value ? value : null))
     .pipe(z.string().url("Listing URL must be a valid URL").nullable()),
   tourType: z.enum(TOUR_PROJECT_TYPES).default(DEFAULT_TOUR_PROJECT_TYPE),
+  elevenLabsVoiceId: OptionalElevenLabsVoiceIdSchema,
 });
 
 async function getTourTypeAvailabilityError(
@@ -141,6 +146,16 @@ export async function POST(request: Request) {
     return Response.json({ error: tourTypeAvailabilityError }, { status: 422 });
   }
 
+  const requiresVoiceId =
+    parsed.data.tourType === "tour_video_voice_over" ||
+    parsed.data.tourType === "tour_video_avatar";
+  if (requiresVoiceId && !parsed.data.elevenLabsVoiceId) {
+    return Response.json(
+      { error: "Select an ElevenLabs digital twin voice before creating this project." },
+      { status: 422 }
+    );
+  }
+
   const { data, error } = await access.supabase
     .from("tours_projects")
     .insert({
@@ -149,6 +164,7 @@ export async function POST(request: Request) {
       property_address: parsed.data.propertyAddress,
       listing_url: parsed.data.listingUrl,
       tour_type: parsed.data.tourType,
+      elevenlabs_voice_id: parsed.data.elevenLabsVoiceId,
     })
     .select("id")
     .single();

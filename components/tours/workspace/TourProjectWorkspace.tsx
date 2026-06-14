@@ -1,294 +1,255 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { DragEndEvent } from "@dnd-kit/core";
-import { Download, Mic2, RefreshCw, ShieldCheck, UserRound, Video } from "lucide-react";
-import { TOUR_PROJECT_TYPE_LABELS } from "@/lib/tours/project-types";
-import type { TourProjectType } from "@/lib/tours/project-types";
-import { isTourRenderRunActive } from "@/lib/tours/rendering/tour-render.contract";
-import type { TourProjectWorkspaceViewModel, TourScene } from "@/lib/tours/workspace";
-import { PageFrame } from "@/components/app-shell/PagePrimitives";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  ConfirmDialog,
-  ErrorMessage,
-  PhotoStageDropzone,
-  ProjectActionsMenu,
-  ProjectDetailsDialog,
-  ReplacePhotoDialog,
-  SceneActionsMenu,
-  SceneImageRail,
-  SceneStrip,
-  SceneUploadDialog,
-  type ProjectDetailsForm,
-} from "./WorkspacePresentation";
-import { SceneDetailsPanel } from "./SceneDetailsPanel";
-import { TourRenderStatusPanel } from "./TourRenderStatusPanel";
-import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
-import { useTourRenderRuns } from "./useTourRenderRuns";
-import { useTourSceneMutations } from "./useTourSceneMutations";
+  DndContext,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  closestCenter,
+  type DragEndEvent,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { ArrowRight, GripVertical, Plus, ShieldCheck, X } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  type ButtonHTMLAttributes,
+  type CSSProperties,
+  type FormEvent,
+  forwardRef,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useOptimisticSortableList, type OptimisticSortableId } from "@/hooks/useOptimisticSortableList";
+import type { TourScene } from "@/lib/tours/workspace";
+import { useTourProjectWorkspace } from "./useTourProjectWorkspace";
+import { ErrorMessage, SceneUploadDialog } from "./WorkspacePresentation";
 
-const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
-  tour_video: Video,
-  tour_video_voice_over: Mic2,
-  tour_video_avatar: UserRound,
+type CreateSceneResponse = {
+  scene?: {
+    id?: string;
+  };
 };
 
-async function acknowledgeListingMediaAuthorization(projectId: string) {
-  const response = await fetch(
-    `/api/apps/tours/projects/${projectId}/listing-media-authorization`,
-    { method: "POST" }
-  );
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not record listing-media authorization.");
-  }
-  return payload;
-}
-
-async function updateTourProjectDetails(projectId: string, details: ProjectDetailsForm) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(details),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not update the tour project.");
-  }
-  return payload;
-}
-
-async function archiveTourProject(projectId: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/archive`, {
-    method: "PATCH",
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not delete the tour project.");
-  }
-  return payload;
-}
-
-async function createSceneFact(projectId: string, sceneId: string, text: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts`, {
+async function createSceneFromListingPhoto(projectId: string, formData: FormData) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: formData,
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error ?? "Could not save the scene fact.");
+    throw new Error(payload.error ?? "Could not create the scene.");
   }
-  return payload;
+  return payload as CreateSceneResponse;
 }
 
-async function updateSceneFact(projectId: string, sceneId: string, factId: string, text: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts/${factId}`, {
+async function reorderTourScenes(projectId: string, orderedSceneIds: string[]) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/reorder`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ orderedSceneIds }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error ?? "Could not update the scene fact.");
+    throw new Error(payload.error ?? "Could not save the scene order.");
   }
   return payload;
 }
 
-async function deleteSceneFact(projectId: string, sceneId: string, factId: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts/${factId}`, {
-    method: "DELETE",
+export function TourProjectWorkspace() {
+  const { viewModel, acknowledgementMutation, invalidateWorkspace } = useTourProjectWorkspace();
+  const [isCreateSceneOpen, setIsCreateSceneOpen] = useState(false);
+  const createSceneForm = useCreateSceneForm({
+    projectId: viewModel.project.id,
+    invalidateWorkspace,
+    onCreated: () => setIsCreateSceneOpen(false),
   });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not delete the scene fact.");
+  const scenes = viewModel.tourScenes;
+  const persistSceneOrder = useCallback(
+    async (orderedSceneIds: string[]) => {
+      await reorderTourScenes(viewModel.project.id, orderedSceneIds);
+      invalidateWorkspace();
+    },
+    [invalidateWorkspace, viewModel.project.id]
+  );
+  const sortableScenes = useOptimisticSortableList({
+    items: scenes,
+    getId: useCallback((scene: TourScene) => scene.id, []),
+    getSyncKey: useCallback(
+      (scene: TourScene) =>
+        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}`,
+      []
+    ),
+    onPersistOrder: persistSceneOrder,
+  });
+  const handleSceneDragEnd = useSceneCardDragEnd({
+    reorderById: sortableScenes.reorderById,
+  });
+  const authorization = viewModel.listingMediaAuthorization;
+
+  if (!authorization.hasAcknowledged) {
+    return (
+      <ListingMediaAuthorizationPanel
+        acknowledgementCopy={authorization.acknowledgementCopy}
+        error={acknowledgementMutation.error}
+        isPending={acknowledgementMutation.isPending}
+        onAcknowledge={() => acknowledgementMutation.mutate()}
+      />
+    );
   }
-  return payload;
+
+  if (scenes.length === 0) {
+    return (
+      <>
+        <div className="mt-5 rounded-md border border-dashed border-border bg-muted/20 p-8 text-center">
+          <h2 className="text-sm font-semibold text-foreground">No scenes yet</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Add the first scene with a title and listing photo.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4"
+            onClick={() => setIsCreateSceneOpen(true)}
+          >
+            Add scene
+            <Plus />
+          </Button>
+        </div>
+        <SceneUploadDialog
+          open={isCreateSceneOpen}
+          title={createSceneForm.sceneTitle}
+          photoPreviewUrl={createSceneForm.scenePhotoPreviewUrl}
+          photoName={createSceneForm.scenePhoto?.name ?? null}
+          error={createSceneForm.createSceneMutation.error}
+          isSaving={createSceneForm.createSceneMutation.isPending}
+          onOpenChange={setIsCreateSceneOpen}
+          onTitleChange={createSceneForm.setSceneTitle}
+          onPhotoChange={createSceneForm.setScenePhoto}
+          onSubmit={createSceneForm.handleCreateScene}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      <header className="flex items-center justify-between gap-3">
+        <h3 className="text-lg">Scenes</h3>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setIsCreateSceneOpen((open) => !open)}
+        >
+          {isCreateSceneOpen ? "Close" : "Add scene"}
+          {isCreateSceneOpen ? <X /> : <Plus />}
+        </Button>
+      </header>
+      <SceneUploadDialog
+        open={isCreateSceneOpen}
+        title={createSceneForm.sceneTitle}
+        photoPreviewUrl={createSceneForm.scenePhotoPreviewUrl}
+        photoName={createSceneForm.scenePhoto?.name ?? null}
+        error={createSceneForm.createSceneMutation.error}
+        isSaving={createSceneForm.createSceneMutation.isPending}
+        onOpenChange={setIsCreateSceneOpen}
+        onTitleChange={createSceneForm.setSceneTitle}
+        onPhotoChange={createSceneForm.setScenePhoto}
+        onSubmit={createSceneForm.handleCreateScene}
+      />
+      <SortableSceneGrid
+        scenes={sortableScenes.items}
+        itemIds={sortableScenes.itemIds}
+        projectId={viewModel.project.id}
+        isReordering={sortableScenes.isPending}
+        onAddScene={() => setIsCreateSceneOpen(true)}
+        onDragEnd={handleSceneDragEnd}
+      />
+      {sortableScenes.error ? (
+        <div className="mt-4">
+          <ErrorMessage>{sortableScenes.error.message}</ErrorMessage>
+        </div>
+      ) : null}
+    </>
+  );
 }
 
-export function TourProjectWorkspace({
-  viewModel,
+function ListingMediaAuthorizationPanel({
+  acknowledgementCopy,
+  error,
+  isPending,
+  onAcknowledge,
 }: {
-  viewModel: TourProjectWorkspaceViewModel;
+  acknowledgementCopy: string;
+  error: Error | null;
+  isPending: boolean;
+  onAcknowledge: () => void;
+}) {
+  return (
+    <div className="mt-5 space-y-4 rounded-md border border-border bg-muted/30 p-4">
+      <div className="flex gap-3">
+        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Authorize listing media</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Scene media tools unlock after this acknowledgement.
+          </p>
+        </div>
+      </div>
+      <blockquote className="rounded-md border-l-4 border-primary bg-background px-4 py-3 text-sm text-foreground">
+        {acknowledgementCopy}
+      </blockquote>
+      {error ? <ErrorMessage>{error.message}</ErrorMessage> : null}
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        disabled={isPending}
+        onClick={onAcknowledge}
+      >
+        {isPending ? "Recording..." : "I acknowledge"}
+      </Button>
+    </div>
+  );
+}
+
+function useCreateSceneForm({
+  projectId,
+  invalidateWorkspace,
+  onCreated,
+}: {
+  projectId: string;
+  invalidateWorkspace: () => void;
+  onCreated: () => void;
 }) {
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [activeSceneId, setActiveSceneId] = useState<string | null>(
-    viewModel.tourScenes[0]?.id ?? null
-  );
-  const [pendingActiveSceneId, setPendingActiveSceneId] = useState<string | null>(null);
-
-  const [isProjectDetailsOpen, setIsProjectDetailsOpen] = useState(false);
-  const [isProjectDeleteOpen, setIsProjectDeleteOpen] = useState(false);
-  const [isAddSceneOpen, setIsAddSceneOpen] = useState(false);
-  const [sceneToDelete, setSceneToDelete] = useState<TourScene | null>(null);
-  const [sceneToReplacePhoto, setSceneToReplacePhoto] = useState<TourScene | null>(null);
-  const [projectDetails, setProjectDetails] = useState<ProjectDetailsForm>({
-    name: viewModel.project.name,
-    propertyAddress: viewModel.listing.address,
-    listingUrl: viewModel.listing.listingUrl ?? "",
-  });
   const [sceneTitle, setSceneTitle] = useState("");
   const [scenePhoto, setScenePhoto] = useState<File | null>(null);
   const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<string | null>(null);
-  const [replacementPhoto, setReplacementPhoto] = useState<File | null>(null);
-  const [replacementPhotoPreviewUrl, setReplacementPhotoPreviewUrl] = useState<string | null>(null);
-  const [foregroundRenderRunId, setForegroundRenderRunId] = useState<string | null>(null);
-
-  const authorization = viewModel.listingMediaAuthorization;
-  const canUseSceneMediaTools = authorization.hasAcknowledged;
-  const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
-  const renderRuns = useTourRenderRuns(viewModel.project.id);
-  const isProjectRendering =
-    renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
-  const showForegroundCompletedRender =
-    renderRuns.currentRun?.status === "completed" && renderRuns.currentRun.id === foregroundRenderRunId;
-  const shouldShowRenderStatusPanel = Boolean(
-    renderRuns.currentRun && (isProjectRendering || showForegroundCompletedRender)
-  );
-  const latestDownloadUrl = renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
-
-  const invalidateWorkspace = useCallback(() => {
-    queryClient.invalidateQueries({
-      queryKey: ["tours", "workspace", viewModel.project.id],
-    });
-    router.refresh();
-  }, [queryClient, router, viewModel.project.id]);
-
-  const acknowledgementMutation = useMutation({
-    mutationFn: () => acknowledgeListingMediaAuthorization(viewModel.project.id),
-    onSuccess: invalidateWorkspace,
-  });
-  const updateProjectMutation = useMutation({
-    mutationFn: (details: ProjectDetailsForm) => updateTourProjectDetails(viewModel.project.id, details),
-    onSuccess: () => {
-      setIsProjectDetailsOpen(false);
-      invalidateWorkspace();
-    },
-  });
-  const archiveProjectMutation = useMutation({
-    mutationFn: () => archiveTourProject(viewModel.project.id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tours", "projects", "open"] });
-      router.push("/apps/tours/dashboard");
-    },
-  });
-  const sceneFactMutation = useMutation({
-    mutationFn: ({ sceneId, text }: { sceneId: string; text: string }) =>
-      createSceneFact(viewModel.project.id, sceneId, text),
-    onSuccess: (payload, variables) => {
-      if (payload?.fact) {
-        tourScenes.updateItem(variables.sceneId, (scene) => ({
-          ...scene,
-          facts: [...scene.facts, payload.fact],
-          hasProofedContext: scene.hasProofedContext || payload.fact.proofStatus === "proofed",
-        }));
-      }
-      invalidateWorkspace();
-    },
-  });
-  const updateSceneFactMutation = useMutation({
-    mutationFn: ({ sceneId, factId, text }: { sceneId: string; factId: string; text: string }) =>
-      updateSceneFact(viewModel.project.id, sceneId, factId, text),
-    onSuccess: (payload, variables) => {
-      if (payload?.fact) {
-        tourScenes.updateItem(variables.sceneId, (scene) => ({
-          ...scene,
-          facts: scene.facts.map((fact) => (fact.id === variables.factId ? payload.fact : fact)),
-          hasProofedContext: scene.facts.some((fact) =>
-            fact.id === variables.factId ? payload.fact.proofStatus === "proofed" : fact.proofStatus === "proofed"
-          ),
-        }));
-      }
-      invalidateWorkspace();
-    },
-  });
-  const deleteSceneFactMutation = useMutation({
-    mutationFn: ({ sceneId, factId }: { sceneId: string; factId: string }) =>
-      deleteSceneFact(viewModel.project.id, sceneId, factId),
-    onSuccess: (_payload, variables) => {
-      tourScenes.updateItem(variables.sceneId, (scene) => {
-        const facts = scene.facts.filter((fact) => fact.id !== variables.factId);
-        return {
-          ...scene,
-          facts,
-          hasProofedContext: facts.some((fact) => fact.proofStatus === "proofed"),
-        };
-      });
-      invalidateWorkspace();
-    },
-  });
-
-  const sceneMutations = useTourSceneMutations({
-    projectId: viewModel.project.id,
-    scenes: viewModel.tourScenes,
-    onSceneCreated: (sceneId) => {
+  const createSceneMutation = useMutation({
+    mutationFn: (formData: FormData) => createSceneFromListingPhoto(projectId, formData),
+    onSuccess: (payload) => {
+      const sceneId = typeof payload.scene?.id === "string" ? payload.scene.id : null;
       setSceneTitle("");
       setScenePhoto(null);
-      setIsAddSceneOpen(false);
+      invalidateWorkspace();
+      onCreated();
       if (sceneId) {
-        setPendingActiveSceneId(sceneId);
-        setActiveSceneId(sceneId);
+        router.push(`/apps/tours/projects/${projectId}/${sceneId}`);
       }
-    },
-    onScenePhotoReplaced: () => {
-      setReplacementPhoto(null);
-      setSceneToReplacePhoto(null);
-    },
-    onAddPhotoSettled: () => {
-      sourcePhotoSelection.clearPendingScenePhoto();
     },
   });
-  const { tourScenes } = sceneMutations;
-  const {
-    createScene: createSceneMutation,
-    replacePhoto: replacePhotoMutation,
-    addPhoto: addPhotoMutation,
-    removePhoto: removePhotoMutation,
-    reorderScenes: reorderScenesMutation,
-    toggleSceneInclusion: toggleSceneInclusionMutation,
-    deleteScene: deleteSceneMutation,
-  } = sceneMutations.mutations;
-  const sourcePhotoSelection = useSourcePhotoSelection({
-    scenes: tourScenes.items,
-    activeSceneId,
-  });
-  const { activeScene, selectedSourcePhoto, pendingPhotoForActiveScene } = sourcePhotoSelection;
-  const sceneCount = tourScenes.items.length;
-  const replacingScene = sceneToReplacePhoto
-    ? tourScenes.items.find((scene) => scene.id === sceneToReplacePhoto.id) ?? sceneToReplacePhoto
-    : null;
-
-  useEffect(() => {
-    if (renderRuns.currentRun && isTourRenderRunActive(renderRuns.currentRun)) {
-      setForegroundRenderRunId(renderRuns.currentRun.id);
-    }
-  }, [renderRuns.currentRun]);
-
-  useEffect(() => {
-    if (tourScenes.items.length === 0) {
-      if (!pendingActiveSceneId) {
-        setActiveSceneId(null);
-      }
-      return;
-    }
-
-    if (pendingActiveSceneId) {
-      if (tourScenes.items.some((scene) => scene.id === pendingActiveSceneId)) {
-        setActiveSceneId(pendingActiveSceneId);
-        setPendingActiveSceneId(null);
-      }
-      return;
-    }
-
-    if (!activeSceneId || !tourScenes.items.some((scene) => scene.id === activeSceneId)) {
-      setActiveSceneId(tourScenes.items[0].id);
-    }
-  }, [activeSceneId, pendingActiveSceneId, tourScenes.items]);
 
   useEffect(() => {
     if (!scenePhoto) {
@@ -302,353 +263,218 @@ export function TourProjectWorkspace({
     return () => URL.revokeObjectURL(previewUrl);
   }, [scenePhoto]);
 
-  useEffect(() => {
-    if (!replacementPhoto) {
-      setReplacementPhotoPreviewUrl(null);
-      return;
-    }
+  const handleCreateScene = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const formData = new FormData();
+      formData.set("title", sceneTitle);
+      if (scenePhoto) {
+        formData.set("photo", scenePhoto);
+      }
+      createSceneMutation.mutate(formData);
+    },
+    [createSceneMutation, scenePhoto, sceneTitle]
+  );
 
-    const previewUrl = URL.createObjectURL(replacementPhoto);
-    setReplacementPhotoPreviewUrl(previewUrl);
+  return {
+    sceneTitle,
+    setSceneTitle,
+    scenePhoto,
+    setScenePhoto,
+    scenePhotoPreviewUrl,
+    createSceneMutation,
+    handleCreateScene,
+  };
+}
 
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [replacementPhoto]);
-
-  function handleProjectDetailsSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    updateProjectMutation.mutate(projectDetails);
-  }
-
-  function handleCreateScene(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const formData = new FormData();
-    formData.set("title", sceneTitle);
-    if (scenePhoto) {
-      formData.set("photo", scenePhoto);
-    }
-    createSceneMutation.mutate(formData);
-  }
-
-  function handleReplaceScenePhoto(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!sceneToReplacePhoto) {
-      return;
-    }
-
-    const formData = new FormData();
-    if (replacementPhoto) {
-      formData.set("photo", replacementPhoto);
-    }
-    replacePhotoMutation.mutate({ sceneId: sceneToReplacePhoto.id, formData });
-  }
-
-  function handleAddScenePhoto(sceneId: string, file: File) {
-    const formData = new FormData();
-    formData.set("photo", file);
-    sourcePhotoSelection.setPendingScenePhoto({ sceneId, file });
-    addPhotoMutation.mutate({ sceneId, formData });
-  }
-
-  function handleSceneDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    tourScenes.reorderById(active.id, over?.id);
-  }
-
-  function confirmSceneDelete() {
-    if (!sceneToDelete) {
-      return;
-    }
-
-    const deletedSceneId = sceneToDelete.id;
-    const nextActiveSceneId = tourScenes.items.find((scene) => scene.id !== deletedSceneId)?.id ?? null;
-
-    sceneMutations
-      .deleteScene(deletedSceneId)
-      .then(() => {
-        tourScenes.setItems(tourScenes.items.filter((scene) => scene.id !== deletedSceneId));
-        setActiveSceneId(nextActiveSceneId);
-        setSceneToDelete(null);
-      })
-      .catch(() => undefined);
-  }
-
-  return (
-    <PageFrame className="max-w-none px-4 py-4 sm:px-6 lg:px-8">
-      <section className="mx-auto w-full max-w-7xl lg:min-h-[calc(100vh-8rem)]">
-        <header className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-3">
-              <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
-                {viewModel.project.name}
-              </h1>
-              <Badge
-                variant="outline"
-                className="shrink-0 gap-1.5 border-primary/50 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
-              >
-                <TourTypeIcon className="h-3 w-3" />
-                {TOUR_PROJECT_TYPE_LABELS[viewModel.project.tourType]}
-              </Badge>
-            </div>
-            <p className="mt-1 truncate text-sm text-muted-foreground">{viewModel.listing.address}</p>
-          </div>
-          <ProjectActionsMenu
-            onEdit={() => setIsProjectDetailsOpen(true)}
-            onDelete={() => setIsProjectDeleteOpen(true)}
-          />
-        </header>
-
-        {shouldShowRenderStatusPanel && renderRuns.currentRun ? (
-          <TourRenderStatusPanel
-            run={renderRuns.currentRun}
-            onDone={() => setForegroundRenderRunId(null)}
-          />
-        ) : !canUseSceneMediaTools ? (
-          <div className="mt-4 space-y-4 rounded-md border border-border bg-muted/30 p-4">
-            <div className="flex gap-3">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-              <div>
-                <h2 className="text-sm font-semibold text-foreground">Authorize listing media</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Scene media tools unlock after this acknowledgement.
-                </p>
-              </div>
-            </div>
-            <blockquote className="rounded-md border-l-4 border-primary bg-background px-4 py-3 text-sm text-foreground">
-              {authorization.acknowledgementCopy}
-            </blockquote>
-            {acknowledgementMutation.error && (
-              <ErrorMessage>{acknowledgementMutation.error.message}</ErrorMessage>
-            )}
-            <Button
-              type="button"
-              className="w-full"
-              disabled={acknowledgementMutation.isPending}
-              onClick={() => acknowledgementMutation.mutate()}
-            >
-              {acknowledgementMutation.isPending ? "Recording..." : "I acknowledge"}
-            </Button>
-          </div>
-        ) : (
-          <>
-            <SceneStrip
-              scenes={tourScenes.items}
-              itemIds={tourScenes.itemIds}
-              activeSceneId={activeSceneId}
-              isReordering={tourScenes.isPending || reorderScenesMutation.isPending}
-              onSelectScene={setActiveSceneId}
-              onAddScene={() => setIsAddSceneOpen(true)}
-              onDragEnd={handleSceneDragEnd}
-            />
-
-            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-              <div className="grid grid-cols-[68px_minmax(0,1fr)] gap-3 lg:grid-cols-[88px_minmax(0,1fr)]">
-                <SceneImageRail
-                  scene={activeScene}
-                  selectedPhotoId={selectedSourcePhoto?.id ?? null}
-                  isAddingPhoto={addPhotoMutation.isPending}
-                  pendingPhotoPreviewUrl={pendingPhotoForActiveScene?.previewUrl ?? null}
-                  pendingPhotoName={pendingPhotoForActiveScene?.fileName ?? null}
-                  onSelectPhoto={sourcePhotoSelection.setSelectedSourcePhotoId}
-                  onAddPhoto={(file) => {
-                    if (!activeScene) {
-                      return;
-                    }
-                    handleAddScenePhoto(activeScene.id, file);
-                  }}
-                />
-
-                <PhotoStageDropzone
-                  scene={activeScene}
-                  displayPhoto={selectedSourcePhoto}
-                  onAddPhoto={(file) => {
-                    setScenePhoto(file);
-                    setIsAddSceneOpen(true);
-                  }}
-                  onReplacePhoto={(file) => {
-                    if (!activeScene) {
-                      return;
-                    }
-                    setReplacementPhoto(file);
-                    setSceneToReplacePhoto(activeScene);
-                  }}
-                >
-                  {activeScene && (
-                    <SceneActionsMenu
-                      scene={activeScene}
-                      selectedPhoto={selectedSourcePhoto}
-                      onReplacePhoto={() => {
-                        setReplacementPhoto(null);
-                        setSceneToReplacePhoto(activeScene);
-                      }}
-                      onRemovePhoto={() =>
-                        removePhotoMutation.mutate({
-                          sceneId: activeScene.id,
-                          sourcePhotoId: selectedSourcePhoto?.id ?? activeScene.authoritativePhoto.id,
-                        })
-                      }
-                      onRemoveScene={() => setSceneToDelete(activeScene)}
-                      isRemovingPhoto={removePhotoMutation.isPending}
-                      isRemovingScene={deleteSceneMutation.isPending}
-                    />
-                  )}
-                </PhotoStageDropzone>
-              </div>
-
-              <SceneDetailsPanel
-                activeScene={activeScene}
-                displayPhoto={selectedSourcePhoto}
-                sceneIndex={activeScene ? tourScenes.items.findIndex((scene) => scene.id === activeScene.id) : -1}
-                isSubmittingFact={sceneFactMutation.isPending}
-                isUpdatingFact={updateSceneFactMutation.isPending}
-                isDeletingFact={deleteSceneFactMutation.isPending}
-                factError={sceneFactMutation.error}
-                factActionError={updateSceneFactMutation.error ?? deleteSceneFactMutation.error}
-                onAddScene={() => setIsAddSceneOpen(true)}
-                onCreateFact={async (text) => {
-                  if (!activeScene) {
-                    return;
-                  }
-                  await sceneFactMutation.mutateAsync({ sceneId: activeScene.id, text });
-                }}
-                onUpdateFact={async (factId, text) => {
-                  if (!activeScene) {
-                    return;
-                  }
-                  await updateSceneFactMutation.mutateAsync({ sceneId: activeScene.id, factId, text });
-                }}
-                onDeleteFact={async (factId) => {
-                  if (!activeScene) {
-                    return;
-                  }
-                  await deleteSceneFactMutation.mutateAsync({ sceneId: activeScene.id, factId });
-                }}
-              />
-            </div>
-
-            {(tourScenes.error ??
-              reorderScenesMutation.error ??
-              toggleSceneInclusionMutation.error ??
-              deleteSceneMutation.error ??
-              addPhotoMutation.error ??
-              removePhotoMutation.error) && (
-              <div className="mt-4">
-                <ErrorMessage>
-                  {(tourScenes.error ??
-                    reorderScenesMutation.error ??
-                    toggleSceneInclusionMutation.error ??
-                    deleteSceneMutation.error ??
-                    addPhotoMutation.error ??
-                    removePhotoMutation.error)?.message ??
-                    "Could not update TourScenes."}
-                </ErrorMessage>
-              </div>
-            )}
-
-            <div className="mt-4 grid gap-3 lg:ml-auto lg:max-w-sm">
-              <Button
-                type="button"
-                className="h-14 w-full text-base"
-                disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun}
-                onClick={() => renderRuns.createRenderRun()}
-              >
-                {renderRuns.isCreatingRenderRun ? "Starting render..." : "Approve all and generate"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-12 w-full text-base"
-                disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun}
-                onClick={() => renderRuns.createFreshRenderRun()}
-              >
-                <RefreshCw className="h-4 w-4" />
-                {renderRuns.isCreatingFreshRenderRun ? "Starting fresh render..." : "Generate fresh"}
-              </Button>
-            </div>
-
-            {latestDownloadUrl && (
-              <Button
-                asChild
-                variant="outline"
-                className="mt-3 h-12 w-full text-base lg:ml-auto lg:flex lg:max-w-sm"
-              >
-                <a href={latestDownloadUrl} target="_blank" rel="noreferrer" download>
-                  <Download className="h-4 w-4" />
-                  Download latest render
-                </a>
-              </Button>
-            )}
-
-            {renderRuns.error && (
-              <div className="mt-4">
-                <ErrorMessage>{renderRuns.error.message}</ErrorMessage>
-              </div>
-            )}
-          </>
-        )}
-      </section>
-
-      <ProjectDetailsDialog
-        open={isProjectDetailsOpen}
-        details={projectDetails}
-        error={updateProjectMutation.error}
-        isSaving={updateProjectMutation.isPending}
-        onOpenChange={setIsProjectDetailsOpen}
-        onChange={setProjectDetails}
-        onSubmit={handleProjectDetailsSubmit}
-      />
-      <SceneUploadDialog
-        open={isAddSceneOpen}
-        title={sceneTitle}
-        photoPreviewUrl={scenePhotoPreviewUrl}
-        photoName={scenePhoto?.name ?? null}
-        error={createSceneMutation.error}
-        isSaving={createSceneMutation.isPending}
-        onOpenChange={setIsAddSceneOpen}
-        onTitleChange={setSceneTitle}
-        onPhotoChange={setScenePhoto}
-        onSubmit={handleCreateScene}
-      />
-      <ReplacePhotoDialog
-        open={Boolean(sceneToReplacePhoto)}
-        scene={replacingScene}
-        photoPreviewUrl={replacementPhotoPreviewUrl}
-        photoName={replacementPhoto?.name ?? null}
-        error={replacePhotoMutation.error}
-        isSaving={replacePhotoMutation.isPending}
-        onOpenChange={(open) => {
-          if (!open) {
-            setReplacementPhoto(null);
-            setSceneToReplacePhoto(null);
-          }
-        }}
-        onPhotoChange={setReplacementPhoto}
-        onSubmit={handleReplaceScenePhoto}
-      />
-      <ConfirmDialog
-        open={isProjectDeleteOpen}
-        title="Delete project?"
-        body="This removes the project from open Tours work by archiving it. Existing records stay available for history."
-        confirmText="Delete project"
-        error={archiveProjectMutation.error}
-        isPending={archiveProjectMutation.isPending}
-        onOpenChange={setIsProjectDeleteOpen}
-        onConfirm={() => archiveProjectMutation.mutate()}
-      />
-      <ConfirmDialog
-        open={Boolean(sceneToDelete)}
-        title="Remove scene?"
-        body="This permanently removes the scene, its listing photos, and its proofed facts from this Tour Project."
-        confirmText="Remove scene"
-        pendingText="Removing..."
-        error={deleteSceneMutation.error}
-        isPending={deleteSceneMutation.isPending}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSceneToDelete(null);
-          }
-        }}
-        onConfirm={confirmSceneDelete}
-      />
-    </PageFrame>
+function useSceneCardDragEnd({
+  reorderById,
+}: {
+  reorderById: (activeId: OptimisticSortableId, overId: OptimisticSortableId | null | undefined) => void;
+}) {
+  return useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      reorderById(active.id, over?.id);
+    },
+    [reorderById]
   );
 }
+
+function SortableSceneGrid({
+  scenes,
+  itemIds,
+  projectId,
+  isReordering,
+  onAddScene,
+  onDragEnd,
+}: {
+  scenes: TourScene[];
+  itemIds: string[];
+  projectId: string;
+  isReordering: boolean;
+  onAddScene: () => void;
+  onDragEnd: (event: DragEndEvent) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={itemIds} strategy={rectSortingStrategy}>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {scenes.map((scene, index) => (
+            <SortableSceneCard
+              projectId={projectId}
+              key={scene.id}
+              scene={scene}
+              index={index}
+              isReordering={isReordering}
+            />
+          ))}
+          <AddSceneCard onAddScene={onAddScene} />
+        </div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function AddSceneCard({ onAddScene }: { onAddScene: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onAddScene}
+      aria-label="Add scene"
+      className="flex min-h-[272px] flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/30 text-muted-foreground transition-colors hover:border-primary/60 hover:bg-muted hover:text-foreground"
+    >
+      <Plus className="h-10 w-10" />
+    </button>
+  );
+}
+
+function SortableSceneCard({
+  scene,
+  projectId,
+  index,
+  isReordering,
+}: {
+  scene: TourScene;
+  projectId: string;
+  index: number;
+  isReordering: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: scene.id,
+    disabled: isReordering,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <SceneCard
+      ref={setNodeRef}
+      style={style}
+      scene={scene}
+      projectId={projectId}
+      index={index}
+      isDragging={isDragging}
+      dragHandleProps={{
+        ref: setActivatorNodeRef,
+        disabled: isReordering,
+        ...attributes,
+        ...listeners,
+      }}
+    />
+  );
+}
+
+type SceneCardProps = {
+  scene: TourScene;
+  projectId: string;
+  index: number;
+  isDragging?: boolean;
+  style?: CSSProperties;
+  dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> & {
+    ref: (element: HTMLButtonElement | null) => void;
+  };
+};
+
+const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
+  { scene, projectId, index, isDragging = false, style, dragHandleProps },
+  ref
+) {
+  return (
+    <article
+      ref={ref}
+      style={style}
+      className={`overflow-hidden rounded-md border border-border bg-card transition-shadow ${
+        isDragging ? "z-10 shadow-lg ring-2 ring-primary/25" : ""
+      }`}
+    >
+      <div className="relative aspect-video bg-muted">
+        <Link
+          href={`/apps/tours/projects/${projectId}/${scene.id}`}
+          aria-label={`Open ${scene.title}`}
+          className="block h-full w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          {scene.authoritativePhoto.previewUrl ? (
+            <img
+              src={scene.authoritativePhoto.previewUrl}
+              alt={`Listing photo for ${scene.title}`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-lg font-semibold text-muted-foreground">
+              {scene.title.trim().charAt(0).toUpperCase() || index + 1}
+            </div>
+          )}
+        </Link>
+        {dragHandleProps ? (
+          <button
+            type="button"
+            aria-label={`Reorder ${scene.title}`}
+            className="absolute left-3 top-3 flex h-9 w-9 cursor-grab items-center justify-center rounded-md bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:bg-background hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+            {...dragHandleProps}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        ) : null}
+      </div>
+      <div className="flex items-start justify-between gap-3 p-4">
+        <div className="min-w-0 space-y-1">
+          <h2 className="truncate text-base font-semibold text-foreground">
+            {scene.title}
+          </h2>
+          <p className="truncate text-sm text-muted-foreground">
+            {scene.cameraMotion}
+          </p>
+        </div>
+        <Button
+          asChild
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+        >
+          <Link href={`/apps/tours/projects/${projectId}/${scene.id}`}>
+            Open scene
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </article>
+  );
+});

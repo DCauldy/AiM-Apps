@@ -87,6 +87,25 @@ export type SceneClipStageResult = {
   totalCount: number;
 };
 
+export type SceneClipStageClip = SceneClipStageResult["clips"][number];
+
+export type SceneClipBatchItem = {
+  index: number;
+  scene: RenderableTourScene;
+  duration: SceneDuration;
+  projectId: string;
+  runId: string;
+  userId: string;
+  options: ReturnType<typeof resolveSceneClipStageOptions>;
+};
+
+export type SceneClipBatchResult = {
+  index: number;
+  clip: SceneClipStageClip;
+};
+
+export type SceneClipBatchRunner = (items: SceneClipBatchItem[]) => Promise<SceneClipBatchResult[]>;
+
 export type SceneClipFingerprint = {
   kind: "scene_clip";
   version: 1;
@@ -228,6 +247,7 @@ export async function renderSceneClipsStage(input: {
   provider?: ImageToVideoProvider;
   fetcher?: typeof fetch;
   options?: SceneClipStageOptions;
+  batchRunner?: SceneClipBatchRunner;
   onClipCompleted?: (progress: { completedCount: number; totalCount: number }) => Promise<void> | void;
 }): Promise<SceneClipStageResult> {
   const resolvedOptions = resolveSceneClipStageOptions(input.options);
@@ -242,27 +262,51 @@ export async function renderSceneClipsStage(input: {
   const durationBySceneId = new Map(input.durations.map((duration) => [duration.sceneId, duration]));
   const totalCount = scenes.length;
   let completedCount = 0;
-  const indexedClips = await mapWithConcurrency(
-    scenes.map((scene, index) => ({ scene, index })),
-    resolvedOptions.concurrencyLimit,
-    async ({ scene, index }) => {
-      const clip = await renderOrReuseSceneClip({
-        scene,
-        durationBySceneId,
-        project: input.project,
+  const items = scenes.map((scene, index) => {
+    const duration = durationBySceneId.get(scene.id);
+    if (!duration) {
+      throw new TourSceneClipRenderError(
+        `Scene "${scene.title}" is missing a derived duration.`,
+        "SCENE_DURATION_MISSING"
+      );
+    }
+
+    return {
+      scene,
+      index,
+      duration,
+      projectId: input.project.project.id,
+      runId: input.runId,
+      userId: input.userId,
+      options: resolvedOptions,
+    };
+  });
+
+  const indexedClips = input.batchRunner
+    ? await input.batchRunner(items)
+    : [];
+
+  if (!input.batchRunner) {
+    for (const item of items) {
+      const clip = await renderSceneClipBatchItem({
+        item,
         repository: input.repository,
-        runId: input.runId,
-        userId: input.userId,
         renderer: input.renderer,
         provider: input.provider,
         fetcher: input.fetcher,
-        options: resolvedOptions,
       });
       completedCount += 1;
       await input.onClipCompleted?.({ completedCount, totalCount });
-      return { index, clip };
+      indexedClips.push({ index: item.index, clip });
     }
-  );
+  }
+
+  if (input.batchRunner) {
+    for (const _clip of indexedClips) {
+      completedCount += 1;
+      await input.onClipCompleted?.({ completedCount, totalCount });
+    }
+  }
 
   const clips = indexedClips
     .sort((a, b) => a.index - b.index)
@@ -271,10 +315,31 @@ export async function renderSceneClipsStage(input: {
   return { clips, completedCount, totalCount };
 }
 
+export async function renderSceneClipBatchItem(input: {
+  item: SceneClipBatchItem;
+  repository: TourRenderRepository;
+  renderer?: SceneClipRenderer;
+  provider?: ImageToVideoProvider;
+  fetcher?: typeof fetch;
+}): Promise<SceneClipStageClip> {
+  return renderOrReuseSceneClip({
+    scene: input.item.scene,
+    duration: input.item.duration,
+    projectId: input.item.projectId,
+    repository: input.repository,
+    runId: input.item.runId,
+    userId: input.item.userId,
+    renderer: input.renderer,
+    provider: input.provider,
+    fetcher: input.fetcher,
+    options: input.item.options,
+  });
+}
+
 async function renderOrReuseSceneClip(input: {
   scene: RenderableTourScene;
-  durationBySceneId: Map<string, SceneDuration>;
-  project: RenderableTourProject;
+  duration: SceneDuration;
+  projectId: string;
   repository: TourRenderRepository;
   runId: string;
   userId: string;
@@ -282,15 +347,8 @@ async function renderOrReuseSceneClip(input: {
   provider?: ImageToVideoProvider;
   fetcher?: typeof fetch;
   options: ReturnType<typeof resolveSceneClipStageOptions>;
-}): Promise<SceneClipStageResult["clips"][number]> {
-  const duration = input.durationBySceneId.get(input.scene.id);
-  if (!duration) {
-    throw new TourSceneClipRenderError(
-      `Scene "${input.scene.title}" is missing a derived duration.`,
-      "SCENE_DURATION_MISSING"
-    );
-  }
-
+}): Promise<SceneClipStageClip> {
+  const duration = input.duration;
   const fingerprint = buildSceneClipFingerprint({
     scene: input.scene,
     durationSeconds: duration.durationSeconds,
@@ -302,7 +360,7 @@ async function renderOrReuseSceneClip(input: {
 
   if (input.options.reuseExistingAssets) {
     const reusableAsset = await input.repository.findReusableAsset({
-      projectId: input.project.project.id,
+      projectId: input.projectId,
       kind: "scene_clip",
       fingerprintHash,
       sceneId: input.scene.id,
@@ -334,7 +392,7 @@ async function renderOrReuseSceneClip(input: {
           provider: input.provider,
           fetcher: input.fetcher,
           userId: input.userId,
-          projectId: input.project.project.id,
+          projectId: input.projectId,
           runId: input.runId,
           modelId: input.options.providerModelId,
           settings: input.options.renderSettings,
@@ -350,7 +408,7 @@ async function renderOrReuseSceneClip(input: {
 
   const upload = await input.repository.uploadRenderAssetBytes({
     userId: input.userId,
-    projectId: input.project.project.id,
+    projectId: input.projectId,
     runId: input.runId,
     kind: "scene_clip",
     content: rendered.content,
@@ -365,7 +423,7 @@ async function renderOrReuseSceneClip(input: {
   }
 
   const asset = await input.repository.createAsset({
-    projectId: input.project.project.id,
+    projectId: input.projectId,
     sceneId: input.scene.id,
     createdByRunId: input.runId,
     kind: "scene_clip",
@@ -895,28 +953,6 @@ async function runProcess(command: string, args: string[]): Promise<void> {
       reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
     });
   });
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrencyLimit: number,
-  worker: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let nextIndex = 0;
-
-  async function runWorker(): Promise<void> {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await worker(items[index]!);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrencyLimit, items.length) }, () => runWorker())
-  );
-  return results;
 }
 
 function stableStringify(value: unknown): string {

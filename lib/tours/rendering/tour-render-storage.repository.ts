@@ -181,7 +181,7 @@ export function createTourRenderStorageRepository(
 }
 
 function rewriteProviderUrlOrigin(signedUrl: string): string {
-  const providerOrigin = process.env.TOURS_PROVIDER_SUPABASE_URL?.trim();
+  const providerOrigin = process.env.PROVIDER_VISIBLE_SUPABASE_URL?.trim();
   if (!providerOrigin) {
     return signedUrl;
   }

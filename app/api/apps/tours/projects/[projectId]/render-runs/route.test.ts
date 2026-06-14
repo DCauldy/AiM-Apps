@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => ({
   toursAccessErrorResponse: vi.fn((access: { error: string; status: number }) =>
     Response.json({ error: access.error }, { status: access.status })
   ),
+  approveAllTourSceneFactsForProject: vi.fn(),
+  getTourRenderProjectSettings: vi.fn(),
   createTourRenderRun: vi.fn(),
   getTourRenderRunResultUrl: vi.fn(),
   listRecentTourRenderRuns: vi.fn(),
@@ -34,6 +36,14 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/tours/access.server", () => ({
   requireToursAccess: mocks.requireToursAccess,
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
+}));
+
+vi.mock("@/lib/tours/facts", () => ({
+  approveAllTourSceneFactsForProject: mocks.approveAllTourSceneFactsForProject,
+}));
+
+vi.mock("@/lib/tours/rendering/tour-render-project-settings", () => ({
+  getTourRenderProjectSettings: mocks.getTourRenderProjectSettings,
 }));
 
 vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
@@ -50,6 +60,7 @@ import { GET, POST } from "./route";
 describe("/api/apps/tours/projects/:projectId/render-runs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getTourRenderProjectSettings.mockResolvedValue({ elevenLabsVoiceId: null });
   });
 
   it("creates a real render task run for an open project", async () => {
@@ -69,6 +80,14 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     expect(mocks.requireToursAccess).toHaveBeenCalledWith({
       projectId: "project-1",
     });
+    expect(mocks.approveAllTourSceneFactsForProject).toHaveBeenCalledWith({
+      projectId: "project-1",
+      proofedBy: "user-1",
+    });
+    expect(mocks.getTourRenderProjectSettings).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+    });
     expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
       projectId: "project-1",
       userId: "user-1",
@@ -77,6 +96,35 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       {
         projectId: "project-1",
         userId: "user-1",
+      },
+      { skipPreflight: true }
+    );
+  });
+
+  it("uses the project voice ID when render options do not specify one", async () => {
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.getTourRenderProjectSettings.mockResolvedValue({ elevenLabsVoiceId: "voice-project-1" });
+    mocks.preflightTourRenderRun.mockResolvedValue({
+      ok: true,
+      summary: { projectId: "project-1" },
+    });
+    mocks.createTourRenderRun.mockResolvedValue(run);
+
+    const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
+      params: Promise.resolve({ projectId: "project-1" }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      options: { elevenLabsVoiceId: "voice-project-1" },
+    });
+    expect(mocks.createTourRenderRun).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: { elevenLabsVoiceId: "voice-project-1" },
       },
       { skipPreflight: true }
     );
@@ -106,6 +154,10 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       preflight,
     });
     expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.approveAllTourSceneFactsForProject).toHaveBeenCalledWith({
+      projectId: "project-1",
+      proofedBy: "user-1",
+    });
   });
 
   it("passes fresh render options through to preflight and run creation", async () => {
@@ -139,6 +191,10 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     );
 
     expect(response.status).toBe(201);
+    expect(mocks.approveAllTourSceneFactsForProject).toHaveBeenCalledWith({
+      projectId: "project-1",
+      proofedBy: "user-1",
+    });
     expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
       projectId: "project-1",
       userId: "user-1",
@@ -230,6 +286,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
 
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "Tour project was not found." });
+    expect(mocks.approveAllTourSceneFactsForProject).not.toHaveBeenCalled();
     expect(mocks.preflightTourRenderRun).not.toHaveBeenCalled();
     expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
   });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TourScene } from "@/lib/tours/workspace";
 import { useOptimisticSortableList } from "@/hooks/useOptimisticSortableList";
+import { tourWorkspaceQueryKey } from "./useTourProjectWorkspace";
 
 async function createSceneFromListingPhoto(projectId: string, formData: FormData) {
   const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes`, {
@@ -113,7 +114,7 @@ export function useTourSceneMutations({
 
   const invalidateWorkspace = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: ["tours", "workspace", projectId],
+      queryKey: tourWorkspaceQueryKey(projectId),
     });
     router.refresh();
   }, [projectId, queryClient, router]);

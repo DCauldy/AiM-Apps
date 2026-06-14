@@ -9,6 +9,7 @@ import {
   createOpenRouterImageToVideoProvider,
   renderSceneClipsStage,
   type ImageToVideoProvider,
+  type SceneClipBatchItem,
   type SceneClipRenderer,
 } from "./tour-scene-clips";
 import type {
@@ -254,6 +255,49 @@ describe("renderSceneClipsStage", () => {
       usage: "created",
     });
     expect(reusedScene2Asset.createdByRunId).toBe("older-run");
+  });
+
+  it("delegates scene rendering to a batch runner when provided", async () => {
+    const repository = createRepository();
+    const batchRunner = vi.fn(async (items) =>
+      items
+        .map((item: SceneClipBatchItem) => ({
+          index: item.index,
+          clip: {
+            sceneId: item.scene.id,
+            durationSeconds: item.duration.durationSeconds,
+            asset: {
+              ...sceneClipAsset,
+              id: `asset-${item.scene.id}`,
+              sceneId: item.scene.id,
+            },
+            reused: false,
+            fingerprintHash: `hash-${item.scene.id}`,
+            fingerprint: {},
+          },
+        }))
+        .reverse()
+    );
+    const onClipCompleted = vi.fn();
+
+    const result = await renderSceneClipsStage({
+      project: multiSceneProject,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      durations: multiSceneDurations,
+      batchRunner,
+      onClipCompleted,
+    });
+
+    expect(batchRunner).toHaveBeenCalledWith([
+      expect.objectContaining({ index: 0, scene: expect.objectContaining({ id: "scene-1" }) }),
+      expect.objectContaining({ index: 1, scene: expect.objectContaining({ id: "scene-2" }) }),
+      expect.objectContaining({ index: 2, scene: expect.objectContaining({ id: "scene-3" }) }),
+    ]);
+    expect(result.clips.map((clip) => clip.sceneId)).toEqual(["scene-1", "scene-2", "scene-3"]);
+    expect(repository.downloadListingMedia).not.toHaveBeenCalled();
+    expect(onClipCompleted).toHaveBeenLastCalledWith({ completedCount: 3, totalCount: 3 });
   });
 
   it("renders Ken Burns clips from downloaded source photos and records assets after upload", async () => {

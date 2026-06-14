@@ -48,6 +48,7 @@ export type TourProjectWorkspaceViewModel = {
     name: string;
     lifecycleStatus: "open";
     tourType: TourProjectType;
+    elevenLabsVoiceId: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -81,6 +82,7 @@ type TourProjectRow = {
   tour_type: TourProjectType;
   status: "open" | "archived";
   listing_media_acknowledged_at: string | null;
+  elevenlabs_voice_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -99,7 +101,7 @@ export async function getTourProjectWorkspaceViewModel(
 
   const { data: project } = await supabase
     .from("tours_projects")
-    .select("id, name, property_address, listing_url, tour_type, status, listing_media_acknowledged_at, created_at, updated_at")
+    .select("id, name, property_address, listing_url, tour_type, status, listing_media_acknowledged_at, elevenlabs_voice_id, created_at, updated_at")
     .eq("id", projectId)
     .eq("user_id", user.id)
     .eq("status", "open")
@@ -173,6 +175,7 @@ export async function getTourProjectWorkspaceViewModel(
       name: project.name,
       lifecycleStatus: "open",
       tourType: project.tour_type,
+      elevenLabsVoiceId: project.elevenlabs_voice_id,
       createdAt: project.created_at,
       updatedAt: project.updated_at,
     },

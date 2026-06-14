@@ -109,10 +109,6 @@ export function TourProjectsList() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold">Open projects</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Continue active listing projects or archive paused work without
-            deleting history.
-          </p>
         </div>
         <span className="text-xs text-muted-foreground">
           {projects.length} active

@@ -1,4 +1,5 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import { approveAllTourSceneFactsForProject } from "@/lib/tours/facts";
 import {
   createTourRenderRun,
   getTourRenderRunResultUrl,
@@ -7,6 +8,7 @@ import {
   toTourRenderRunStatusResponse,
   toTourRenderRunStatusResponseWithResultUrl,
 } from "@/lib/tours/rendering/tour-render-runs";
+import { getTourRenderProjectSettings } from "@/lib/tours/rendering/tour-render-project-settings";
 import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +50,21 @@ type CreateRenderRunRequestBody = {
   options?: TourRenderOptions;
 };
 
+function mergeProjectRenderSettings(
+  options: TourRenderOptions | undefined,
+  settings: Awaited<ReturnType<typeof getTourRenderProjectSettings>>
+): TourRenderOptions | undefined {
+  const projectVoiceId = settings.elevenLabsVoiceId?.trim();
+  if (!projectVoiceId || options?.elevenLabsVoiceId) {
+    return options;
+  }
+
+  return {
+    ...(options ?? {}),
+    elevenLabsVoiceId: projectVoiceId,
+  };
+}
+
 async function readCreateRenderRunRequestBody(request: Request): Promise<CreateRenderRunRequestBody> {
   const payload = await request.json().catch(() => null);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -76,10 +93,20 @@ export async function POST(
     return toursAccessErrorResponse(access);
   }
 
+  await approveAllTourSceneFactsForProject({
+    projectId,
+    proofedBy: access.user.id,
+  });
+  const projectRenderSettings = await getTourRenderProjectSettings({
+    projectId,
+    userId: access.user.id,
+  });
+  const options = mergeProjectRenderSettings(body.options, projectRenderSettings);
+
   const preflight = await preflightTourRenderRun({
     projectId,
     userId: access.user.id,
-    options: body.options,
+    options,
   });
   if (!preflight.ok) {
     return Response.json(
@@ -92,7 +119,7 @@ export async function POST(
     {
       projectId,
       userId: access.user.id,
-      options: body.options,
+      options,
     },
     { skipPreflight: true }
   );

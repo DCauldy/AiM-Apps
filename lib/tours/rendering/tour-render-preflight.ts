@@ -275,7 +275,7 @@ export async function preflightTourRender(
 
   if (
     readableSourcePaths.length > 0 &&
-    process.env.TOURS_PROVIDER_SUPABASE_URL?.trim() &&
+    process.env.PROVIDER_VISIBLE_SUPABASE_URL?.trim() &&
     !(await canReachProviderSignedUrl(repository, readableSourcePaths[0], fetcher))
   ) {
     issues.push(

@@ -246,8 +246,8 @@ describe("preflightTourRender", () => {
   });
 
   test("checks provider-facing signed media URL when a provider Supabase origin is configured", async () => {
-    const previous = process.env.TOURS_PROVIDER_SUPABASE_URL;
-    process.env.TOURS_PROVIDER_SUPABASE_URL = "https://provider.example.test";
+    const previous = process.env.PROVIDER_VISIBLE_SUPABASE_URL;
+    process.env.PROVIDER_VISIBLE_SUPABASE_URL = "https://provider.example.test";
     const repository = createRepository();
     const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 206 }));
 
@@ -277,15 +277,15 @@ describe("preflightTourRender", () => {
       })
     );
     if (previous === undefined) {
-      delete process.env.TOURS_PROVIDER_SUPABASE_URL;
+      delete process.env.PROVIDER_VISIBLE_SUPABASE_URL;
     } else {
-      process.env.TOURS_PROVIDER_SUPABASE_URL = previous;
+      process.env.PROVIDER_VISIBLE_SUPABASE_URL = previous;
     }
   });
 
   test("blocks when provider-facing signed media URL is unreachable", async () => {
-    const previous = process.env.TOURS_PROVIDER_SUPABASE_URL;
-    process.env.TOURS_PROVIDER_SUPABASE_URL = "https://provider.example.test";
+    const previous = process.env.PROVIDER_VISIBLE_SUPABASE_URL;
+    process.env.PROVIDER_VISIBLE_SUPABASE_URL = "https://provider.example.test";
     const repository = createRepository();
 
     await expect(
@@ -306,9 +306,9 @@ describe("preflightTourRender", () => {
       issues: [{ code: "provider_media_unreachable", severity: "blocking" }],
     });
     if (previous === undefined) {
-      delete process.env.TOURS_PROVIDER_SUPABASE_URL;
+      delete process.env.PROVIDER_VISIBLE_SUPABASE_URL;
     } else {
-      process.env.TOURS_PROVIDER_SUPABASE_URL = previous;
+      process.env.PROVIDER_VISIBLE_SUPABASE_URL = previous;
     }
   });
 });
