@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
+import { tasks } from "@trigger.dev/sdk/v3";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { encrypt } from "@/lib/hyperlocal/encryption";
-import { inngest } from "@/lib/inngest/client";
 import { getActiveProfile } from "@/lib/profiles/server";
 import type { CrmPlatform } from "@/types/hyperlocal";
+import type { cmaCrmSyncTask } from "@/triggers/cma-crm-sync";
 import type {
   AppSlug,
   CmaCrmFilterConfig,
@@ -261,24 +262,22 @@ export async function POST(req: NextRequest) {
   }
 
   // Auto-trigger the listing_studio past-client sync when CMA is among
-  // the apps that just attached. Fires async via Inngest so the POST
-  // returns immediately — a 25k-contact pull would otherwise blow past
-  // serverless timeouts. The dashboard empty state clears as soon as
-  // the first batch lands in cma_clients.
+  // the apps that just attached. Fires async via Trigger.dev so the
+  // POST returns immediately — a 25k-contact pull would otherwise
+  // blow past serverless timeouts. The dashboard empty state clears
+  // as soon as the first batch lands in cma_clients.
   if (apps.some((a) => a.app === "listing_studio")) {
     try {
-      await inngest.send({
-        name: "cma/crm-sync.requested",
-        data: {
-          userId: user.id,
-          connectionId: (conn as PlatformCrmConnectionPublic).id,
-        },
+      await tasks.trigger<typeof cmaCrmSyncTask>("cma-crm-sync", {
+        userId: user.id,
+        connectionId: (conn as PlatformCrmConnectionPublic).id,
       });
     } catch (e) {
-      // Don't fail the connect on a send failure — the agent can hit
-      // "Sync now" manually. Log so we notice if Inngest is down.
+      // Don't fail the connect on an enqueue failure — the agent can
+      // hit "Sync now" manually. Log so we notice if Trigger.dev
+      // is unreachable.
       console.error(
-        "[profile/crm-connections] inngest.send failed:",
+        "[profile/crm-connections] tasks.trigger failed:",
         e instanceof Error ? e.message : e,
       );
     }

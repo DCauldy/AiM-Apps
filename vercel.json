@@ -15,10 +15,6 @@
     {
       "path": "/api/cron/hyperlocal-events-rollup",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/cma-crm-sync",
-      "schedule": "15 5 * * *"
     }
   ]
 }
