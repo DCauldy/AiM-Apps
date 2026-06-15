@@ -8,6 +8,7 @@ import {
   buildSceneClipFingerprint,
   createOpenRouterImageToVideoProvider,
   renderSceneClipsStage,
+  resolveSceneClipStageOptions,
   type ImageToVideoProvider,
   type SceneClipBatchItem,
   type SceneClipRenderer,
@@ -163,6 +164,16 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
 describe("renderSceneClipsStage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TOURS_RENDER_MODE;
+  });
+
+  it("uses TOURS_RENDER_MODE when stage options omit renderMode", () => {
+    process.env.TOURS_RENDER_MODE = "provider_image_to_video";
+
+    expect(resolveSceneClipStageOptions().renderMode).toBe("provider_image_to_video");
+    expect(resolveSceneClipStageOptions({ renderMode: "ken_burns_ffmpeg" }).renderMode).toBe(
+      "ken_burns_ffmpeg"
+    );
   });
 
   it("selects reusable scene clips when fingerprints match", async () => {

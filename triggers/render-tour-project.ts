@@ -21,6 +21,7 @@ import {
   type SceneClipBatchResult,
 } from "@/lib/tours/rendering/tour-scene-clips";
 import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/tour-render-retention";
+import { getDefaultTourRenderMode } from "@/lib/tours/rendering/tour-render-preflight";
 
 export const renderTourSceneClipTask = task({
   id: "render-tour-scene-clip",
@@ -189,7 +190,7 @@ export const renderTourProjectTask = task({
       projectId: payload.projectId,
       renderRunId: payload.renderRunId,
       triggerRunId: ctx.run.id,
-      renderMode: payload.options?.renderMode ?? "ken_burns_ffmpeg",
+      renderMode: payload.options?.renderMode ?? getDefaultTourRenderMode(),
       sceneClipProviderModelId:
         payload.options?.sceneClipProviderModelId ?? null,
       reuseExistingAssets: payload.options?.reuseExistingAssets,

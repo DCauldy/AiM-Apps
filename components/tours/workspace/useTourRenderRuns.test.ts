@@ -69,7 +69,6 @@ test("ignores completed renders without signed download URLs", () => {
 
 test("restitch render options reuse generated assets and regenerate only the final video", () => {
   assert.deepEqual(RESTITCH_RENDER_OPTIONS, {
-    renderMode: "ken_burns_ffmpeg",
     reuseExistingAssets: true,
     reuse: {
       scriptPlan: true,

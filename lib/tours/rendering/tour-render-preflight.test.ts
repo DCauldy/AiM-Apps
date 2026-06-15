@@ -81,6 +81,7 @@ describe("preflightTourRender", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.ELEVENLABS_VOICE_ID = "voice-1";
+    delete process.env.TOURS_RENDER_MODE;
   });
 
   test("returns a summary when the project is renderable", async () => {
@@ -104,6 +105,32 @@ describe("preflightTourRender", () => {
     expect(repository.canWriteGeneratedMedia).toHaveBeenCalledWith({
       userId: "user-1",
       projectId: "project-1",
+    });
+  });
+
+  test("uses TOURS_RENDER_MODE as the default render mode", async () => {
+    process.env.TOURS_RENDER_MODE = "provider_image_to_video";
+    const repository = createRepository();
+
+    await expect(runPreflight(repository)).resolves.toEqual({
+      ok: true,
+      summary: expect.objectContaining({
+        renderMode: "provider_image_to_video",
+      }),
+    });
+  });
+
+  test("lets explicit render options override TOURS_RENDER_MODE", async () => {
+    process.env.TOURS_RENDER_MODE = "provider_image_to_video";
+    const repository = createRepository();
+
+    await expect(
+      runPreflight(repository, { renderMode: "ken_burns_ffmpeg" })
+    ).resolves.toEqual({
+      ok: true,
+      summary: expect.objectContaining({
+        renderMode: "ken_burns_ffmpeg",
+      }),
     });
   });
 

@@ -123,6 +123,7 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
 describe("createTourRenderRun", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env.TOURS_RENDER_MODE;
   });
 
   it("creates a queued product run, triggers the real render task, and attaches the Trigger run id", async () => {
@@ -171,6 +172,38 @@ describe("createTourRenderRun", () => {
       userId: "user-1",
       triggerRunId: "trigger-run-1",
     });
+  });
+
+  it("uses TOURS_RENDER_MODE for default persisted and Trigger payload options", async () => {
+    process.env.TOURS_RENDER_MODE = "provider_image_to_video";
+    const repository = createRepository();
+    const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
+
+    await createTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+      },
+      {
+        repository,
+        triggerTask,
+        skipPreflight: true,
+      }
+    );
+
+    const expectedOptions = {
+      renderMode: "provider_image_to_video",
+      reuseExistingAssets: true,
+      tourType: "tour_video",
+    };
+    expect(repository.createRenderRun).toHaveBeenCalledWith(
+      expect.objectContaining({ options: expectedOptions })
+    );
+    expect(triggerTask).toHaveBeenCalledWith(
+      "render-tour-project",
+      expect.objectContaining({ options: expectedOptions }),
+      expect.any(Object)
+    );
   });
 
   it("merges project avatar settings into persisted run and Trigger payload options", async () => {

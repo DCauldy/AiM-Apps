@@ -21,7 +21,6 @@ type CreateRenderRunInput = {
 };
 
 export const RESTITCH_RENDER_OPTIONS = {
-  renderMode: "ken_burns_ffmpeg",
   reuseExistingAssets: true,
   reuse: {
     scriptPlan: true,

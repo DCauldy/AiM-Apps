@@ -125,6 +125,19 @@ type PreflightTourRenderServiceOptions = {
 };
 
 const DEFAULT_RENDER_MODE: TourRenderMode = "ken_burns_ffmpeg";
+const TOUR_RENDER_MODES = new Set<TourRenderMode>([
+  "ken_burns_ffmpeg",
+  "provider_image_to_video",
+]);
+
+export function isTourRenderMode(value: unknown): value is TourRenderMode {
+  return typeof value === "string" && TOUR_RENDER_MODES.has(value as TourRenderMode);
+}
+
+export function getDefaultTourRenderMode(): TourRenderMode {
+  const configuredMode = process.env.TOURS_RENDER_MODE?.trim();
+  return isTourRenderMode(configuredMode) ? configuredMode : DEFAULT_RENDER_MODE;
+}
 
 function issue(
   code: TourRenderPreflightIssueCode,
@@ -149,7 +162,7 @@ function summarizePreflightProject(
   return {
     projectId: project.project.id,
     tourType: project.project.tourType,
-    renderMode: options.renderMode ?? DEFAULT_RENDER_MODE,
+    renderMode: options.renderMode ?? getDefaultTourRenderMode(),
     includedSceneCount: includedScenes.length,
     sourcePhotoCount: includedScenes.filter((scene) => scene.authoritativePhoto).length,
     proofedFactCount: includedScenes.reduce((count, scene) => count + scene.proofedFacts.length, 0),
@@ -194,6 +207,15 @@ export async function preflightTourRender(
     options,
     project: project.project,
   });
+
+  if (options.renderMode !== undefined && !isTourRenderMode(options.renderMode)) {
+    issues.push(
+      issue(
+        "unsupported_render_mode",
+        "Tour render mode must be ken_burns_ffmpeg or provider_image_to_video."
+      )
+    );
+  }
 
   if (project.project.status !== "open") {
     issues.push(

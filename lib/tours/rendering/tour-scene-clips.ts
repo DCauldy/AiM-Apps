@@ -11,7 +11,7 @@ import type {
   TourRenderRepository,
 } from "./tour-render.repository";
 import type { SceneDuration } from "./tour-transitions";
-import type { TourRenderMode } from "./tour-render-preflight";
+import { getDefaultTourRenderMode, type TourRenderMode } from "./tour-render-preflight";
 
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
 export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v1";
@@ -182,7 +182,7 @@ export function resolveSceneClipStageOptions(
   concurrencyLimit: number;
 } {
   return {
-    renderMode: options.renderMode ?? "ken_burns_ffmpeg",
+    renderMode: options.renderMode ?? getDefaultTourRenderMode(),
     reuseExistingAssets: options.reuseExistingAssets !== false,
     providerModelId: options.providerModelId ?? DEFAULT_SCENE_CLIP_PROVIDER_MODEL,
     renderSettings: {

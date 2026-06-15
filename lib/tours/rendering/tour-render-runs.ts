@@ -17,6 +17,7 @@ import {
 } from "./tour-render.repository";
 import { mergeProjectAvatarSettingsIntoRenderOptions } from "./avatar-project-render-options";
 import {
+  getDefaultTourRenderMode,
   preflightTourRender,
   type TourRenderOptions,
   type TourRenderPreflightResult,
@@ -37,14 +38,16 @@ type CreateTourRenderRunServiceOptions = RenderRunServiceOptions & {
   skipPreflight?: boolean;
 };
 
-const DEFAULT_RENDER_OPTIONS: TourRenderOptions = {
-  renderMode: "ken_burns_ffmpeg",
-  reuseExistingAssets: true,
-};
-
 const TRIGGER_ATTACH_TIMEOUT_MS = 3_000;
 const RENDER_TASK_ENQUEUE_FAILED_MESSAGE =
   "Could not start the render task. Try again.";
+
+function getDefaultTourRenderOptions(): TourRenderOptions {
+  return {
+    renderMode: getDefaultTourRenderMode(),
+    reuseExistingAssets: true,
+  };
+}
 
 function isRenderAssetDeleted(asset: TourRenderAsset): boolean {
   return Boolean(asset.deletedAt || asset.storageDeletedAt);
@@ -182,7 +185,7 @@ export async function createTourRenderRun(
 ): Promise<TourRenderRun | null> {
   const repository = options.repository ?? (await createTourRenderRepository());
   const renderOptions: TourRenderOptions = {
-    ...DEFAULT_RENDER_OPTIONS,
+    ...getDefaultTourRenderOptions(),
     ...(input.options ?? {}),
   };
 
@@ -306,7 +309,7 @@ export async function preflightTourRenderRun(
       projectId: input.projectId,
       userId: input.userId,
       options: {
-        ...DEFAULT_RENDER_OPTIONS,
+        ...getDefaultTourRenderOptions(),
         ...(input.options ?? {}),
       },
     },
