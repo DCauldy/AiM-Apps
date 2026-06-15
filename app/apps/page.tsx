@@ -5,6 +5,7 @@ import { AppsShowcase } from "@/components/apps/AppsShowcase";
 import { ActiveProfileChip } from "@/components/profile/ActiveProfileChip";
 import { Circuitry } from "@/components/decor/Circuitry";
 import { UserMenu } from "@/components/layout/UserMenu";
+import { WelcomeModal } from "@/components/apps/WelcomeModal";
 import { getTrialStatus } from "@/lib/trial";
 import { getBofuUsage } from "@/lib/blog-engine/usage";
 import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
@@ -21,6 +22,21 @@ export default async function AppsPage() {
   const flags = await getFeatureFlags();
   const subscriptionTier =
     (user?.app_metadata?.subscription_tier as string) ?? "standalone";
+
+  // Show welcome modal when the user has no active platform profile AND
+  // hasn't already dismissed the intro. Once dismissed it stays gone
+  // across devices (DB-backed). Setting up a profile also clears the
+  // trigger naturally (active_profile_id becomes non-null).
+  let showWelcome = false;
+  if (user) {
+    const { data: profileRow } = await supabase
+      .from("profiles")
+      .select("active_profile_id, welcome_dismissed_at")
+      .eq("id", user.id)
+      .maybeSingle();
+    showWelcome =
+      !profileRow?.active_profile_id && !profileRow?.welcome_dismissed_at;
+  }
 
   const usageStats: UsageStats = {
     "prompt-studio": null,
@@ -150,6 +166,7 @@ export default async function AppsPage() {
           usageStats={usageStats}
         />
       </div>
+      <WelcomeModal initialOpen={showWelcome} />
     </div>
   );
 }
