@@ -27,32 +27,32 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import {
-  getUserApiKey,
+  getProfileApiKey,
   UserApiKeyMissingError,
-  withUserApiKey,
+  withProfileApiKey,
 } from "@/lib/user-api-keys/service";
 
-describe("user API key service", () => {
+describe("profile API key service", () => {
   beforeEach(() => {
     mocks.decrypt.mockReset();
     mocks.maybeSingle.mockReset();
   });
 
-  test("decrypts a configured user API key", async () => {
+  test("decrypts a configured API key", async () => {
     mocks.maybeSingle.mockResolvedValue({
       data: { api_key_encrypted: "encrypted-key" },
       error: null,
     });
     mocks.decrypt.mockReturnValue("plain-key");
 
-    await expect(getUserApiKey("user-1", "elevenlabs")).resolves.toBe("plain-key");
+    await expect(getProfileApiKey("profile-1", "elevenlabs")).resolves.toBe("plain-key");
     expect(mocks.decrypt).toHaveBeenCalledWith("encrypted-key");
   });
 
-  test("returns null when a user API key is not configured", async () => {
+  test("returns null when an API key is not configured", async () => {
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
 
-    await expect(getUserApiKey("user-1", "heygen")).resolves.toBeNull();
+    await expect(getProfileApiKey("profile-1", "heygen")).resolves.toBeNull();
     expect(mocks.decrypt).not.toHaveBeenCalled();
   });
 
@@ -63,7 +63,7 @@ describe("user API key service", () => {
     });
     mocks.decrypt.mockReturnValue("plain-key");
 
-    const service = await withUserApiKey("user-1", "elevenlabs", (apiKey) => ({
+    const service = await withProfileApiKey("profile-1", "elevenlabs", (apiKey: string) => ({
       apiKey,
       ready: true,
     }));
@@ -75,7 +75,7 @@ describe("user API key service", () => {
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
 
     await expect(
-      withUserApiKey("user-1", "heygen", (apiKey) => ({ apiKey }))
+      withProfileApiKey("profile-1", "heygen", (apiKey: string) => ({ apiKey }))
     ).rejects.toMatchObject({
       name: "UserApiKeyMissingError",
       serviceKey: "heygen",
@@ -86,8 +86,8 @@ describe("user API key service", () => {
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
 
     try {
-      await withUserApiKey("user-1", "elevenlabs", (apiKey) => ({ apiKey }));
-      assert.fail("Expected withUserApiKey to throw");
+      await withProfileApiKey("profile-1", "elevenlabs", (apiKey: string) => ({ apiKey }));
+      assert.fail("Expected withProfileApiKey to throw");
     } catch (error) {
       assert.ok(error instanceof UserApiKeyMissingError);
       assert.equal(error.serviceKey, "elevenlabs");

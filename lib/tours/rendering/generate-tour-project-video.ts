@@ -17,7 +17,8 @@ import {
   TourScriptPlanningError,
   type TourScriptPlanningProvider,
 } from "./tour-script-planning";
-import { getUserApiKey } from "@/lib/user-api-keys/service";
+import { getProfileApiKey } from "@/lib/user-api-keys/service";
+import { resolveProfileIdForRender } from "@/lib/profiles/resolve-for-render";
 import {
   generateVoiceoverStage,
   TourVoiceoverError,
@@ -79,7 +80,9 @@ type GenerateTourProjectVideoOptions = {
   finalVideoRenderer?: FinalVideoRenderer;
   imageToVideoProvider?: ImageToVideoProvider;
   avatarProvider?: HeyGenAvatarProvider;
-  getApiKey?: typeof getUserApiKey;
+  getApiKey?: typeof getProfileApiKey;
+  /** Override the project→profile_id resolver in tests. */
+  resolveProfileId?: typeof resolveProfileIdForRender;
 };
 
 function safeErrorMessage(_error: unknown): string {
@@ -304,6 +307,7 @@ export async function generateTourProjectVideo(
 ): Promise<TourRenderRun | null> {
   const repository = options.repository ?? (await createTourRenderRepository());
   const preflight = options.preflight ?? preflightTourRender;
+  const resolveProfileId = options.resolveProfileId ?? resolveProfileIdForRender;
   const scriptPlanningProvider = options.scriptPlanningProvider;
   const voiceoverProvider = options.voiceoverProvider;
   const transitionDetectionProvider = options.transitionDetectionProvider;
@@ -317,6 +321,18 @@ export async function generateTourProjectVideo(
 
     if (!run) {
       return markShellFailed(repository, input, "Tour render run was not found.");
+    }
+
+    // Resolve which platform_profile's keys this render uses. Preflight
+    // also calls this; doing it once at the top lets us pass profileId
+    // down to the voiceover + avatar stages without re-querying.
+    const profileId = await resolveProfileId(input.projectId, input.userId);
+    if (!profileId) {
+      return markShellFailed(
+        repository,
+        input,
+        "No platform profile is set up — add one in /apps/profile before rendering."
+      );
     }
 
     const preflightResult = await preflight(
@@ -438,6 +454,7 @@ export async function generateTourProjectVideo(
         projectId: input.projectId,
         runId: input.renderRunId,
         userId: input.userId,
+        profileId,
         scriptPlan: scriptPlanResult.plan,
         repository,
         provider: voiceoverProvider,
@@ -598,6 +615,7 @@ export async function generateTourProjectVideo(
         projectId: input.projectId,
         runId: input.renderRunId,
         userId: input.userId,
+        profileId,
         source: {
           mode: "generate",
           title: project.project.name,

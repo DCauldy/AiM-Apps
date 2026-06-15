@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { getUserApiKey } from "@/lib/user-api-keys/service";
+import { getProfileApiKey } from "@/lib/user-api-keys/service";
 import type { TourScriptPlan } from "./tour-script-planning";
 import type { TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
 
@@ -199,10 +199,14 @@ export async function generateVoiceoverStage(input: {
   projectId: string;
   runId: string;
   userId: string;
+  /** Platform profile the key lookup is scoped to. Required since
+   *  20260615000002 — see lib/profiles/resolve-for-render.ts for
+   *  how the orchestrator picks this. */
+  profileId: string;
   scriptPlan: TourScriptPlan;
   repository: TourRenderRepository;
   provider: VoiceoverProvider;
-  getApiKey?: typeof getUserApiKey;
+  getApiKey?: typeof getProfileApiKey;
   options?: VoiceoverStageOptions;
 }): Promise<VoiceoverStageResult> {
   const resolvedOptions = resolveVoiceoverStageOptions(input.options);
@@ -261,7 +265,7 @@ export async function generateVoiceoverStage(input: {
     }
   }
 
-  const apiKey = await (input.getApiKey ?? getUserApiKey)(input.userId, "elevenlabs");
+  const apiKey = await (input.getApiKey ?? getProfileApiKey)(input.profileId, "elevenlabs");
   if (!apiKey) {
     throw new TourVoiceoverError(
       "ElevenLabs API key is required for voiceover generation.",

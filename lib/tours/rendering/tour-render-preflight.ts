@@ -1,4 +1,5 @@
-import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { resolveProfileIdForRender } from "@/lib/profiles/resolve-for-render";
 import type { TourProjectType } from "../project-types";
 import { getRequiredProviderKeysForTourType } from "../tour-type-availability";
 import {
@@ -109,10 +110,14 @@ type ProviderKeyStatusMap = Partial<Record<"elevenlabs" | "heygen", boolean>>;
 type PreflightTourRenderServiceOptions = {
   repository?: TourRenderRepository;
   fetcher?: typeof fetch;
+  /** Profile-scoped key-status lookup. Defaults to reading from
+   *  user_api_keys joined by profile_id. */
   getProviderKeyStatusMap?: (
-    userId: string,
+    profileId: string,
     serviceKeys: readonly ("elevenlabs" | "heygen")[]
   ) => Promise<ProviderKeyStatusMap>;
+  /** Override the project→profile_id resolver in tests. */
+  resolveProfileId?: typeof resolveProfileIdForRender;
 };
 
 const DEFAULT_RENDER_MODE: TourRenderMode = "ken_burns_ffmpeg";
@@ -158,7 +163,9 @@ export async function preflightTourRender(
 ): Promise<TourRenderPreflightResult> {
   const repository = serviceOptions.repository ?? (await createTourRenderRepository());
   const fetcher = serviceOptions.fetcher ?? fetch;
-  const getStatusMap = serviceOptions.getProviderKeyStatusMap ?? getUserApiKeyStatusMap;
+  const getStatusMap = serviceOptions.getProviderKeyStatusMap ?? getProfileApiKeyStatusMap;
+  const resolveProfileId =
+    serviceOptions.resolveProfileId ?? resolveProfileIdForRender;
   const options = input.options ?? {};
   const issues: TourRenderPreflightIssue[] = [];
 
@@ -206,7 +213,14 @@ export async function preflightTourRender(
 
   const requiredProviderKeys = getRequiredProviderKeysForTourType(project.project.tourType);
   if (requiredProviderKeys.length > 0) {
-    const keyStatus = await getStatusMap(input.userId, requiredProviderKeys);
+    // Resolve the profile that owns the API keys for this render. Falls
+    // back to the user's default profile when the project predates the
+    // profile_id column. Null only if the user has no profile at all —
+    // then every required key is reported missing.
+    const profileId = await resolveProfileId(input.projectId, input.userId);
+    const keyStatus = profileId
+      ? await getStatusMap(profileId, requiredProviderKeys)
+      : ({} as ProviderKeyStatusMap);
 
     if (project.project.tourType === "tour_video_voice_over" && keyStatus.elevenlabs !== true) {
       issues.push(

@@ -2,7 +2,8 @@ import { CreateTourProjectForm } from "@/components/tours/CreateTourProjectForm"
 import { TourProjectsList } from "@/components/tours/TourProjectsList";
 import { PageFrame, PageHeader } from "@/components/app-shell/PagePrimitives";
 import { createClient } from "@/lib/supabase/server";
-import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { getSlotState } from "@/lib/profiles/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,12 @@ export default async function ToursDashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const apiKeyStatus = await getUserApiKeyStatusMap(user.id, ["elevenlabs", "heygen"]);
+  // Keys are profile-scoped — read against the active profile so the
+  // dashboard reflects "what THIS persona can do today."
+  const slot = await getSlotState(user.id).catch(() => null);
+  const apiKeyStatus = slot?.active_profile_id
+    ? await getProfileApiKeyStatusMap(slot.active_profile_id, ["elevenlabs", "heygen"])
+    : {};
   const canUseElevenLabs = apiKeyStatus.elevenlabs === true;
   const canUseHeyGen = apiKeyStatus.heygen === true;
 

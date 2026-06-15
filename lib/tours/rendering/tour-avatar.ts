@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { access, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { getUserApiKey } from "@/lib/user-api-keys/service";
+import { getProfileApiKey } from "@/lib/user-api-keys/service";
 import { createHeyGenAvatarProvider } from "./heygen-avatar-provider";
 import {
   probeHeyGenAvatarVideo,
@@ -338,12 +338,14 @@ export async function prepareHeyGenAvatarStage(input: {
   projectId: string;
   runId: string;
   userId: string;
+  /** Platform profile the HeyGen key lookup is scoped to. */
+  profileId: string;
   source: HeyGenAvatarSource;
   repository: TourRenderRepository;
   provider?: HeyGenAvatarProvider;
   voiceoverAudioAsset?: Pick<TourRenderAsset, "id" | "fingerprintHash"> | null;
   existingAvatarAsset?: Pick<TourRenderAsset, "fingerprintHash"> | null;
-  getApiKey?: typeof getUserApiKey;
+  getApiKey?: typeof getProfileApiKey;
   options?: HeyGenAvatarStageOptions;
 }): Promise<HeyGenAvatarStageResult> {
   const resolvedOptions = resolveHeyGenAvatarStageOptions(input.options);
@@ -414,7 +416,7 @@ export async function prepareHeyGenAvatarStage(input: {
             avatarId: resolvedOptions.avatarId,
             generation: resolvedOptions.generation,
             provider: input.provider ?? createHeyGenAvatarProvider(),
-            apiKey: await resolveHeyGenApiKey(input.userId, input.getApiKey),
+            apiKey: await resolveHeyGenApiKey(input.profileId, input.getApiKey),
           });
 
     const metadata = await prepareHeyGenAvatarMetadata({
@@ -837,10 +839,10 @@ export async function exportHeyGenAvatarFrameChecks(input: {
 }
 
 async function resolveHeyGenApiKey(
-  userId: string,
-  getApiKey: typeof getUserApiKey = getUserApiKey
+  profileId: string,
+  getApiKey: typeof getProfileApiKey = getProfileApiKey
 ): Promise<string> {
-  const apiKey = await getApiKey(userId, "heygen");
+  const apiKey = await getApiKey(profileId, "heygen");
   if (!apiKey) {
     throw new TourAvatarError("HeyGen API key is required for avatar generation.", "MISSING_HEYGEN_API_KEY");
   }

@@ -27,12 +27,12 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 
 import {
-  getUserApiKeyStatus,
-  getUserApiKeyStatusMap,
-  listUserApiKeySummaries,
+  getProfileApiKeyStatus,
+  getProfileApiKeyStatusMap,
+  listProfileApiKeySummaries,
 } from "@/lib/user-api-keys/server";
 
-describe("user API key UI status helpers", () => {
+describe("profile API key UI status helpers", () => {
   beforeEach(() => {
     mocks.listOrder.mockReset();
     mocks.maybeSingle.mockReset();
@@ -45,7 +45,7 @@ describe("user API key UI status helpers", () => {
       error: null,
     });
 
-    await expect(listUserApiKeySummaries("user-1")).resolves.toEqual([
+    await expect(listProfileApiKeySummaries("profile-1")).resolves.toEqual([
       {
         service_key: "elevenlabs",
         has_key: true,
@@ -60,7 +60,7 @@ describe("user API key UI status helpers", () => {
       error: null,
     });
 
-    await expect(getUserApiKeyStatus("user-1", "heygen")).resolves.toEqual({
+    await expect(getProfileApiKeyStatus("profile-1", "heygen")).resolves.toEqual({
       service_key: "heygen",
       has_key: true,
       updated_at: "2026-06-07T00:00:00.000Z",
@@ -70,7 +70,7 @@ describe("user API key UI status helpers", () => {
   test("returns unconfigured status for one integration", async () => {
     mocks.maybeSingle.mockResolvedValue({ data: null, error: null });
 
-    await expect(getUserApiKeyStatus("user-1", "elevenlabs")).resolves.toEqual({
+    await expect(getProfileApiKeyStatus("profile-1", "elevenlabs")).resolves.toEqual({
       service_key: "elevenlabs",
       has_key: false,
       updated_at: null,
@@ -83,14 +83,14 @@ describe("user API key UI status helpers", () => {
       error: null,
     });
 
-    assert.deepEqual(await getUserApiKeyStatusMap("user-1", ["elevenlabs", "heygen"]), {
+    assert.deepEqual(await getProfileApiKeyStatusMap("profile-1", ["elevenlabs", "heygen"]), {
       elevenlabs: true,
       heygen: false,
     });
   });
 
   test("returns an empty map without querying when no services are requested", async () => {
-    assert.deepEqual(await getUserApiKeyStatusMap("user-1", []), {});
+    assert.deepEqual(await getProfileApiKeyStatusMap("profile-1", []), {});
     expect(mocks.inFilter).not.toHaveBeenCalled();
   });
 });

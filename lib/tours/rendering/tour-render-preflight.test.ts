@@ -65,6 +65,9 @@ async function runPreflight(
       repository,
       fetcher: vi.fn().mockResolvedValue(new Response(null, { status: 206 })),
       getProviderKeyStatusMap: vi.fn().mockResolvedValue(providerKeys),
+      // Stub out the resolver so the test doesn't reach into Supabase
+      // for the project→profile_id lookup.
+      resolveProfileId: vi.fn().mockResolvedValue("profile-1"),
     }
   );
 }

@@ -15,12 +15,21 @@ export type UserApiKeyStatus = {
 
 export type UserApiKeyStatusMap = Partial<Record<UserApiKeyServiceKey, boolean>>;
 
-export async function listUserApiKeySummaries(userId: string): Promise<UserApiKeySummary[]> {
+/**
+ * List the API key summaries for a single profile.
+ *
+ * Keys are profile-scoped (since 20260615000002). Each platform_profile
+ * holds its own ElevenLabs/HeyGen credentials so a multi-profile user
+ * can run different accounts per persona.
+ */
+export async function listProfileApiKeySummaries(
+  profileId: string
+): Promise<UserApiKeySummary[]> {
   const service = createServiceRoleClient();
   const { data, error } = await service
     .from("user_api_keys")
     .select("service_key, updated_at")
-    .eq("user_id", userId)
+    .eq("profile_id", profileId)
     .order("service_key", { ascending: true });
 
   if (error) throw error;
@@ -32,15 +41,15 @@ export async function listUserApiKeySummaries(userId: string): Promise<UserApiKe
   }));
 }
 
-export async function getUserApiKeyStatus(
-  userId: string,
+export async function getProfileApiKeyStatus(
+  profileId: string,
   serviceKey: UserApiKeyServiceKey
 ): Promise<UserApiKeyStatus> {
   const service = createServiceRoleClient();
   const { data, error } = await service
     .from("user_api_keys")
     .select("service_key, updated_at")
-    .eq("user_id", userId)
+    .eq("profile_id", profileId)
     .eq("service_key", serviceKey)
     .maybeSingle();
 
@@ -53,8 +62,8 @@ export async function getUserApiKeyStatus(
   };
 }
 
-export async function getUserApiKeyStatusMap(
-  userId: string,
+export async function getProfileApiKeyStatusMap(
+  profileId: string,
   serviceKeys: readonly UserApiKeyServiceKey[]
 ): Promise<UserApiKeyStatusMap> {
   if (serviceKeys.length === 0) return {};
@@ -63,7 +72,7 @@ export async function getUserApiKeyStatusMap(
   const { data, error } = await service
     .from("user_api_keys")
     .select("service_key")
-    .eq("user_id", userId)
+    .eq("profile_id", profileId)
     .in("service_key", [...serviceKeys]);
 
   if (error) throw error;
