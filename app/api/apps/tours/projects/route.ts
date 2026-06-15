@@ -9,7 +9,8 @@ import {
   getMissingProviderKeysForTourType,
   getTourTypeAvailabilityMessage,
 } from "@/lib/tours/tour-type-availability";
-import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { getSlotState } from "@/lib/profiles/server";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,13 @@ async function getTourTypeAvailabilityError(
 ): Promise<string | null> {
   if (tourType === "tour_video") return null;
 
-  const apiKeyStatus = await getUserApiKeyStatusMap(userId, ["elevenlabs", "heygen"]);
+  // Keys are scoped to the active profile. No profile → treat as no
+  // keys configured (caller will surface the "set up a profile" path
+  // through the upstream gate).
+  const slot = await getSlotState(userId).catch(() => null);
+  const apiKeyStatus = slot?.active_profile_id
+    ? await getProfileApiKeyStatusMap(slot.active_profile_id, ["elevenlabs", "heygen"])
+    : {};
 
   if (getMissingProviderKeysForTourType(tourType, apiKeyStatus).length > 0) {
     return getTourTypeAvailabilityMessage(tourType, "creating");
@@ -156,10 +163,21 @@ export async function POST(request: Request) {
     );
   }
 
+  // Pin the project to the user's currently active platform_profile so
+  // render code can look up the right (per-profile) ElevenLabs/HeyGen
+  // keys. Null is tolerated for users who somehow create a project
+  // before setting up a profile — render-time fallback handles it.
+  const { data: profileRow } = await access.supabase
+    .from("profiles")
+    .select("active_profile_id")
+    .eq("id", access.user.id)
+    .maybeSingle();
+
   const { data, error } = await access.supabase
     .from("tours_projects")
     .insert({
       user_id: access.user.id,
+      profile_id: profileRow?.active_profile_id ?? null,
       name: parsed.data.name,
       property_address: parsed.data.propertyAddress,
       listing_url: parsed.data.listingUrl,

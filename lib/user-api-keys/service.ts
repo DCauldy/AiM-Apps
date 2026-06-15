@@ -14,15 +14,23 @@ export class UserApiKeyMissingError extends Error {
   }
 }
 
-export async function getUserApiKey(
-  userId: string,
+/**
+ * Fetch a stored API key for a specific profile.
+ *
+ * Keys are profile-scoped (since 20260615000002): a user with multiple
+ * platform_profiles can hold a different ElevenLabs/HeyGen account per
+ * profile. Tours render code reads `project.profile_id` and passes it
+ * through.
+ */
+export async function getProfileApiKey(
+  profileId: string,
   serviceKey: UserApiKeyServiceKey
 ): Promise<string | null> {
   const service = createServiceRoleClient();
   const { data, error } = await service
     .from("user_api_keys")
     .select("api_key_encrypted")
-    .eq("user_id", userId)
+    .eq("profile_id", profileId)
     .eq("service_key", serviceKey)
     .maybeSingle();
 
@@ -32,12 +40,12 @@ export async function getUserApiKey(
   return decrypt(data.api_key_encrypted);
 }
 
-export async function withUserApiKey<T>(
-  userId: string,
+export async function withProfileApiKey<T>(
+  profileId: string,
   serviceKey: UserApiKeyServiceKey,
   factory: (apiKey: string) => T | Promise<T>
 ): Promise<T> {
-  const apiKey = await getUserApiKey(userId, serviceKey);
+  const apiKey = await getProfileApiKey(profileId, serviceKey);
 
   if (!apiKey) {
     throw new UserApiKeyMissingError(serviceKey);

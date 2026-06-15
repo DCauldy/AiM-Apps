@@ -296,7 +296,7 @@ describe("generateTourProjectVideo", () => {
         options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: true },
         progress,
       },
-      { repository, preflight, scriptPlanningProvider, sceneClipRenderer, finalVideoRenderer }
+      { repository, preflight, scriptPlanningProvider, sceneClipRenderer, finalVideoRenderer, resolveProfileId: vi.fn().mockResolvedValue("profile-1") }
     );
 
     expect(result?.status).toBe("completed");
@@ -422,7 +422,7 @@ describe("generateTourProjectVideo", () => {
         options: { renderMode: "ken_burns_ffmpeg" },
         progress,
       },
-      { repository, preflight }
+      { repository, preflight, resolveProfileId: vi.fn().mockResolvedValue("profile-1") }
     );
 
     expect(result?.status).toBe("failed");
@@ -473,7 +473,7 @@ describe("generateTourProjectVideo", () => {
         userId: "user-1",
         renderRunId: "run-1",
       },
-      { repository, preflight }
+      { repository, preflight, resolveProfileId: vi.fn().mockResolvedValue("profile-1") }
     );
 
     expect(result?.status).toBe("failed");
@@ -598,6 +598,7 @@ describe("generateTourProjectVideo", () => {
         voiceoverProvider,
         transitionDetectionProvider,
         getApiKey: vi.fn().mockResolvedValue("elevenlabs-key"),
+        resolveProfileId: vi.fn().mockResolvedValue("profile-1"),
       }
     );
 

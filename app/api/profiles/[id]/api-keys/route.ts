@@ -2,20 +2,51 @@ import type { NextRequest } from "next/server";
 import { encrypt } from "@/lib/blog-engine/encryption";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { isUserApiKeyServiceKey } from "@/lib/user-api-keys/registry";
-import { listUserApiKeySummaries } from "@/lib/user-api-keys/server";
+import { listProfileApiKeySummaries } from "@/lib/user-api-keys/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/**
+ * Per-profile API key CRUD.
+ *
+ * Keys are profile-scoped (since 20260615000002) so a multi-profile
+ * user can hold a different ElevenLabs/HeyGen account per persona.
+ * Ownership check is "the profile belongs to the authenticated user."
+ */
+
+async function assertProfileOwner(
+  userId: string,
+  profileId: string,
+): Promise<true | Response> {
+  const service = createServiceRoleClient();
+  const { data } = await service
+    .from("platform_profiles")
+    .select("id")
+    .eq("id", profileId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!data) {
+    return Response.json({ error: "Profile not found" }, { status: 404 });
+  }
+  return true;
+}
+
+export async function GET(
+  _req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id: profileId } = await context.params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
+  const ownership = await assertProfileOwner(user.id, profileId);
+  if (ownership !== true) return ownership;
+
   try {
-    const apiKeys = await listUserApiKeySummaries(user.id);
+    const apiKeys = await listProfileApiKeySummaries(profileId);
     return Response.json({ apiKeys });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load API keys";
@@ -23,13 +54,19 @@ export async function GET() {
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id: profileId } = await context.params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const ownership = await assertProfileOwner(user.id, profileId);
+  if (ownership !== true) return ownership;
 
   const body = (await req.json()) as Record<string, unknown>;
   const serviceKey = typeof body.service_key === "string" ? body.service_key : "";
@@ -38,7 +75,6 @@ export async function POST(req: NextRequest) {
   if (!isUserApiKeyServiceKey(serviceKey)) {
     return Response.json({ error: "Unsupported integration" }, { status: 400 });
   }
-
   if (!apiKey) {
     return Response.json({ error: "API key is required" }, { status: 400 });
   }
@@ -51,11 +87,12 @@ export async function POST(req: NextRequest) {
       .upsert(
         {
           user_id: user.id,
+          profile_id: profileId,
           service_key: serviceKey,
           api_key_encrypted: encrypt(apiKey),
           updated_at: now,
         },
-        { onConflict: "user_id,service_key" }
+        { onConflict: "profile_id,service_key" },
       )
       .select("service_key, updated_at")
       .single();
@@ -75,16 +112,21 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function DELETE(req: NextRequest) {
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id: profileId } = await context.params;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const serviceKey = req.nextUrl.searchParams.get("service_key") ?? "";
+  const ownership = await assertProfileOwner(user.id, profileId);
+  if (ownership !== true) return ownership;
 
+  const serviceKey = req.nextUrl.searchParams.get("service_key") ?? "";
   if (!isUserApiKeyServiceKey(serviceKey)) {
     return Response.json({ error: "Unsupported integration" }, { status: 400 });
   }
@@ -94,11 +136,10 @@ export async function DELETE(req: NextRequest) {
     const { error } = await service
       .from("user_api_keys")
       .delete()
-      .eq("user_id", user.id)
+      .eq("profile_id", profileId)
       .eq("service_key", serviceKey);
 
     if (error) throw error;
-
     return Response.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to remove API key";

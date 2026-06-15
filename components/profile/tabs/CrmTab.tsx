@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Database,
+  KeyRound,
   Loader2,
   Plus,
   Trash2,
@@ -69,7 +70,14 @@ const CMA_PLATFORMS: CrmPlatform[] = [
 // Main
 // ---------------------------------------------------------------------------
 
-export function ProfileCrmTab() {
+interface ProfileCrmTabProps {
+  /** Null in "new profile" creation mode — connections are profile-
+   *  scoped, so there's nothing meaningful to show until the profile
+   *  row exists. */
+  profileId: string | null;
+}
+
+export function ProfileCrmTab({ profileId }: ProfileCrmTabProps) {
   const { addToast } = useToast();
   const [conns, setConns] = useState<CrmConnEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,8 +106,23 @@ export function ProfileCrmTab() {
   }, [addToast]);
 
   useEffect(() => {
+    if (!profileId) {
+      setLoading(false);
+      return;
+    }
     load();
-  }, [load]);
+  }, [load, profileId]);
+
+  if (!profileId) {
+    return (
+      <div className="max-w-2xl rounded-lg border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+        <KeyRound className="h-4 w-4 mb-3 text-muted-foreground" />
+        Save your profile first to manage CRM connections. Connections are
+        stored per profile so each persona can pull contacts from its own
+        CRM account.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

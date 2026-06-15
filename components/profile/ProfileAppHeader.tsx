@@ -2,20 +2,16 @@
 
 import { ProductHeader } from "@/components/app-shell/ProductHeader";
 
-const NAV_ITEMS = [
-  { label: "Profiles", href: "/apps/profile" },
-  { label: "API Keys", href: "/apps/profile/api-keys" },
-];
+const NAV_ITEMS = [{ label: "Profiles", href: "/apps/profile" }];
 
 function isProfileNavActive(href: string, pathname: string | null) {
   if (href === "/apps/profile") {
     return (
       pathname === href ||
       pathname === "/apps/profile/new" ||
-      Boolean(pathname?.match(/^\/apps\/profile\/(?!api-keys(?:\/|$))[^/]+$/))
+      Boolean(pathname?.match(/^\/apps\/profile\/[^/]+$/))
     );
   }
-
   return Boolean(pathname?.startsWith(href));
 }
 

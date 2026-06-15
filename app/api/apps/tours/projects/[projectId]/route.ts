@@ -6,7 +6,8 @@ import {
   getTourTypeAvailabilityMessage,
 } from "@/lib/tours/tour-type-availability";
 import { getTourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
-import { getUserApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
+import { getSlotState } from "@/lib/profiles/server";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,10 @@ async function getTourTypeAvailabilityError(
 ): Promise<string | null> {
   if (tourType === "tour_video") return null;
 
-  const apiKeyStatus = await getUserApiKeyStatusMap(userId, ["elevenlabs", "heygen"]);
+  const slot = await getSlotState(userId).catch(() => null);
+  const apiKeyStatus = slot?.active_profile_id
+    ? await getProfileApiKeyStatusMap(slot.active_profile_id, ["elevenlabs", "heygen"])
+    : {};
 
   if (getMissingProviderKeysForTourType(tourType, apiKeyStatus).length > 0) {
     return getTourTypeAvailabilityMessage(tourType, "choosing");

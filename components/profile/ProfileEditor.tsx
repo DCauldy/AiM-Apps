@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Database, Mail, MapPin, Palette, User } from "lucide-react";
+import { Database, KeyRound, Mail, MapPin, Palette, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,6 +12,7 @@ import { getStateRequirements } from "@/lib/hyperlocal/email/state-requirements"
 import { FontSelect } from "@/components/profile/FontSelect";
 import { ProfileCrmTab } from "@/components/profile/tabs/CrmTab";
 import { ProfileMailTab } from "@/components/profile/tabs/MailTab";
+import { ProfileIntegrationsTab } from "@/components/profile/tabs/IntegrationsTab";
 import type { PlatformProfile, PlatformProfileUpdate } from "@/types/platform-profile";
 
 interface Props {
@@ -27,7 +28,7 @@ function safeReturn(path: string | null): string {
 
 type FormState = Partial<PlatformProfile>;
 
-type Tab = "bio" | "market" | "brand" | "crm" | "mail";
+type Tab = "bio" | "market" | "brand" | "crm" | "mail" | "integrations";
 
 const TABS: {
   id: Tab;
@@ -39,6 +40,7 @@ const TABS: {
   { id: "brand", label: "Brand", Icon: Palette },
   { id: "crm", label: "CRM", Icon: Database },
   { id: "mail", label: "Mail", Icon: Mail },
+  { id: "integrations", label: "Integrations", Icon: KeyRound },
 ];
 
 const PROFESSIONAL_TYPES = [
@@ -506,9 +508,17 @@ export function ProfileEditor({ initialProfile }: Props) {
         </Section>
       )}
 
-      {activeTab === "crm" && <ProfileCrmTab />}
+      {activeTab === "crm" && (
+        <ProfileCrmTab profileId={initialProfile?.id ?? null} />
+      )}
 
-      {activeTab === "mail" && <ProfileMailTab />}
+      {activeTab === "mail" && (
+        <ProfileMailTab profileId={initialProfile?.id ?? null} />
+      )}
+
+      {activeTab === "integrations" && (
+        <ProfileIntegrationsTab profileId={initialProfile?.id ?? null} />
+      )}
 
       {showSave && (
         <div className="flex justify-end gap-3 sticky bottom-0 bg-background border-t pt-4">

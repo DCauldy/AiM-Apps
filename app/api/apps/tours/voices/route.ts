@@ -3,7 +3,8 @@ import {
   ElevenLabsVoicesError,
   listElevenLabsDigitalTwinVoices,
 } from "@/lib/tours/rendering/elevenlabs-voices";
-import { getUserApiKey } from "@/lib/user-api-keys/service";
+import { getProfileApiKey } from "@/lib/user-api-keys/service";
+import { getSlotState } from "@/lib/profiles/server";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,16 @@ export async function GET() {
     return toursAccessErrorResponse(access);
   }
 
-  const apiKey = await getUserApiKey(access.user.id, "elevenlabs");
+  // Voice picker runs before a project exists, so the ElevenLabs key
+  // is read from the user's currently active profile.
+  const slot = await getSlotState(access.user.id).catch(() => null);
+  if (!slot?.active_profile_id) {
+    return Response.json(
+      { error: "Set up a platform profile before choosing a voice." },
+      { status: 422 },
+    );
+  }
+  const apiKey = await getProfileApiKey(slot.active_profile_id, "elevenlabs");
   if (!apiKey) {
     return Response.json({ error: "Add an ElevenLabs API key before choosing a voice." }, { status: 422 });
   }

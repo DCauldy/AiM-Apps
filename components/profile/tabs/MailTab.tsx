@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Mail as MailIcon,
+  KeyRound,
   Loader2,
   Trash2,
   Star,
@@ -52,7 +53,12 @@ const APP_LABELS: Record<AppSlug, string> = {
 // Main
 // ---------------------------------------------------------------------------
 
-export function ProfileMailTab() {
+interface ProfileMailTabProps {
+  /** Null in "new profile" mode — connections need a profile_id. */
+  profileId: string | null;
+}
+
+export function ProfileMailTab({ profileId }: ProfileMailTabProps) {
   const { addToast } = useToast();
   const [conns, setConns] = useState<EmailConnEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,8 +95,12 @@ export function ProfileMailTab() {
   }, [addToast]);
 
   useEffect(() => {
+    if (!profileId) {
+      setLoading(false);
+      return;
+    }
     load();
-  }, [load]);
+  }, [load, profileId]);
 
   // Set of provider slugs the agent has already connected — drives the
   // checkmark + "Manage" state on each card vs. "Connect."
@@ -98,6 +108,17 @@ export function ProfileMailTab() {
     () => new Set(conns.map((c) => c.connection.provider)),
     [conns],
   );
+
+  if (!profileId) {
+    return (
+      <div className="max-w-2xl rounded-lg border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+        <KeyRound className="h-4 w-4 mb-3 text-muted-foreground" />
+        Save your profile first to manage email connections. Senders are
+        stored per profile so each persona can send from its own domain
+        or ESP account.
+      </div>
+    );
+  }
 
   // One handler routes Connect clicks to the right place per provider.
   // Mailchimp = full-page OAuth redirect; ActiveCampaign + Resend +
