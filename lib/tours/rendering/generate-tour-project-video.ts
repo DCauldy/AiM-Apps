@@ -6,6 +6,7 @@ import {
 } from "./tour-render-preflight";
 import {
   createTourRenderRepository,
+  type RenderableTourProject,
   type TourRenderAsset,
   type TourRenderRepository,
   type TourRenderRun,
@@ -15,6 +16,7 @@ import {
   DEFAULT_TOUR_SCRIPT_PLANNING_MODEL,
   planTourScriptStage,
   TourScriptPlanningError,
+  type TourScriptPlan,
   type TourScriptPlanningProvider,
 } from "./tour-script-planning";
 import { getProfileApiKey } from "@/lib/user-api-keys/service";
@@ -253,6 +255,52 @@ function scriptTimingsToDurations(scriptPlan: {
     offsetMs += durationMs;
     return duration;
   });
+}
+
+function applyScriptPlannedCameraMotions(
+  project: RenderableTourProject,
+  scriptPlan: TourScriptPlan
+): RenderableTourProject {
+  const selectedMotionBySceneId = new Map(
+    scriptPlan.sceneTimings
+      .filter((timing) => timing.selectedCameraMotion)
+      .map((timing) => [timing.sceneId, timing.selectedCameraMotion!])
+  );
+
+  return {
+    ...project,
+    scenes: project.scenes.map((scene) => {
+      if (scene.cameraMotion !== "auto") {
+        return scene;
+      }
+
+      const selectedCameraMotion = selectedMotionBySceneId.get(scene.id);
+      return selectedCameraMotion
+        ? {
+            ...scene,
+            cameraMotion: selectedCameraMotion,
+          }
+        : scene;
+    }),
+  };
+}
+
+function summarizeSceneCameraMotions(project: RenderableTourProject): Array<{
+  sceneId: string;
+  title: string;
+  sortOrder: number;
+  included: boolean;
+  cameraMotion: string;
+}> {
+  return project.scenes
+    .map((scene) => ({
+      sceneId: scene.id,
+      title: scene.title,
+      sortOrder: scene.sortOrder,
+      included: scene.included,
+      cameraMotion: scene.cameraMotion,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.sceneId.localeCompare(b.sceneId));
 }
 
 function buildAvatarBatchItem(input: {
@@ -753,15 +801,24 @@ export async function generateTourProjectVideo(
       }
     }
 
+    const renderableProject = applyScriptPlannedCameraMotions(project, scriptPlanResult.plan);
+    const finalSceneCameraMotions = summarizeSceneCameraMotions(renderableProject);
+    console.log("Tour render scene camera motions resolved.", {
+      projectId: input.projectId,
+      runId: input.renderRunId,
+      sceneCameraMotions: finalSceneCameraMotions,
+    });
+
     await recordProgress(repository, input, {
       step: "rendering_scene_clips",
       label: "Checking Scene Clip Reuse",
       progressPercent: 68,
       sceneClipCompletedCount: 0,
-      sceneClipTotalCount: project.scenes.filter((scene) => scene.included).length,
+      sceneClipTotalCount: renderableProject.scenes.filter((scene) => scene.included).length,
       message: "Checking reusable scene clips before rendering missing clips.",
       metadata: {
         renderMode: input.options?.renderMode ?? preflightResult.summary.renderMode,
+        sceneCameraMotions: finalSceneCameraMotions,
       },
     });
 
@@ -780,7 +837,7 @@ export async function generateTourProjectVideo(
       : options.sceneClipBatchRunner;
 
     const sceneClipResult = await renderSceneClipsStage({
-      project,
+      project: renderableProject,
       repository,
       runId: input.renderRunId,
       userId: input.userId,
@@ -837,6 +894,7 @@ export async function generateTourProjectVideo(
       metadata: {
         sceneClipAssetIds: sceneClipResult.clips.map((clip) => clip.asset.id),
         reusedCount: sceneClipResult.clips.filter((clip) => clip.reused).length,
+        sceneCameraMotions: finalSceneCameraMotions,
       },
     });
 

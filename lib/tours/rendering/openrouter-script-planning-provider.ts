@@ -5,6 +5,10 @@ import {
   type TourScriptPlanningProvider,
   type TourScriptPlanningProviderInput,
 } from "./tour-script-planning";
+import {
+  RESOLVED_TOUR_SCENE_CAMERA_MOTIONS,
+  TOUR_SCENE_CAMERA_MOTION_LABELS,
+} from "@/lib/tours/scenes.core";
 
 type OpenRouterTextContentPart = {
   type: "text";
@@ -127,12 +131,16 @@ export function createOpenRouterScriptPlanningProvider(
 function buildScriptPlanPrompt(input: TourScriptPlanningProviderInput): string {
   return [
     "Create a scene-ordered tour script plan for a photo-based real-estate tour.",
-    `Return JSON shape: {"fullScript":"clean spoken narration only","voicePromptScript":"ElevenLabs v3 prompt text","sceneTimings":[{"sceneId":"...","spokenText":"...","voicePromptText":"[tag] ...","deliveryTags":["[tag]"],"durationSeconds":${input.timing.fallbackDurationSeconds}}]}.`,
+    `Return JSON shape: {"fullScript":"clean spoken narration only","voicePromptScript":"ElevenLabs v3 prompt text","sceneTimings":[{"sceneId":"...","spokenText":"...","voicePromptText":"[tag] ...","deliveryTags":["[tag]"],"selectedCameraMotion":"slow_push","durationSeconds":${input.timing.fallbackDurationSeconds}}]}.`,
     `durationSeconds must be between ${input.timing.minDurationSeconds} and ${input.timing.maxDurationSeconds}.`,
     `Prompt version: ${input.promptVersion}.`,
     "The final renderer will use each still image with camera motion, so write narration that works over a photo-based tour.",
     "Write buyer-facing narration only. Do not describe the tour mechanics or camera movement.",
     "Keep each scene to 1-2 short spoken sentences.",
+    `Available concrete camera motions: ${formatResolvedCameraMotionOptions()}.`,
+    "If a scene's cameraMotion is auto, inspect its image and set selectedCameraMotion to the best concrete motion for an Instagram real-estate hook.",
+    "If a scene's cameraMotion is not auto, set selectedCameraMotion to that supplied concrete value.",
+    "Choose motion based on composition: strong centered feature can use slow_push or snap_push, wide rooms can use slow_pan or hero_reveal, finishes can use detail_glide, tall foyers/stairs/windows/facades can use vertical_rise, and already-perfect compositions can use static_hold.",
     "",
     "ElevenLabs v3 delivery tags:",
     "- Add one short square-bracket tag at the start of each scene's voicePromptText.",
@@ -171,6 +179,12 @@ function buildScriptPlanPrompt(input: TourScriptPlanningProviderInput): string {
       ].join("\n");
     }),
   ].join("\n");
+}
+
+function formatResolvedCameraMotionOptions(): string {
+  return RESOLVED_TOUR_SCENE_CAMERA_MOTIONS.map(
+    (motion) => `${motion} (${TOUR_SCENE_CAMERA_MOTION_LABELS[motion]})`
+  ).join(", ");
 }
 
 function buildOpenRouterContent(

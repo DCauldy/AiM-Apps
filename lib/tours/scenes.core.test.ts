@@ -11,12 +11,16 @@ import {
   getTourSceneReadinessStatus,
   reorderTourScenesForProject,
   toggleTourSceneInclusionForProject,
+  updateTourSceneCameraMotionForProject,
   validateTourSceneReorderProjectAccess,
-} from "./scenes.core.ts";
+  type TourSceneRow,
+  type TourSceneSourcePhotoRow,
+  type TourScenesRepository,
+} from "./scenes.core";
 
 const now = "2026-06-06T00:00:00.000Z";
 
-function sceneRow(overrides = {}) {
+function sceneRow(overrides: Partial<TourSceneRow> = {}): TourSceneRow {
   return {
     id: "scene-1",
     project_id: "project-1",
@@ -30,7 +34,7 @@ function sceneRow(overrides = {}) {
   };
 }
 
-function photoRow(overrides = {}) {
+function photoRow(overrides: Partial<TourSceneSourcePhotoRow> = {}): TourSceneSourcePhotoRow {
   return {
     id: "photo-1",
     project_id: "project-1",
@@ -48,7 +52,7 @@ function photoRow(overrides = {}) {
 }
 
 test("creates an included TourScene with ordering, safe camera motion, and authoritative photo", async () => {
-  let createInput;
+  let createInput: Parameters<TourScenesRepository["createSceneWithSourcePhoto"]>[0] | undefined;
   const result = await createTourSceneFromAuthoritativePhoto(
     {
       projectId: "project-1",
@@ -86,6 +90,8 @@ test("creates an included TourScene with ordering, safe camera motion, and autho
       },
       listSceneRowsWithSourcePhotos: async () => [],
       listSceneRowsForProject: async () => [],
+      updateSceneInclusion: async () => null,
+      updateSceneCameraMotion: async () => null,
     }
   );
 
@@ -112,12 +118,18 @@ test("creates an included TourScene with ordering, safe camera motion, and autho
   assert.equal(result.scene.authoritativePhoto.storagePath, "tour-projects/project-1/kitchen.jpg");
 });
 
+test("defaults new TourScenes to auto camera motion", () => {
+  assert.equal(getInitialTourSceneCameraMotion(0), "auto");
+  assert.equal(getInitialTourSceneCameraMotion(12), "auto");
+});
+
 test("represents the highest-priority source photo as authoritative", () => {
   const authoritativePhoto = getAuthoritativeSourcePhoto([
     photoRow({ id: "photo-later", priority: 5, storage_path: "later.jpg" }),
     photoRow({ id: "photo-first", priority: 0, storage_path: "first.jpg" }),
   ]);
 
+  assert.ok(authoritativePhoto);
   assert.equal(authoritativePhoto.id, "photo-first");
   assert.equal(authoritativePhoto.storagePath, "first.jpg");
 });
@@ -134,6 +146,8 @@ test("lists TourScenes in saved order", async () => {
     createSceneWithSourcePhoto: async () => null,
     listSceneRowsByIds: async () => [],
     persistSceneOrder: async () => false,
+    updateSceneInclusion: async () => null,
+    updateSceneCameraMotion: async () => null,
     listSceneRowsWithSourcePhotos: async () => [
       { scene: sceneRow({ id: "scene-2", sort_order: 2, title: "Bedroom" }), sourcePhotos: [photoRow({ scene_id: "scene-2" })] },
       { scene: sceneRow({ id: "scene-1", sort_order: 1, title: "Kitchen" }), sourcePhotos: [photoRow({ scene_id: "scene-1" })] },
@@ -145,7 +159,7 @@ test("lists TourScenes in saved order", async () => {
 });
 
 test("persists a valid TourScene reorder and returns stable workspace order", async () => {
-  let persistedOrder;
+  let persistedOrder: string[] | undefined;
   const result = await reorderTourScenesForProject("project-1", ["scene-2", "scene-1"], {
     getNextSceneSortOrder: async () => 0,
     createSceneWithSourcePhoto: async () => null,
@@ -162,6 +176,8 @@ test("persists a valid TourScene reorder and returns stable workspace order", as
       { scene: sceneRow({ id: "scene-1", sort_order: 1, title: "Kitchen" }), sourcePhotos: [photoRow({ scene_id: "scene-1" })] },
       { scene: sceneRow({ id: "scene-2", sort_order: 0, title: "Bedroom" }), sourcePhotos: [photoRow({ scene_id: "scene-2" })] },
     ],
+    updateSceneInclusion: async () => null,
+    updateSceneCameraMotion: async () => null,
   });
 
   assert.equal(result.ok, true);
@@ -186,6 +202,8 @@ test("rejects cross-project scene IDs before persisting order", async () => {
       return true;
     },
     listSceneRowsWithSourcePhotos: async () => [],
+    updateSceneInclusion: async () => null,
+    updateSceneCameraMotion: async () => null,
   });
 
   assert.deepEqual(result, {
@@ -207,6 +225,8 @@ test("rejects missing scenes before persisting order", async () => {
       return true;
     },
     listSceneRowsWithSourcePhotos: async () => [],
+    updateSceneInclusion: async () => null,
+    updateSceneCameraMotion: async () => null,
   });
 
   assert.deepEqual(result, { ok: false, error: "TourScene order includes missing scenes." });
@@ -229,6 +249,8 @@ test("rejects incomplete TourScene orders before persisting", async () => {
       return true;
     },
     listSceneRowsWithSourcePhotos: async () => [],
+    updateSceneInclusion: async () => null,
+    updateSceneCameraMotion: async () => null,
   });
 
   assert.deepEqual(result, {
@@ -247,7 +269,7 @@ test("rejects archived projects for TourScene reorder", () => {
 });
 
 test("toggles TourScene inclusion without deleting source media", async () => {
-  let updatedInput;
+  let updatedInput: { projectId: string; sceneId: string; included: boolean } | undefined;
   const result = await toggleTourSceneInclusionForProject("project-1", "scene-1", false, {
     getNextSceneSortOrder: async () => 0,
     createSceneWithSourcePhoto: async () => null,
@@ -262,6 +284,7 @@ test("toggles TourScene inclusion without deleting source media", async () => {
       };
     },
     listSceneRowsWithSourcePhotos: async () => [],
+    updateSceneCameraMotion: async () => null,
   });
 
   assert.equal(result.ok, true);
@@ -279,6 +302,56 @@ test("rejects cross-project TourScene inclusion updates", async () => {
     listSceneRowsForProject: async () => [],
     persistSceneOrder: async () => false,
     updateSceneInclusion: async () => {
+      updated = true;
+      return null;
+    },
+    listSceneRowsWithSourcePhotos: async () => [],
+    updateSceneCameraMotion: async () => null,
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: "TourScenes can only be updated within the same Tour Project.",
+  });
+  assert.equal(updated, false);
+});
+
+test("updates TourScene camera motion after project ownership validation", async () => {
+  let updatedInput:
+    | { projectId: string; sceneId: string; cameraMotion: TourSceneRow["camera_motion"] }
+    | undefined;
+  const result = await updateTourSceneCameraMotionForProject("project-1", "scene-1", "hero_reveal", {
+    getNextSceneSortOrder: async () => 0,
+    createSceneWithSourcePhoto: async () => null,
+    listSceneRowsByIds: async () => [sceneRow({ id: "scene-1", project_id: "project-1" })],
+    listSceneRowsForProject: async () => [],
+    persistSceneOrder: async () => false,
+    updateSceneInclusion: async () => null,
+    updateSceneCameraMotion: async (projectId, sceneId, cameraMotion) => {
+      updatedInput = { projectId, sceneId, cameraMotion };
+      return {
+        scene: sceneRow({ id: sceneId, project_id: projectId, camera_motion: cameraMotion }),
+        sourcePhotos: [photoRow({ scene_id: sceneId })],
+      };
+    },
+    listSceneRowsWithSourcePhotos: async () => [],
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(updatedInput, { projectId: "project-1", sceneId: "scene-1", cameraMotion: "hero_reveal" });
+  assert.equal(result.scene.cameraMotion, "hero_reveal");
+});
+
+test("rejects cross-project TourScene camera motion updates", async () => {
+  let updated = false;
+  const result = await updateTourSceneCameraMotionForProject("project-1", "scene-2", "detail_glide", {
+    getNextSceneSortOrder: async () => 0,
+    createSceneWithSourcePhoto: async () => null,
+    listSceneRowsByIds: async () => [sceneRow({ id: "scene-2", project_id: "project-2" })],
+    listSceneRowsForProject: async () => [],
+    persistSceneOrder: async () => false,
+    updateSceneInclusion: async () => null,
+    updateSceneCameraMotion: async () => {
       updated = true;
       return null;
     },

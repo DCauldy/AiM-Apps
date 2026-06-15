@@ -5,6 +5,10 @@ import type {
   TourRenderAsset,
   TourRenderRepository,
 } from "./tour-render.repository";
+import {
+  RESOLVED_TOUR_SCENE_CAMERA_MOTIONS,
+  type ResolvedTourSceneCameraMotion,
+} from "@/lib/tours/scenes.core";
 
 export const DEFAULT_TOUR_SCRIPT_PLANNING_MODEL = "google/gemini-2.5-flash";
 export const TOUR_SCRIPT_PLANNING_PROMPT_VERSION = "tour-script-plan-v2-elevenlabs-v3-tags";
@@ -14,6 +18,7 @@ export type TourScriptSceneTiming = {
   spokenText?: string;
   voicePromptText?: string;
   deliveryTags?: string[];
+  selectedCameraMotion?: ResolvedTourSceneCameraMotion;
   /** @deprecated Use spokenText for clean narration and voicePromptText for ElevenLabs v3. */
   scriptText: string;
   durationSeconds: number;
@@ -231,12 +236,14 @@ export function normalizeTourScriptPlan(input: {
     }
     const deliveryTags = normalizeDeliveryTags(timing?.deliveryTags);
     const voicePromptText = normalizeVoicePromptText(timing, spokenText, deliveryTags);
+    const selectedCameraMotion = normalizeSelectedCameraMotion(timing, scene);
 
     return {
       sceneId: scene.id,
       spokenText,
       voicePromptText,
       deliveryTags,
+      selectedCameraMotion,
       scriptText: spokenText,
       durationSeconds: clampDuration(
         timing?.durationSeconds,
@@ -465,6 +472,27 @@ function normalizeDeliveryTags(value: unknown): string[] {
     .map((tag) => tag.trim())
     .filter((tag) => /^\[[^\]\n]{2,120}\]$/.test(tag))
     .slice(0, 2);
+}
+
+function normalizeSelectedCameraMotion(
+  timing: Partial<TourScriptSceneTiming> | undefined,
+  scene: TourScriptPlanningSceneInput
+): ResolvedTourSceneCameraMotion | undefined {
+  if (scene.cameraMotion !== "auto") {
+    return undefined;
+  }
+
+  if (
+    typeof timing?.selectedCameraMotion === "string" &&
+    RESOLVED_TOUR_SCENE_CAMERA_MOTIONS.includes(timing.selectedCameraMotion)
+  ) {
+    return timing.selectedCameraMotion;
+  }
+
+  throw new TourScriptPlanningError(
+    `Script plan missing selectedCameraMotion for auto camera motion scene "${scene.title}" (${scene.id}).`,
+    "PROVIDER_RESPONSE_INVALID"
+  );
 }
 
 function clampDuration(

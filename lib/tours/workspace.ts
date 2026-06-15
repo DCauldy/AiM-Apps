@@ -5,7 +5,7 @@ import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-set
 import { LISTING_MEDIA_ACKNOWLEDGEMENT_COPY } from "@/lib/tours/listing-media-authorization";
 import { listTourSceneFactsForProject } from "@/lib/tours/facts";
 import type { TourProjectType } from "@/lib/tours/project-types";
-import { getTourScenesForProject } from "@/lib/tours/scenes";
+import { getTourScenesForProject, type TourSceneCameraMotion } from "@/lib/tours/scenes";
 import { getTourSceneReadinessStatus } from "@/lib/tours/scenes.core";
 
 export type TourSceneFact = {
@@ -23,7 +23,7 @@ export type TourScene = {
   title: string;
   sortOrder: number;
   included: boolean;
-  cameraMotion: string;
+  cameraMotion: TourSceneCameraMotion;
   authoritativePhoto: {
     id: string;
     fileName: string;

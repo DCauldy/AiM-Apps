@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 import type { TourScene } from "@/lib/tours/workspace";
 import { useOptimisticSortableList } from "@/hooks/useOptimisticSortableList";
 import { tourWorkspaceQueryKey } from "./useTourProjectWorkspace";
@@ -81,6 +82,23 @@ async function toggleSceneInclusion(projectId: string, sceneId: string, included
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(payload.error ?? "Could not update TourScene inclusion.");
+  }
+  return payload;
+}
+
+async function updateSceneCameraMotion(
+  projectId: string,
+  sceneId: string,
+  cameraMotion: TourSceneCameraMotion
+) {
+  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cameraMotion }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Could not update TourScene camera motion.");
   }
   return payload;
 }
@@ -169,6 +187,11 @@ export function useTourSceneMutations({
       toggleSceneInclusion(projectId, sceneId, included),
     onSuccess: invalidateWorkspace,
   });
+  const updateSceneCameraMotionMutation = useMutation({
+    mutationFn: ({ sceneId, cameraMotion }: { sceneId: string; cameraMotion: TourSceneCameraMotion }) =>
+      updateSceneCameraMotion(projectId, sceneId, cameraMotion),
+    onSuccess: invalidateWorkspace,
+  });
   const deleteSceneMutation = useMutation({
     mutationFn: (sceneId: string) => deleteTourScene(projectId, sceneId),
     onSuccess: invalidateWorkspace,
@@ -194,6 +217,25 @@ export function useTourSceneMutations({
     [toggleSceneInclusionMutation, tourScenes]
   );
 
+  const updateCameraMotion = useCallback(
+    async (sceneId: string, cameraMotion: TourSceneCameraMotion) => {
+      const previousScene = tourScenes.items.find((scene) => scene.id === sceneId);
+      tourScenes.updateItem(sceneId, (scene) => ({
+        ...scene,
+        cameraMotion,
+      }));
+
+      try {
+        await updateSceneCameraMotionMutation.mutateAsync({ sceneId, cameraMotion });
+      } catch {
+        if (previousScene) {
+          tourScenes.updateItem(sceneId, () => previousScene);
+        }
+      }
+    },
+    [tourScenes, updateSceneCameraMotionMutation]
+  );
+
   return {
     tourScenes,
     createScene: createSceneMutation.mutate,
@@ -202,6 +244,7 @@ export function useTourSceneMutations({
     removePhoto: removePhotoMutation.mutate,
     reorderById: tourScenes.reorderById,
     toggleInclusion,
+    updateCameraMotion,
     deleteScene: deleteSceneMutation.mutateAsync,
     mutations: {
       createScene: createSceneMutation,
@@ -210,6 +253,7 @@ export function useTourSceneMutations({
       removePhoto: removePhotoMutation,
       reorderScenes: reorderScenesMutation,
       toggleSceneInclusion: toggleSceneInclusionMutation,
+      updateSceneCameraMotion: updateSceneCameraMotionMutation,
       deleteScene: deleteSceneMutation,
     },
   };

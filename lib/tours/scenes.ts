@@ -6,9 +6,11 @@ import {
   listTourScenesForProject,
   reorderTourScenesForProject,
   toggleTourSceneInclusionForProject,
+  updateTourSceneCameraMotionForProject,
   type CreateTourSceneResult,
   type ReorderTourScenesResult,
   type ToggleTourSceneInclusionResult,
+  type UpdateTourSceneCameraMotionResult,
   type NewTourSceneSourcePhoto,
   type TourSceneCameraMotion,
   type TourSceneModel,
@@ -195,6 +197,31 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
 
       return { scene, sourcePhotos: sourcePhotos ?? [] };
     },
+    async updateSceneCameraMotion(projectId, sceneId, cameraMotion) {
+      const { data: scene, error: sceneError } = await supabase
+        .from("tour_scenes")
+        .update({ camera_motion: cameraMotion, updated_at: new Date().toISOString() })
+        .eq("project_id", projectId)
+        .eq("id", sceneId)
+        .select(SCENE_SELECT)
+        .maybeSingle<TourSceneRow>();
+
+      if (sceneError || !scene) {
+        return null;
+      }
+
+      const { data: sourcePhotos, error: sourcePhotosError } = await supabase
+        .from("tour_scene_source_photos")
+        .select(SOURCE_PHOTO_SELECT)
+        .eq("scene_id", sceneId)
+        .order("priority", { ascending: true });
+
+      if (sourcePhotosError) {
+        return null;
+      }
+
+      return { scene, sourcePhotos: sourcePhotos ?? [] };
+    },
   };
 }
 
@@ -233,6 +260,20 @@ export async function toggleTourSceneInclusion(input: {
 }): Promise<ToggleTourSceneInclusionResult> {
   const repository = await createSupabaseTourScenesRepository();
   return toggleTourSceneInclusionForProject(input.projectId, input.sceneId, input.included, repository);
+}
+
+export async function updateTourSceneCameraMotion(input: {
+  projectId: string;
+  sceneId: string;
+  cameraMotion: TourSceneCameraMotion;
+}): Promise<UpdateTourSceneCameraMotionResult> {
+  const repository = await createSupabaseTourScenesRepository();
+  return updateTourSceneCameraMotionForProject(
+    input.projectId,
+    input.sceneId,
+    input.cameraMotion,
+    repository
+  );
 }
 
 export async function deleteTourScene(input: {

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createTourSceneFromAuthoritativePhoto: vi.fn(),
   reorderTourScenes: vi.fn(),
   toggleTourSceneInclusion: vi.fn(),
+  updateTourSceneCameraMotion: vi.fn(),
   deleteTourScene: vi.fn(),
   listTourSceneFactsForScene: vi.fn(),
   createHumanTourSceneFact: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("@/lib/tours/scenes", () => ({
   createTourSceneFromAuthoritativePhoto: mocks.createTourSceneFromAuthoritativePhoto,
   reorderTourScenes: mocks.reorderTourScenes,
   toggleTourSceneInclusion: mocks.toggleTourSceneInclusion,
+  updateTourSceneCameraMotion: mocks.updateTourSceneCameraMotion,
   deleteTourScene: mocks.deleteTourScene,
 }));
 
@@ -49,7 +51,7 @@ vi.mock("@/lib/tours/facts", () => ({
 
 import { POST as createScene } from "./route";
 import { PATCH as reorderScenes } from "./reorder/route";
-import { DELETE as deleteScene } from "./[sceneId]/route";
+import { DELETE as deleteScene, PATCH as updateScene } from "./[sceneId]/route";
 import { PATCH as toggleSceneInclusion } from "./[sceneId]/inclusion/route";
 import { DELETE as deleteAuthoritativePhoto } from "./[sceneId]/photo/route";
 import { GET as listSceneFacts, POST as createSceneFact } from "./[sceneId]/facts/route";
@@ -255,6 +257,36 @@ test("toggle TourScene inclusion delegates valid payload to the scene service", 
     projectId: "project-1",
     sceneId: "scene-1",
     included: false,
+  });
+});
+
+test("update TourScene camera motion validates known motion before service delegation", async () => {
+  allowAccess();
+
+  const response = await updateScene(jsonRequest({ cameraMotion: "orbit_whip" }), sceneParams);
+
+  expect(response.status).toBe(400);
+  await expect(response.json()).resolves.toEqual({ error: "Choose a valid camera motion." });
+  expect(mocks.updateTourSceneCameraMotion).not.toHaveBeenCalled();
+});
+
+test("update TourScene camera motion delegates valid payload to the scene service", async () => {
+  allowAccess();
+  mocks.updateTourSceneCameraMotion.mockResolvedValue({
+    ok: true,
+    scene: { id: "scene-1", cameraMotion: "hero_reveal" },
+  });
+
+  const response = await updateScene(jsonRequest({ cameraMotion: "hero_reveal" }), sceneParams);
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({
+    scene: { id: "scene-1", cameraMotion: "hero_reveal" },
+  });
+  expect(mocks.updateTourSceneCameraMotion).toHaveBeenCalledWith({
+    projectId: "project-1",
+    sceneId: "scene-1",
+    cameraMotion: "hero_reveal",
   });
 });
 

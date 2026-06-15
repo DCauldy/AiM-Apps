@@ -33,6 +33,7 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { useOptimisticSortableList, type OptimisticSortableId } from "@/hooks/useOptimisticSortableList";
 import type { TourScene } from "@/lib/tours/workspace";
+import { getTourSceneCameraMotionLabel } from "@/lib/tours/scenes.core";
 import { useTourProjectWorkspace } from "./useTourProjectWorkspace";
 import { ErrorMessage, SceneUploadDialog } from "./WorkspacePresentation";
 
@@ -459,7 +460,7 @@ const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
             {scene.title}
           </h2>
           <p className="truncate text-sm text-muted-foreground">
-            {scene.cameraMotion}
+            {getTourSceneCameraMotionLabel(scene.cameraMotion)}
           </p>
         </div>
         <Button

@@ -323,4 +323,86 @@ describe("planTourScriptStage", () => {
       })
     );
   });
+
+  it("preserves planner-selected camera motion for auto scenes", async () => {
+    const autoProject: RenderableTourProject = {
+      ...project,
+      scenes: [
+        {
+          ...project.scenes[1]!,
+          cameraMotion: "auto",
+        },
+      ],
+    };
+    const repository = createRepository();
+    const provider = createProvider({
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Kitchen narration.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            spokenText: "Kitchen narration.",
+            selectedCameraMotion: "detail_glide",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    });
+
+    const result = await planTourScriptStage({
+      project: autoProject,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      provider,
+      options: { reuseExistingAssets: false },
+    });
+
+    expect(result.plan.sceneTimings[0]).toEqual(
+      expect.objectContaining({
+        sceneId: "scene-1",
+        selectedCameraMotion: "detail_glide",
+      })
+    );
+  });
+
+  it("rejects auto scenes when the provider omits selected camera motion", async () => {
+    const autoProject: RenderableTourProject = {
+      ...project,
+      scenes: [
+        {
+          ...project.scenes[1]!,
+          cameraMotion: "auto",
+        },
+      ],
+    };
+    const repository = createRepository();
+    const provider = createProvider({
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Kitchen narration.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            spokenText: "Kitchen narration.",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    });
+
+    await expect(
+      planTourScriptStage({
+        project: autoProject,
+        repository,
+        runId: "run-1",
+        userId: "user-1",
+        provider,
+        options: { reuseExistingAssets: false },
+      })
+    ).rejects.toMatchObject({
+      code: "PROVIDER_RESPONSE_INVALID",
+    });
+  });
 });

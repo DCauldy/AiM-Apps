@@ -423,6 +423,108 @@ describe("generateTourProjectVideo", () => {
     );
   });
 
+  it("logs final scene camera motions after resolving auto selections", async () => {
+    const autoProject: RenderableTourProject = {
+      ...baseProject,
+      scenes: [
+        {
+          ...baseProject.scenes[0],
+          cameraMotion: "auto",
+        },
+      ],
+    };
+    const repository = createRepository({
+      getRenderableTourProject: vi.fn().mockResolvedValue(autoProject),
+    });
+    const scriptPlanningProvider: TourScriptPlanningProvider = {
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Welcome to the kitchen.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            scriptText: "Welcome to the kitchen.",
+            selectedCameraMotion: "detail_glide",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    };
+    const preflight = vi.fn().mockResolvedValue({
+      ok: true,
+      summary: {
+        projectId: "project-1",
+        tourType: "tour_video",
+        renderMode: "ken_burns_ffmpeg",
+        includedSceneCount: 1,
+        sourcePhotoCount: 1,
+        proofedFactCount: 1,
+        requiredProviderKeys: [],
+      },
+    });
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const sceneClipRenderer: SceneClipRenderer = {
+      renderSceneClip: vi.fn(async (input) => {
+        await writeFile(input.outputVideoPath, Buffer.from("mp4-bytes"));
+        return {};
+      }),
+    };
+    const finalVideoRenderer: FinalVideoRenderer = {
+      joinSceneClips: vi.fn(async (input) => {
+        await writeFile(input.joinedScenesPath, Buffer.from("joined-mp4"));
+        return {};
+      }),
+      muxFinalVideo: vi.fn(async (input) => {
+        await writeFile(input.finalVideoPath, Buffer.from("final-mp4"));
+        return {};
+      }),
+    };
+
+    await generateTourProjectVideo(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        renderRunId: "run-1",
+        options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: false },
+      },
+      { repository, preflight, scriptPlanningProvider, sceneClipRenderer, finalVideoRenderer }
+    );
+
+    expect(sceneClipRenderer.renderSceneClip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scene: expect.objectContaining({ id: "scene-1", cameraMotion: "detail_glide" }),
+      })
+    );
+    expect(consoleLog).toHaveBeenCalledWith(
+      "Tour render scene camera motions resolved.",
+      expect.objectContaining({
+        projectId: "project-1",
+        runId: "run-1",
+        sceneCameraMotions: [
+          expect.objectContaining({
+            sceneId: "scene-1",
+            cameraMotion: "detail_glide",
+          }),
+        ],
+      })
+    );
+    expect(repository.appendEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        step: "rendering_scene_clips",
+        metadata: expect.objectContaining({
+          sceneCameraMotions: [
+            expect.objectContaining({
+              sceneId: "scene-1",
+              cameraMotion: "detail_glide",
+            }),
+          ],
+        }),
+      })
+    );
+
+    consoleLog.mockRestore();
+  });
+
   it("marks the run failed when task preflight finds blocking issues", async () => {
     const repository = createRepository();
     const preflight = vi.fn().mockResolvedValue({

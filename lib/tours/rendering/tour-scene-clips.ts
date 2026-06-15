@@ -3,6 +3,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { getTourSceneCameraMotionLabel } from "@/lib/tours/scenes.core";
 import type {
   RenderableTourProject,
   RenderableTourScene,
@@ -807,8 +808,13 @@ function includedRenderableScenes(project: RenderableTourProject): RenderableTou
 }
 
 function buildOpenRouterSceneClipPrompt(input: ImageToVideoProviderInput): string {
+  const cameraMotion =
+    input.scene.cameraMotion === "auto"
+      ? "Choose the strongest camera motion for an Instagram real-estate hook based on this image"
+      : getTourSceneCameraMotionLabel(input.scene.cameraMotion);
+
   return [
-    input.scene.cameraMotion.replaceAll("_", " "),
+    cameraMotion,
     `through ${input.scene.title}.`,
     "Preserve all visible property details exactly.",
     "Do not add or remove rooms, fixtures, doors, windows, openings, light sources, or architectural details.",

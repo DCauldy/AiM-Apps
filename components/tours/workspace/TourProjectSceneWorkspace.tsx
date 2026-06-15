@@ -59,7 +59,9 @@ export function TourProjectSceneWorkspace({
     removePhotoMutation,
     reorderScenesMutation,
     toggleSceneInclusionMutation,
+    updateSceneCameraMotionMutation,
     deleteSceneMutation,
+    updateCameraMotion,
     handleCreateScene,
     handleReplaceScenePhoto,
     handleAddScenePhoto,
@@ -191,9 +193,17 @@ export function TourProjectSceneWorkspace({
                 isSubmittingFact={sceneFactMutation.isPending}
                 isUpdatingFact={updateSceneFactMutation.isPending}
                 isDeletingFact={deleteSceneFactMutation.isPending}
+                isUpdatingCameraMotion={updateSceneCameraMotionMutation.isPending}
                 factError={sceneFactMutation.error}
                 factActionError={updateSceneFactMutation.error ?? deleteSceneFactMutation.error}
+                cameraMotionError={updateSceneCameraMotionMutation.error}
                 onAddScene={() => setIsAddSceneOpen(true)}
+                onCameraMotionChange={async (cameraMotion) => {
+                  if (!activeScene) {
+                    return;
+                  }
+                  await updateCameraMotion(activeScene.id, cameraMotion);
+                }}
                 onCreateFact={async (text) => {
                   if (!activeScene) {
                     return;
@@ -218,6 +228,7 @@ export function TourProjectSceneWorkspace({
             {(tourScenes.error ??
               reorderScenesMutation.error ??
               toggleSceneInclusionMutation.error ??
+              updateSceneCameraMotionMutation.error ??
               deleteSceneMutation.error ??
               addPhotoMutation.error ??
               removePhotoMutation.error) && (
@@ -226,6 +237,7 @@ export function TourProjectSceneWorkspace({
                   {(tourScenes.error ??
                     reorderScenesMutation.error ??
                     toggleSceneInclusionMutation.error ??
+                    updateSceneCameraMotionMutation.error ??
                     deleteSceneMutation.error ??
                     addPhotoMutation.error ??
                     removePhotoMutation.error)?.message ??

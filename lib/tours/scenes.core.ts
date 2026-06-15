@@ -1,6 +1,71 @@
-export const TOUR_SCENE_CAMERA_MOTIONS = ["slow_push", "slow_pan", "static_hold"] as const;
+export const TOUR_SCENE_CAMERA_MOTIONS = [
+  "auto",
+  "slow_push",
+  "slow_pan",
+  "static_hold",
+  "hero_reveal",
+  "detail_glide",
+  "vertical_rise",
+  "snap_push",
+] as const;
 
 export type TourSceneCameraMotion = (typeof TOUR_SCENE_CAMERA_MOTIONS)[number];
+export type ResolvedTourSceneCameraMotion = Exclude<TourSceneCameraMotion, "auto">;
+
+export const RESOLVED_TOUR_SCENE_CAMERA_MOTIONS = TOUR_SCENE_CAMERA_MOTIONS.filter(
+  (motion): motion is ResolvedTourSceneCameraMotion => motion !== "auto"
+);
+
+export const TOUR_SCENE_CAMERA_MOTION_OPTIONS: Array<{
+  value: TourSceneCameraMotion;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Let the script planner choose the best visual hook from the photo.",
+  },
+  {
+    value: "slow_push",
+    label: "Slow push",
+    description: "A steady move toward the strongest feature.",
+  },
+  {
+    value: "slow_pan",
+    label: "Slow pan",
+    description: "A calm side-to-side move for wider rooms.",
+  },
+  {
+    value: "static_hold",
+    label: "Static hold",
+    description: "A clean hold when the image is already composed strongly.",
+  },
+  {
+    value: "hero_reveal",
+    label: "Hero reveal",
+    description: "Open with a more dramatic reveal of the room's main feature.",
+  },
+  {
+    value: "detail_glide",
+    label: "Detail glide",
+    description: "Glide across finishes, fixtures, counters, or texture details.",
+  },
+  {
+    value: "vertical_rise",
+    label: "Vertical rise",
+    description: "Rise through vertical lines like foyers, stairs, windows, or facades.",
+  },
+  {
+    value: "snap_push",
+    label: "Snap push",
+    description: "A faster hook-style push-in that settles before it feels jumpy.",
+  },
+];
+
+export const TOUR_SCENE_CAMERA_MOTION_LABELS = Object.fromEntries(
+  TOUR_SCENE_CAMERA_MOTION_OPTIONS.map((option) => [option.value, option.label])
+) as Record<TourSceneCameraMotion, string>;
 
 export type TourSceneSourcePhoto = {
   id: string;
@@ -81,6 +146,10 @@ export type ToggleTourSceneInclusionResult =
   | { ok: true; scene: TourSceneModel }
   | { ok: false; error: string };
 
+export type UpdateTourSceneCameraMotionResult =
+  | { ok: true; scene: TourSceneModel }
+  | { ok: false; error: string };
+
 export type TourSceneReadinessStatus = "not_started" | "ready" | "skipped";
 
 export type TourSceneReorderProjectAccess =
@@ -121,10 +190,26 @@ export type TourScenesRepository = {
     scene: TourSceneRow;
     sourcePhotos: TourSceneSourcePhotoRow[];
   } | null>;
+  updateSceneCameraMotion(projectId: string, sceneId: string, cameraMotion: TourSceneCameraMotion): Promise<{
+    scene: TourSceneRow;
+    sourcePhotos: TourSceneSourcePhotoRow[];
+  } | null>;
 };
 
-export function getInitialTourSceneCameraMotion(sortOrder: number): TourSceneCameraMotion {
-  return TOUR_SCENE_CAMERA_MOTIONS[sortOrder % TOUR_SCENE_CAMERA_MOTIONS.length];
+export function getInitialTourSceneCameraMotion(_sortOrder: number): TourSceneCameraMotion {
+  return "auto";
+}
+
+export function isTourSceneCameraMotion(value: unknown): value is TourSceneCameraMotion {
+  return typeof value === "string" && TOUR_SCENE_CAMERA_MOTIONS.includes(value as TourSceneCameraMotion);
+}
+
+export function getTourSceneCameraMotionLabel(cameraMotion: string): string {
+  if (isTourSceneCameraMotion(cameraMotion)) {
+    return TOUR_SCENE_CAMERA_MOTION_LABELS[cameraMotion];
+  }
+
+  return cameraMotion.replaceAll("_", " ");
 }
 
 export function mapSourcePhoto(row: TourSceneSourcePhotoRow): TourSceneSourcePhoto {
@@ -312,6 +397,43 @@ export async function toggleTourSceneInclusionForProject(
   const updated = await repository.updateSceneInclusion(projectId, sceneId, included);
   if (!updated) {
     return { ok: false, error: "Could not update TourScene inclusion." };
+  }
+
+  const scene = mapTourScene(updated.scene, updated.sourcePhotos);
+  if (!scene) {
+    return { ok: false, error: "TourScene requires an authoritative listing photo." };
+  }
+
+  return { ok: true, scene };
+}
+
+export async function updateTourSceneCameraMotionForProject(
+  projectId: string,
+  sceneId: string,
+  cameraMotion: TourSceneCameraMotion,
+  repository: TourScenesRepository
+): Promise<UpdateTourSceneCameraMotionResult> {
+  if (!sceneId) {
+    return { ok: false, error: "Choose a TourScene to update." };
+  }
+
+  if (!isTourSceneCameraMotion(cameraMotion)) {
+    return { ok: false, error: "Choose a valid camera motion." };
+  }
+
+  const sceneRows = await repository.listSceneRowsByIds([sceneId]);
+  const existingScene = sceneRows[0];
+  if (!existingScene) {
+    return { ok: false, error: "TourScene was not found." };
+  }
+
+  if (existingScene.project_id !== projectId) {
+    return { ok: false, error: "TourScenes can only be updated within the same Tour Project." };
+  }
+
+  const updated = await repository.updateSceneCameraMotion(projectId, sceneId, cameraMotion);
+  if (!updated) {
+    return { ok: false, error: "Could not update TourScene camera motion." };
   }
 
   const scene = mapTourScene(updated.scene, updated.sourcePhotos);
