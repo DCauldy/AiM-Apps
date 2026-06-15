@@ -65,7 +65,7 @@ Scene clips:
 - Default render mode is `ken_burns_ffmpeg`.
 - Provider image-to-video uses OpenRouter when `renderMode` is `provider_image_to_video`.
 - API key is `OPENROUTER_API_KEY` from the Trigger.dev environment.
-- Default provider image-to-video model is `fal-ai/kling-video/v1/standard/image-to-video`.
+- Default provider image-to-video model is `kwaivgi/kling-v3.0-std`.
 - Default render settings are 1080x1920, 30 fps, CRF 18, `cover` crop mode, and 0.25 seconds fade.
 - Default concurrency is 2 with a maximum of 4.
 
@@ -214,7 +214,7 @@ When the developer starts a run, the tool should call the existing render-runs P
   "options": {
     "renderMode": "provider_image_to_video",
     "scriptPlanningModelId": "google/gemini-2.5-flash",
-    "sceneClipProviderModelId": "fal-ai/kling-video/v1/standard/image-to-video",
+    "sceneClipProviderModelId": "kwaivgi/kling-v3.0-std",
     "reuse": {
       "scriptPlan": true,
       "voiceover": true,

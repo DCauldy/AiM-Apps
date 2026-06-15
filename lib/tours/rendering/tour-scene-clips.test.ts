@@ -170,7 +170,12 @@ describe("renderSceneClipsStage", () => {
   it("uses TOURS_RENDER_MODE when stage options omit renderMode", () => {
     process.env.TOURS_RENDER_MODE = "provider_image_to_video";
 
-    expect(resolveSceneClipStageOptions().renderMode).toBe("provider_image_to_video");
+    expect(resolveSceneClipStageOptions()).toEqual(
+      expect.objectContaining({
+        renderMode: "provider_image_to_video",
+        providerModelId: "kwaivgi/kling-v3.0-std",
+      })
+    );
     expect(resolveSceneClipStageOptions({ renderMode: "ken_burns_ffmpeg" }).renderMode).toBe(
       "ken_burns_ffmpeg"
     );

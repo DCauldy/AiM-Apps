@@ -15,7 +15,7 @@ import { getDefaultTourRenderMode, type TourRenderMode } from "./tour-render-pre
 
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
 export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v1";
-export const DEFAULT_SCENE_CLIP_PROVIDER_MODEL = "fal-ai/kling-video/v1/standard/image-to-video";
+export const DEFAULT_SCENE_CLIP_PROVIDER_MODEL = "kwaivgi/kling-v3.0-std";
 
 export type SceneClipRenderSettings = {
   width?: number;

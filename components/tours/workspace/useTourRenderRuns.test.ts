@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
-import { RESTITCH_RENDER_OPTIONS, pickLatestDownloadableRenderRun } from "./useTourRenderRuns";
+import {
+  FRESH_RENDER_OPTIONS,
+  buildCreateRenderRunRequestBody,
+  pickLatestDownloadableRenderRun,
+} from "./useTourRenderRuns";
 
 function renderRun(
   overrides: Partial<TourRenderRunStatusResponse> = {}
@@ -67,15 +71,28 @@ test("ignores completed renders without signed download URLs", () => {
   );
 });
 
-test("restitch render options reuse generated assets and regenerate only the final video", () => {
-  assert.deepEqual(RESTITCH_RENDER_OPTIONS, {
-    reuseExistingAssets: true,
+test("fresh render options disable reuse for every generated asset", () => {
+  assert.deepEqual(FRESH_RENDER_OPTIONS, {
+    reuseExistingAssets: false,
     reuse: {
-      scriptPlan: true,
-      voiceover: true,
-      avatar: true,
-      sceneClips: true,
+      scriptPlan: false,
+      voiceover: false,
+      avatar: false,
+      sceneClips: false,
       finalVideo: false,
     },
   });
+});
+
+test("fresh render request body sends reuse disabled without overriding render mode", () => {
+  const body = buildCreateRenderRunRequestBody({ fresh: true });
+
+  assert.deepEqual(body, {
+    options: FRESH_RENDER_OPTIONS,
+  });
+  assert.equal("options" in body && "renderMode" in body.options, false);
+});
+
+test("default render request body leaves reuse options unset", () => {
+  assert.deepEqual(buildCreateRenderRunRequestBody({ fresh: false }), {});
 });

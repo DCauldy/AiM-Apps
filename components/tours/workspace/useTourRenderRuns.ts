@@ -17,19 +17,23 @@ type RenderRunResponse = {
 };
 
 type CreateRenderRunInput = {
-  restitch?: boolean;
+  fresh?: boolean;
 };
 
-export const RESTITCH_RENDER_OPTIONS = {
-  reuseExistingAssets: true,
+export const FRESH_RENDER_OPTIONS = {
+  reuseExistingAssets: false,
   reuse: {
-    scriptPlan: true,
-    voiceover: true,
-    avatar: true,
-    sceneClips: true,
+    scriptPlan: false,
+    voiceover: false,
+    avatar: false,
+    sceneClips: false,
     finalVideo: false,
   },
 } as const;
+
+export function buildCreateRenderRunRequestBody(input: CreateRenderRunInput = {}) {
+  return input.fresh ? { options: FRESH_RENDER_OPTIONS } : {};
+}
 
 async function readJsonResponse<T>(response: Response, fallbackError: string): Promise<T> {
   const payload = await response.json().catch(() => ({}));
@@ -67,7 +71,7 @@ async function createRenderRun(
   const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input.restitch ? { options: RESTITCH_RENDER_OPTIONS } : {}),
+    body: JSON.stringify(buildCreateRenderRunRequestBody(input)),
   });
   const payload = await readJsonResponse<RenderRunResponse>(
     response,
@@ -147,12 +151,12 @@ export function useTourRenderRuns(projectId: string) {
     isLoadingRecentRuns: recentRunsQuery.isLoading,
     isPollingActiveRun: activeRunQuery.fetchStatus === "fetching" && Boolean(activeRunId),
     error: recentRunsQuery.error ?? activeRunQuery.error ?? createRenderRunMutation.error,
-    createRenderRun: () => createRenderRunMutation.mutate({ restitch: false }),
-    createFreshRenderRun: () => createRenderRunMutation.mutate({ restitch: true }),
+    createRenderRun: () => createRenderRunMutation.mutate({ fresh: false }),
+    createFreshRenderRun: () => createRenderRunMutation.mutate({ fresh: true }),
     isCreatingRenderRun:
-      createRenderRunMutation.isPending && !createRenderRunMutation.variables?.restitch,
+      createRenderRunMutation.isPending && !createRenderRunMutation.variables?.fresh,
     isCreatingFreshRenderRun:
-      createRenderRunMutation.isPending && Boolean(createRenderRunMutation.variables?.restitch),
+      createRenderRunMutation.isPending && Boolean(createRenderRunMutation.variables?.fresh),
     isCreatingAnyRenderRun: createRenderRunMutation.isPending,
   };
 }
