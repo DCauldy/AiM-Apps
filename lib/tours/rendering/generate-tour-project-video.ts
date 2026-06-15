@@ -1,428 +1,62 @@
-import {
-  preflightTourRender,
-  type TourRenderOptions,
-  type TourRenderPreflightIssue,
-  type TourRenderPreflightResult,
-} from "./tour-render-preflight";
+import { preflightTourRender } from "./tour-render-preflight";
+import { resolveProfileIdForRender } from "@/lib/profiles/resolve-for-render";
 import {
   createTourRenderRepository,
-  type RenderableTourProject,
   type TourRenderAsset,
-  type TourRenderRepository,
   type TourRenderRun,
-  type TourRenderStep,
 } from "./tour-render.repository";
 import {
   DEFAULT_TOUR_SCRIPT_PLANNING_MODEL,
   planTourScriptStage,
-  TourScriptPlanningError,
-  type TourScriptPlan,
-  type TourScriptPlanningProvider,
 } from "./tour-script-planning";
-import { getProfileApiKey } from "@/lib/user-api-keys/service";
-import { resolveProfileIdForRender } from "@/lib/profiles/resolve-for-render";
-import {
-  generateVoiceoverStage,
-  TourVoiceoverError,
-  type VoiceoverProvider,
-} from "./tour-voiceover";
+import { generateVoiceoverStage } from "./tour-voiceover";
 import {
   DEFAULT_TOUR_TRANSITION_DETECTION_MODEL,
   detectTransitionsAndDurationsStage,
   normalizeVoiceoverTranscript,
-  type SceneDuration,
   TourTransitionDetectionError,
-  type TransitionDetectionProvider,
 } from "./tour-transitions";
 import {
   renderSceneClipsStage,
-  TourSceneClipRenderError,
-  type ImageToVideoProvider,
-  type SceneClipBatchItem,
-  type SceneClipBatchResult,
   type SceneClipBatchRunner,
-  type SceneClipRenderer,
 } from "./tour-scene-clips";
 import {
   renderFinalVideoStage,
-  TourFinalRenderError,
   type FinalRenderAvatarOverlay,
-  type FinalVideoRenderer,
 } from "./tour-final-render";
+import { prepareHeyGenAvatarStage } from "./tour-avatar";
 import {
-  prepareHeyGenAvatarStage,
-  TourAvatarError,
-  type HeyGenAvatarStageOptions,
-  type HeyGenAvatarStageResult,
-  type HeyGenAvatarProvider,
-} from "./tour-avatar";
+  applyScriptPlannedCameraMotions,
+  buildAvatarBatchItem,
+  isProviderReachableUrl,
+  needsAvatar,
+  needsVoiceover,
+  resolveAvatarOverlay,
+  safeErrorMessage,
+  scriptTimingsToDurations,
+  shouldReuseAsset,
+  summarizePreflightFailure,
+  summarizeSceneCameraMotions,
+} from "./generate-tour-project-video.helpers";
+import {
+  markShellFailed,
+  notifyProgress,
+  recordProgress,
+} from "./generate-tour-project-video-progress";
+import type {
+  GenerateTourProjectVideoInput,
+  GenerateTourProjectVideoOptions,
+  TourAvatarBatchItem,
+  TourAvatarBatchResult,
+} from "./generate-tour-project-video.types";
 
-export type TourRenderProgressUpdate = {
-  step: TourRenderStep;
-  label: string;
-  progressPercent: number;
-  sceneClipCompletedCount?: number;
-  sceneClipTotalCount?: number;
-  message?: string;
-  metadata?: Record<string, unknown>;
-};
-
-export type GenerateTourProjectVideoInput = {
-  projectId: string;
-  userId: string;
-  renderRunId: string;
-  options?: TourRenderOptions;
-  progress?: (update: TourRenderProgressUpdate) => Promise<void> | void;
-};
-
-type GenerateTourProjectVideoOptions = {
-  repository?: TourRenderRepository;
-  preflight?: typeof preflightTourRender;
-  scriptPlanningProvider?: TourScriptPlanningProvider;
-  voiceoverProvider?: VoiceoverProvider;
-  transitionDetectionProvider?: TransitionDetectionProvider;
-  sceneClipRenderer?: SceneClipRenderer;
-  sceneClipBatchRunner?: SceneClipBatchRunner;
-  mediaBatchRunner?: TourMediaBatchRunner;
-  finalVideoRenderer?: FinalVideoRenderer;
-  imageToVideoProvider?: ImageToVideoProvider;
-  avatarProvider?: HeyGenAvatarProvider;
-  getApiKey?: typeof getProfileApiKey;
-  /** Override the project→profile_id resolver in tests. */
-  resolveProfileId?: typeof resolveProfileIdForRender;
-};
-
-export type TourAvatarBatchItem = {
-  projectId: string;
-  runId: string;
-  userId: string;
-  profileId: string;
-  projectName: string;
-  signedVoiceoverAudioUrl: string;
-  voiceoverAudioAsset: TourRenderAsset;
-  options: HeyGenAvatarStageOptions;
-};
-
-export type TourAvatarBatchResult = HeyGenAvatarStageResult;
-
-export type TourMediaBatchRunner = (input: {
-  sceneClipItems: SceneClipBatchItem[];
-  avatarItem: TourAvatarBatchItem | null;
-}) => Promise<{
-  sceneClips: SceneClipBatchResult[];
-  avatar: TourAvatarBatchResult | null;
-}>;
-
-function safeErrorMessage(_error: unknown): string {
-  if (_error instanceof TourScriptPlanningError) {
-    if (_error.code === "PROVIDER_RESPONSE_INVALID") {
-      return _error.message;
-    }
-    if (_error.code === "SIGNED_IMAGE_URL_MISSING") {
-      return "Source photo URLs could not be signed for script planning.";
-    }
-    if (_error.code === "SCRIPT_PLAN_UPLOAD_FAILED") {
-      return "Script plan upload failed.";
-    }
-    if (_error.code === "SCRIPT_PLAN_ASSET_CREATE_FAILED") {
-      return "Script plan asset could not be recorded.";
-    }
-    return "Script planning failed.";
-  }
-  if (_error instanceof TourTransitionDetectionError) {
-    if (_error.code === "PROVIDER_RESPONSE_INVALID") {
-      return "Scene transition detection returned an invalid response.";
-    }
-    if (_error.code === "TRANSITION_TIMING_INVALID" || _error.code === "TRANSCRIPT_INVALID") {
-      return "Scene transition timing could not be validated.";
-    }
-  }
-  if (_error instanceof TourVoiceoverError) {
-    if (_error.code === "MISSING_ELEVENLABS_API_KEY") {
-      return "ElevenLabs API key is not configured for voiceover generation.";
-    }
-    if (_error.code === "MISSING_ELEVENLABS_VOICE_ID") {
-      return "ElevenLabs voice id is not configured for voiceover generation.";
-    }
-    if (_error.code === "ELEVENLABS_TTS_FAILED") {
-      return "ElevenLabs voiceover generation failed.";
-    }
-    if (_error.code === "ELEVENLABS_TTS_RESPONSE_INVALID") {
-      return "ElevenLabs voiceover response was invalid.";
-    }
-    if (
-      _error.code === "VOICEOVER_AUDIO_UPLOAD_FAILED" ||
-      _error.code === "VOICEOVER_TRANSCRIPT_UPLOAD_FAILED" ||
-      _error.code === "VOICEOVER_AUDIO_ASSET_CREATE_FAILED" ||
-      _error.code === "VOICEOVER_TRANSCRIPT_ASSET_CREATE_FAILED"
-    ) {
-      return "Voiceover assets could not be persisted.";
-    }
-    if (_error.code === "TRANSCRIPT_ALIGNMENT_FAILED") {
-      return "Voiceover transcript timing could not be aligned.";
-    }
-    return "Voiceover generation failed.";
-  }
-  if (_error instanceof TourSceneClipRenderError) {
-    if (_error.code === "SCENE_CLIP_UPLOAD_FAILED") {
-      return "Scene clip upload failed.";
-    }
-    if (_error.code === "SCENE_CLIP_ASSET_CREATE_FAILED") {
-      return "Scene clip asset could not be recorded.";
-    }
-    return "Scene clip rendering failed.";
-  }
-  if (_error instanceof TourFinalRenderError) {
-    if (_error.code === "CONCAT_FAILED") {
-      return "Scene clips could not be joined.";
-    }
-    if (_error.code === "MUX_FAILED") {
-      return "Final video mux failed.";
-    }
-    if (_error.code === "JOINED_SCENES_UPLOAD_FAILED") {
-      return "Joined scene video upload failed.";
-    }
-    if (_error.code === "FINAL_VIDEO_UPLOAD_FAILED") {
-      return "Final video upload failed.";
-    }
-    if (_error.code === "JOINED_SCENES_ASSET_CREATE_FAILED") {
-      return "Joined scene video asset could not be recorded.";
-    }
-    if (_error.code === "FINAL_VIDEO_ASSET_CREATE_FAILED") {
-      return "Final video asset could not be recorded.";
-    }
-    return "Final video rendering failed.";
-  }
-  if (_error instanceof TourAvatarError) {
-    if (_error.code === "MISSING_HEYGEN_API_KEY") {
-      return "HeyGen API key is not configured for avatar rendering.";
-    }
-    if (_error.code === "MISSING_HEYGEN_AVATAR_ID") {
-      return "HeyGen avatar id is not configured for avatar rendering.";
-    }
-    if (
-      _error.code === "AVATAR_VIDEO_UPLOAD_FAILED" ||
-      _error.code === "AVATAR_METADATA_UPLOAD_FAILED" ||
-      _error.code === "AVATAR_VIDEO_ASSET_CREATE_FAILED" ||
-      _error.code === "AVATAR_METADATA_ASSET_CREATE_FAILED"
-    ) {
-      return "Avatar render assets could not be persisted.";
-    }
-    return "Avatar rendering failed.";
-  }
-
-  return "Tour render failed before rendering could complete.";
-}
-
-function summarizePreflightFailure(preflight: Extract<TourRenderPreflightResult, { ok: false }>): string {
-  const firstIssue: TourRenderPreflightIssue | undefined = preflight.issues[0];
-  return firstIssue?.message ?? "Tour project is not ready for rendering.";
-}
-
-function needsVoiceover(tourType: string): boolean {
-  return tourType === "tour_video_voice_over" || tourType === "tour_video_avatar";
-}
-
-function needsAvatar(tourType: string): boolean {
-  return tourType === "tour_video_avatar";
-}
-
-function shouldReuseAsset(
-  options: TourRenderOptions | undefined,
-  asset: "scriptPlan" | "voiceover" | "avatar" | "sceneClips" | "finalVideo"
-): boolean {
-  if (typeof options?.reuse?.[asset] === "boolean") {
-    return options.reuse[asset];
-  }
-  return options?.reuseExistingAssets !== false;
-}
-
-function scriptTimingsToDurations(scriptPlan: {
-  sceneTimings: Array<{ sceneId: string; scriptText: string; durationSeconds: number }>;
-}): SceneDuration[] {
-  let offsetMs = 0;
-  return scriptPlan.sceneTimings.map((timing) => {
-    const durationMs = Math.max(0, Math.round(timing.durationSeconds * 1000));
-    const duration: SceneDuration = {
-      sceneId: timing.sceneId,
-      title: timing.sceneId,
-      durationSeconds: timing.durationSeconds,
-      offsets: {
-        from: offsetMs,
-        to: offsetMs + durationMs,
-      },
-    };
-    offsetMs += durationMs;
-    return duration;
-  });
-}
-
-function applyScriptPlannedCameraMotions(
-  project: RenderableTourProject,
-  scriptPlan: TourScriptPlan
-): RenderableTourProject {
-  const selectedMotionBySceneId = new Map(
-    scriptPlan.sceneTimings
-      .filter((timing) => timing.selectedCameraMotion)
-      .map((timing) => [timing.sceneId, timing.selectedCameraMotion!])
-  );
-
-  return {
-    ...project,
-    scenes: project.scenes.map((scene) => {
-      if (scene.cameraMotion !== "auto") {
-        return scene;
-      }
-
-      const selectedCameraMotion = selectedMotionBySceneId.get(scene.id);
-      return selectedCameraMotion
-        ? {
-            ...scene,
-            cameraMotion: selectedCameraMotion,
-          }
-        : scene;
-    }),
-  };
-}
-
-function summarizeSceneCameraMotions(project: RenderableTourProject): Array<{
-  sceneId: string;
-  title: string;
-  sortOrder: number;
-  included: boolean;
-  cameraMotion: string;
-}> {
-  return project.scenes
-    .map((scene) => ({
-      sceneId: scene.id,
-      title: scene.title,
-      sortOrder: scene.sortOrder,
-      included: scene.included,
-      cameraMotion: scene.cameraMotion,
-    }))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.sceneId.localeCompare(b.sceneId));
-}
-
-function buildAvatarBatchItem(input: {
-  projectId: string;
-  runId: string;
-  userId: string;
-  profileId: string;
-  projectName: string;
-  signedVoiceoverAudioUrl: string;
-  voiceoverAudioAsset: TourRenderAsset;
-  options?: TourRenderOptions;
-}): TourAvatarBatchItem {
-  return {
-    projectId: input.projectId,
-    runId: input.runId,
-    userId: input.userId,
-    profileId: input.profileId,
-    projectName: input.projectName,
-    signedVoiceoverAudioUrl: input.signedVoiceoverAudioUrl,
-    voiceoverAudioAsset: input.voiceoverAudioAsset,
-    options: {
-      reuseExistingAssets: shouldReuseAsset(input.options, "avatar"),
-      avatarId: input.options?.heyGenAvatarId,
-      size: input.options?.heyGenAvatarSize,
-      positioning: input.options?.heyGenAvatarPositioning,
-      generation: input.options?.heyGenAvatarGeneration,
-    },
-  };
-}
-
-function resolveAvatarOverlay(input: TourAvatarBatchResult): {
-  avatarAssetIds: { avatarVideoAssetId: string; avatarMetadataAssetId: string };
-  avatarOverlay: FinalRenderAvatarOverlay;
-} | null {
-  if (!input.metadata) {
-    return null;
-  }
-
-  return {
-    avatarAssetIds: {
-      avatarVideoAssetId: input.avatarAsset.id,
-      avatarMetadataAssetId: input.metadataAsset.id,
-    },
-    avatarOverlay: {
-      avatarAsset: input.avatarAsset,
-      metadataAsset: input.metadataAsset,
-      metadata: input.metadata,
-    },
-  };
-}
-
-async function notifyProgress(
-  input: GenerateTourProjectVideoInput,
-  update: TourRenderProgressUpdate
-): Promise<void> {
-  try {
-    await input.progress?.(update);
-  } catch {
-    // Trigger.dev metadata is operational only; Supabase remains the product state.
-  }
-}
-
-async function recordProgress(
-  repository: TourRenderRepository,
-  input: GenerateTourProjectVideoInput,
-  update: TourRenderProgressUpdate
-): Promise<TourRenderRun | null> {
-  const run = await repository.updateProgress({
-    runId: input.renderRunId,
-    projectId: input.projectId,
-    userId: input.userId,
-    step: update.step,
-    label: update.label,
-    progressPercent: update.progressPercent,
-    sceneClipCompletedCount: update.sceneClipCompletedCount,
-    sceneClipTotalCount: update.sceneClipTotalCount,
-  });
-
-  await repository.appendEvent({
-    runId: input.renderRunId,
-    projectId: input.projectId,
-    step: update.step,
-    status: "running",
-    safeMessage: update.message ?? update.label,
-    metadata: update.metadata,
-  });
-
-  await notifyProgress(input, update);
-  return run;
-}
-
-async function markShellFailed(
-  repository: TourRenderRepository,
-  input: GenerateTourProjectVideoInput,
-  safeMessage: string
-): Promise<TourRenderRun | null> {
-  const failed = await repository.markFailed({
-    runId: input.renderRunId,
-    projectId: input.projectId,
-    userId: input.userId,
-    step: "failed",
-    label: "Failed",
-    safeMessage,
-  });
-
-  await repository.appendEvent({
-    runId: input.renderRunId,
-    projectId: input.projectId,
-    step: "failed",
-    status: "failed",
-    safeMessage,
-  });
-
-  await notifyProgress(input, {
-    step: "failed",
-    label: "Failed",
-    progressPercent: failed?.progressPercent ?? 0,
-    message: safeMessage,
-  });
-
-  return failed;
-}
+export type {
+  GenerateTourProjectVideoInput,
+  TourAvatarBatchItem,
+  TourAvatarBatchResult,
+  TourMediaBatchRunner,
+  TourRenderProgressUpdate,
+} from "./generate-tour-project-video.types";
 
 export async function generateTourProjectVideo(
   input: GenerateTourProjectVideoInput,
@@ -1018,14 +652,5 @@ export async function generateTourProjectVideo(
       stack: error instanceof Error ? error.stack : null,
     });
     return markShellFailed(repository, input, safeErrorMessage(error));
-  }
-}
-
-function isProviderReachableUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return !["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-  } catch {
-    return false;
   }
 }
