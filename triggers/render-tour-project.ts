@@ -1,18 +1,24 @@
-import { logger, metadata, task } from "@trigger.dev/sdk/v3";
+import { batch, logger, metadata, task } from "@trigger.dev/sdk/v3";
 
 import {
   generateTourProjectVideo,
   type GenerateTourProjectVideoInput,
+  type TourAvatarBatchItem,
+  type TourAvatarBatchResult,
 } from "@/lib/tours/rendering/generate-tour-project-video";
 import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/tour-voiceover";
 import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/openrouter-script-planning-provider";
 import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/tour-transitions";
 import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/tour-render.repository";
-import { createHeyGenAvatarProvider } from "@/lib/tours/rendering/tour-avatar";
+import {
+  createHeyGenAvatarProvider,
+  prepareHeyGenAvatarStage,
+} from "@/lib/tours/rendering/tour-avatar";
 import {
   createOpenRouterImageToVideoProvider,
   renderSceneClipBatchItem,
   type SceneClipBatchItem,
+  type SceneClipBatchResult,
 } from "@/lib/tours/rendering/tour-scene-clips";
 import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/tour-render-retention";
 
@@ -54,6 +60,53 @@ export const renderTourSceneClipTask = task({
     await metadata.flush();
 
     return { index: payload.index, clip };
+  },
+});
+
+export const renderTourAvatarTask = task({
+  id: "render-tour-avatar",
+  queue: {
+    name: "tour-avatar-renders",
+    concurrencyLimit: 1,
+  },
+  machine: "medium-1x",
+  maxDuration: 45 * 60,
+  run: async (payload: TourAvatarBatchItem, { ctx }) => {
+    metadata.set("product", "tours");
+    metadata.set("projectId", payload.projectId);
+    metadata.set("renderRunId", payload.runId);
+    metadata.set("triggerRunId", ctx.run.id);
+    metadata.set("step", "generating_avatar");
+
+    logger.log("Tours avatar task started.", {
+      projectId: payload.projectId,
+      renderRunId: payload.runId,
+      avatarId: payload.options.avatarId ?? null,
+      reuseExistingAssets: payload.options.reuseExistingAssets,
+    });
+
+    const avatar = await prepareHeyGenAvatarStage({
+      projectId: payload.projectId,
+      runId: payload.runId,
+      userId: payload.userId,
+      profileId: payload.profileId,
+      source: {
+        mode: "generate",
+        title: payload.projectName,
+        audioUrl: payload.signedVoiceoverAudioUrl,
+      },
+      repository: createServiceRoleTourRenderRepository(),
+      provider: createHeyGenAvatarProvider(),
+      voiceoverAudioAsset: payload.voiceoverAudioAsset,
+      options: payload.options,
+    });
+
+    metadata.set("status", "completed");
+    metadata.set("avatarAssetId", avatar.avatarAsset.id);
+    metadata.set("metadataAssetId", avatar.metadataAsset.id);
+    await metadata.flush();
+
+    return avatar satisfies TourAvatarBatchResult;
   },
 });
 
@@ -167,9 +220,10 @@ export const renderTourProjectTask = task({
         imageToVideoProvider: createOpenRouterImageToVideoProvider({
           apiKey: process.env.OPENROUTER_API_KEY ?? "",
         }),
-        sceneClipBatchRunner: async (items) => {
-          const batch = await renderTourSceneClipTask.batchTriggerAndWait(
-            items.map((item) => ({
+        mediaBatchRunner: async ({ sceneClipItems, avatarItem }) => {
+          const batchItems = [
+            ...sceneClipItems.map((item) => ({
+              id: renderTourSceneClipTask.id,
               payload: item,
               options: {
                 tags: [
@@ -181,21 +235,54 @@ export const renderTourProjectTask = task({
                 ],
               },
             })),
-          );
+            ...(avatarItem
+              ? [
+                  {
+                    id: renderTourAvatarTask.id,
+                    payload: avatarItem,
+                    options: {
+                      tags: [
+                        `user:${avatarItem.userId}`,
+                        `tour-project:${avatarItem.projectId}`,
+                        `tour-render:${avatarItem.runId}`,
+                        "render-tour-avatar",
+                      ],
+                    },
+                  },
+                ]
+              : []),
+          ];
 
-          return batch.runs.map((run, resultIndex) => {
+          const mediaBatch = await batch.triggerAndWait<
+            typeof renderTourSceneClipTask | typeof renderTourAvatarTask
+          >(batchItems);
+
+          const sceneClips: SceneClipBatchResult[] = [];
+          let avatar: TourAvatarBatchResult | null = null;
+
+          for (const [resultIndex, run] of mediaBatch.runs.entries()) {
             if (run.ok) {
-              return run.output;
+              if (run.taskIdentifier === renderTourSceneClipTask.id) {
+                sceneClips.push(run.output);
+                continue;
+              }
+              if (run.taskIdentifier === renderTourAvatarTask.id) {
+                avatar = run.output;
+                continue;
+              }
             }
 
-            logger.error("Tours scene clip child task failed.", {
-              batchId: batch.id,
+            logger.error("Tours media child task failed.", {
+              batchId: mediaBatch.id,
               childRunId: run.id,
+              taskIdentifier: run.taskIdentifier,
               resultIndex,
               error: run.error,
             });
-            throw new Error("A scene clip child task failed.");
-          });
+            throw new Error("A tour media child task failed.");
+          }
+
+          return { sceneClips, avatar };
         },
         ...(isAvatarRender
           ? { avatarProvider: createHeyGenAvatarProvider() }

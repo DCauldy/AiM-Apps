@@ -13,6 +13,7 @@ import type {
   TourRenderRun,
 } from "./tour-render.repository";
 import type { SceneClipRenderer } from "./tour-scene-clips";
+import type { TourAvatarBatchResult, TourMediaBatchRunner } from "./generate-tour-project-video";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
 import type { TransitionDetectionProvider } from "./tour-transitions";
 import type { VoiceoverProvider } from "./tour-voiceover";
@@ -136,6 +137,24 @@ const finalVideoAsset: TourRenderAsset = {
   storagePath: "user-1/project-1/run-1/final-video.mp4",
   contentType: "video/mp4",
   fingerprintHash: "final-video-fingerprint",
+};
+
+const avatarVideoAsset: TourRenderAsset = {
+  ...scriptPlanAsset,
+  id: "asset-avatar-video",
+  kind: "avatar_video",
+  storagePath: "user-1/project-1/run-1/avatar.webm",
+  contentType: "video/webm",
+  fingerprintHash: "avatar-video-fingerprint",
+};
+
+const avatarMetadataAsset: TourRenderAsset = {
+  ...scriptPlanAsset,
+  id: "asset-avatar-metadata",
+  kind: "avatar_metadata",
+  storagePath: "user-1/project-1/run-1/avatar-metadata.json",
+  contentType: "application/json",
+  fingerprintHash: "avatar-metadata-fingerprint",
 };
 
 function runWith(overrides: Partial<TourRenderRun>): TourRenderRun {
@@ -571,6 +590,7 @@ describe("generateTourProjectVideo", () => {
         transitionDetectionProvider,
         avatarProvider,
         getApiKey: vi.fn().mockResolvedValue("provider-key"),
+        resolveProfileId: vi.fn().mockResolvedValue("profile-1"),
       }
     );
 
@@ -583,6 +603,188 @@ describe("generateTourProjectVideo", () => {
           "Voiceover audio is not reachable by HeyGen. Set PROVIDER_VISIBLE_SUPABASE_URL for local avatar renders.",
       })
     );
+  });
+
+  it("includes avatar generation in the media batch with scene clips when available", async () => {
+    const repository = createRepository({
+      getRenderableTourProject: vi.fn().mockResolvedValue({
+        ...baseProject,
+        project: {
+          ...baseProject.project,
+          tourType: "tour_video_avatar",
+        },
+      }),
+      createSignedGeneratedMediaUrl: vi.fn().mockResolvedValue({
+        storageBucket: "tours-generated-media",
+        storagePath: voiceoverAudioAsset.storagePath,
+        signedUrl: "https://providers.example/voiceover.mp3",
+      }),
+    });
+    const scriptPlanningProvider: TourScriptPlanningProvider = {
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Welcome to the kitchen.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            scriptText: "Welcome to the kitchen.",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    };
+    const voiceoverProvider: VoiceoverProvider = {
+      generateVoiceover: vi.fn(async (input) => {
+        await writeFile(input.outputAudioPath, Buffer.from("mp3-bytes"));
+        return {
+          audioFilePath: input.outputAudioPath,
+          transcript: [
+            { text: "Welcome to the kitchen.", offsets: { from: 0, to: 1500 } },
+          ],
+        };
+      }),
+    };
+    const transitionDetectionProvider: TransitionDetectionProvider = {
+      detectTransitions: vi.fn().mockResolvedValue({
+        transitions: [{ sceneId: "scene-1", chunkId: 0 }],
+      }),
+    };
+    const mediaBatchRunner: TourMediaBatchRunner = vi.fn(
+      async ({ sceneClipItems, avatarItem }: Parameters<TourMediaBatchRunner>[0]) => {
+        const avatar: TourAvatarBatchResult | null = avatarItem
+          ? {
+              reused: false as const,
+              avatarAsset: avatarVideoAsset,
+              metadataAsset: avatarMetadataAsset,
+              metadata: {
+                analysis: {
+                  sourceWidth: 720,
+                  sourceHeight: 1280,
+                  sampledFrameCount: 1,
+                  alphaThreshold: 8,
+                  medianBox: { x: 0, y: 0, width: 720, height: 1280, right: 720, bottom: 1280 },
+                  maxBox: { x: 0, y: 0, width: 720, height: 1280, right: 720, bottom: 1280 },
+                  transparentPadding: { left: 0, right: 0, top: 0, bottom: 0 },
+                  edgeTouchRate: { left: 0, right: 0, top: 0, bottom: 0 },
+                  cropRisk: { level: "none", reasons: [] },
+                },
+                overlay: {
+                  canvas: { width: 1080, height: 1920 },
+                  size: "medium",
+                  placement: {
+                    avatarWidth: 500,
+                    anchor: "bottom-right",
+                    rightMargin: 0,
+                    bottomMargin: 0,
+                    basis: "videoLayer",
+                    overlayX: "W-w",
+                    overlayY: "H-h",
+                  },
+                  ffmpeg: {
+                    avatarInputCodec: "libvpx-vp9",
+                    backgroundFilter: "[0:v]format=rgba[bg]",
+                    avatarScaleFilter: "scale=500:-1",
+                    overlayFilter: "[bg][av]overlay=x=W-w:y=H-h:format=auto[v]",
+                    filterComplex: "[0:v]format=rgba[bg];[1:v]scale=500:-1[av];[bg][av]overlay=x=W-w:y=H-h:format=auto[v]",
+                    outputVideoCodec: "libx264",
+                    outputAudioCodec: "aac",
+                    preserveAlpha: true,
+                  },
+                },
+                frameChecks: [],
+                warnings: [],
+              },
+              fingerprintHash: "avatar-fingerprint",
+              fingerprint: {} as never,
+            }
+          : null;
+
+        return {
+          sceneClips: sceneClipItems.map((item) => ({
+            index: item.index,
+            clip: {
+              sceneId: item.scene.id,
+              durationSeconds: item.duration.durationSeconds,
+              asset: sceneClipAsset,
+              reused: false,
+              fingerprintHash: "scene-clip-fingerprint",
+              fingerprint: {} as never,
+            },
+          })),
+          avatar,
+        };
+      }
+    );
+    const finalVideoRenderer: FinalVideoRenderer = {
+      joinSceneClips: vi.fn(async (input) => {
+        await writeFile(input.joinedScenesPath, Buffer.from("joined-mp4"));
+        return {};
+      }),
+      muxFinalVideo: vi.fn(async (input) => {
+        expect(input.avatarVideoPath).toBeTruthy();
+        expect(input.avatarOverlay).toBeTruthy();
+        await writeFile(input.finalVideoPath, Buffer.from("final-mp4"));
+        return {};
+      }),
+    };
+    const preflight = vi.fn().mockResolvedValue({
+      ok: true,
+      summary: {
+        projectId: "project-1",
+        tourType: "tour_video_avatar",
+        renderMode: "ken_burns_ffmpeg",
+        includedSceneCount: 1,
+        sourcePhotoCount: 1,
+        proofedFactCount: 1,
+        requiredProviderKeys: ["elevenlabs", "heygen"],
+      },
+    });
+
+    const result = await generateTourProjectVideo(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        renderRunId: "run-1",
+        options: {
+          renderMode: "ken_burns_ffmpeg",
+          reuseExistingAssets: false,
+          elevenLabsVoiceId: "voice-1",
+          heyGenAvatarId: "avatar-1",
+        },
+      },
+      {
+        repository,
+        preflight,
+        scriptPlanningProvider,
+        voiceoverProvider,
+        transitionDetectionProvider,
+        mediaBatchRunner,
+        finalVideoRenderer,
+        getApiKey: vi.fn().mockResolvedValue("provider-key"),
+        resolveProfileId: vi.fn().mockResolvedValue("profile-1"),
+      }
+    );
+
+    expect(result?.status).toBe("completed");
+    expect(mediaBatchRunner).toHaveBeenCalledWith({
+      sceneClipItems: [
+        expect.objectContaining({
+          index: 0,
+          scene: expect.objectContaining({ id: "scene-1" }),
+        }),
+      ],
+      avatarItem: expect.objectContaining({
+        projectId: "project-1",
+        runId: "run-1",
+        userId: "user-1",
+        profileId: "profile-1",
+        projectName: "Demo Listing",
+        signedVoiceoverAudioUrl: "https://providers.example/voiceover.mp3",
+        voiceoverAudioAsset,
+        options: expect.objectContaining({ avatarId: "avatar-1", reuseExistingAssets: false }),
+      }),
+    });
+    expect(finalVideoRenderer.muxFinalVideo).toHaveBeenCalled();
   });
 
   it("marks the run failed with a safe message when transition detection is invalid", async () => {

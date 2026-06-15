@@ -36,6 +36,8 @@ import {
   renderSceneClipsStage,
   TourSceneClipRenderError,
   type ImageToVideoProvider,
+  type SceneClipBatchItem,
+  type SceneClipBatchResult,
   type SceneClipBatchRunner,
   type SceneClipRenderer,
 } from "./tour-scene-clips";
@@ -48,6 +50,8 @@ import {
 import {
   prepareHeyGenAvatarStage,
   TourAvatarError,
+  type HeyGenAvatarStageOptions,
+  type HeyGenAvatarStageResult,
   type HeyGenAvatarProvider,
 } from "./tour-avatar";
 
@@ -77,6 +81,7 @@ type GenerateTourProjectVideoOptions = {
   transitionDetectionProvider?: TransitionDetectionProvider;
   sceneClipRenderer?: SceneClipRenderer;
   sceneClipBatchRunner?: SceneClipBatchRunner;
+  mediaBatchRunner?: TourMediaBatchRunner;
   finalVideoRenderer?: FinalVideoRenderer;
   imageToVideoProvider?: ImageToVideoProvider;
   avatarProvider?: HeyGenAvatarProvider;
@@ -84,6 +89,27 @@ type GenerateTourProjectVideoOptions = {
   /** Override the project→profile_id resolver in tests. */
   resolveProfileId?: typeof resolveProfileIdForRender;
 };
+
+export type TourAvatarBatchItem = {
+  projectId: string;
+  runId: string;
+  userId: string;
+  profileId: string;
+  projectName: string;
+  signedVoiceoverAudioUrl: string;
+  voiceoverAudioAsset: TourRenderAsset;
+  options: HeyGenAvatarStageOptions;
+};
+
+export type TourAvatarBatchResult = HeyGenAvatarStageResult;
+
+export type TourMediaBatchRunner = (input: {
+  sceneClipItems: SceneClipBatchItem[];
+  avatarItem: TourAvatarBatchItem | null;
+}) => Promise<{
+  sceneClips: SceneClipBatchResult[];
+  avatar: TourAvatarBatchResult | null;
+}>;
 
 function safeErrorMessage(_error: unknown): string {
   if (_error instanceof TourScriptPlanningError) {
@@ -227,6 +253,55 @@ function scriptTimingsToDurations(scriptPlan: {
     offsetMs += durationMs;
     return duration;
   });
+}
+
+function buildAvatarBatchItem(input: {
+  projectId: string;
+  runId: string;
+  userId: string;
+  profileId: string;
+  projectName: string;
+  signedVoiceoverAudioUrl: string;
+  voiceoverAudioAsset: TourRenderAsset;
+  options?: TourRenderOptions;
+}): TourAvatarBatchItem {
+  return {
+    projectId: input.projectId,
+    runId: input.runId,
+    userId: input.userId,
+    profileId: input.profileId,
+    projectName: input.projectName,
+    signedVoiceoverAudioUrl: input.signedVoiceoverAudioUrl,
+    voiceoverAudioAsset: input.voiceoverAudioAsset,
+    options: {
+      reuseExistingAssets: shouldReuseAsset(input.options, "avatar"),
+      avatarId: input.options?.heyGenAvatarId,
+      size: input.options?.heyGenAvatarSize,
+      positioning: input.options?.heyGenAvatarPositioning,
+      generation: input.options?.heyGenAvatarGeneration,
+    },
+  };
+}
+
+function resolveAvatarOverlay(input: TourAvatarBatchResult): {
+  avatarAssetIds: { avatarVideoAssetId: string; avatarMetadataAssetId: string };
+  avatarOverlay: FinalRenderAvatarOverlay;
+} | null {
+  if (!input.metadata) {
+    return null;
+  }
+
+  return {
+    avatarAssetIds: {
+      avatarVideoAssetId: input.avatarAsset.id,
+      avatarMetadataAssetId: input.metadataAsset.id,
+    },
+    avatarOverlay: {
+      avatarAsset: input.avatarAsset,
+      metadataAsset: input.metadataAsset,
+      metadata: input.metadata,
+    },
+  };
 }
 
 async function notifyProgress(
@@ -433,6 +508,9 @@ export async function generateTourProjectVideo(
       | { avatarVideoAssetId: string; avatarMetadataAssetId: string }
       | null = null;
     let avatarOverlay: FinalRenderAvatarOverlay | null = null;
+    let avatarBatchItem: TourAvatarBatchItem | null = null;
+    let batchedAvatarResult: TourAvatarBatchResult | null = null;
+    let avatarProgressResult: TourAvatarBatchResult | null = null;
     let sceneDurations = scriptTimingsToDurations(scriptPlanResult.plan);
     if (needsVoiceover(project.project.tourType)) {
       await recordProgress(repository, input, {
@@ -618,60 +696,61 @@ export async function generateTourProjectVideo(
         message: "Checking for a reusable HeyGen avatar overlay.",
       });
 
-      const avatarResult = await prepareHeyGenAvatarStage({
+      avatarBatchItem = buildAvatarBatchItem({
         projectId: input.projectId,
         runId: input.renderRunId,
         userId: input.userId,
         profileId,
-        source: {
-          mode: "generate",
-          title: project.project.name,
-          audioUrl: signedVoiceoverAudio.signedUrl,
-        },
-        repository,
-        provider: options.avatarProvider,
+        projectName: project.project.name,
+        signedVoiceoverAudioUrl: signedVoiceoverAudio.signedUrl,
         voiceoverAudioAsset,
-        getApiKey: options.getApiKey,
-        options: {
-          reuseExistingAssets: shouldReuseAsset(input.options, "avatar"),
-          avatarId: input.options?.heyGenAvatarId,
-          size: input.options?.heyGenAvatarSize,
-          positioning: input.options?.heyGenAvatarPositioning,
-          generation: input.options?.heyGenAvatarGeneration,
-        },
+        options: input.options,
       });
 
-      if (!avatarResult.metadata) {
-        return markShellFailed(
+      if (!options.mediaBatchRunner) {
+        const avatarResult = await prepareHeyGenAvatarStage({
+          projectId: avatarBatchItem.projectId,
+          runId: avatarBatchItem.runId,
+          userId: avatarBatchItem.userId,
+          profileId: avatarBatchItem.profileId,
+          source: {
+            mode: "generate",
+            title: avatarBatchItem.projectName,
+            audioUrl: avatarBatchItem.signedVoiceoverAudioUrl,
+          },
           repository,
-          input,
-          "Stored avatar metadata could not be loaded for final compositing."
-        );
+          provider: options.avatarProvider,
+          voiceoverAudioAsset: avatarBatchItem.voiceoverAudioAsset,
+          getApiKey: options.getApiKey,
+          options: avatarBatchItem.options,
+        });
+
+        const resolvedAvatar = resolveAvatarOverlay(avatarResult);
+        if (!resolvedAvatar) {
+          return markShellFailed(
+            repository,
+            input,
+            "Stored avatar metadata could not be loaded for final compositing."
+          );
+        }
+
+        avatarAssetIds = resolvedAvatar.avatarAssetIds;
+        avatarOverlay = resolvedAvatar.avatarOverlay;
+
+        await recordProgress(repository, input, {
+          step: "generating_avatar",
+          label: avatarResult.reused ? "Avatar Reused" : "Avatar Generated",
+          progressPercent: 67,
+          message: avatarResult.reused
+            ? "A matching reusable avatar overlay was selected."
+            : "Avatar video and compositing metadata were generated and persisted.",
+          metadata: {
+            ...avatarAssetIds,
+            fingerprintHash: avatarResult.fingerprintHash,
+            reused: avatarResult.reused,
+          },
+        });
       }
-
-      avatarAssetIds = {
-        avatarVideoAssetId: avatarResult.avatarAsset.id,
-        avatarMetadataAssetId: avatarResult.metadataAsset.id,
-      };
-      avatarOverlay = {
-        avatarAsset: avatarResult.avatarAsset,
-        metadataAsset: avatarResult.metadataAsset,
-        metadata: avatarResult.metadata,
-      };
-
-      await recordProgress(repository, input, {
-        step: "generating_avatar",
-        label: avatarResult.reused ? "Avatar Reused" : "Avatar Generated",
-        progressPercent: 67,
-        message: avatarResult.reused
-          ? "A matching reusable avatar overlay was selected."
-          : "Avatar video and compositing metadata were generated and persisted.",
-        metadata: {
-          ...avatarAssetIds,
-          fingerprintHash: avatarResult.fingerprintHash,
-          reused: avatarResult.reused,
-        },
-      });
     }
 
     await recordProgress(repository, input, {
@@ -686,6 +765,20 @@ export async function generateTourProjectVideo(
       },
     });
 
+    const sceneClipBatchRunner: SceneClipBatchRunner | undefined = options.mediaBatchRunner
+      ? async (items) => {
+          const result = await options.mediaBatchRunner?.({
+            sceneClipItems: items,
+            avatarItem: avatarBatchItem,
+          });
+          if (!result) {
+            throw new Error("Tour media batch runner did not return a result.");
+          }
+          batchedAvatarResult = result.avatar;
+          return result.sceneClips;
+        }
+      : options.sceneClipBatchRunner;
+
     const sceneClipResult = await renderSceneClipsStage({
       project,
       repository,
@@ -694,7 +787,7 @@ export async function generateTourProjectVideo(
       durations: sceneDurations,
       renderer: options.sceneClipRenderer,
       provider: options.imageToVideoProvider,
-      batchRunner: options.sceneClipBatchRunner,
+      batchRunner: sceneClipBatchRunner,
       options: {
         renderMode: input.options?.renderMode ?? preflightResult.summary.renderMode,
         reuseExistingAssets: shouldReuseAsset(input.options, "sceneClips"),
@@ -714,6 +807,26 @@ export async function generateTourProjectVideo(
       },
     });
 
+    if (avatarBatchItem && options.mediaBatchRunner) {
+      const avatarResult = batchedAvatarResult as TourAvatarBatchResult | null;
+      if (!avatarResult) {
+        return markShellFailed(repository, input, "Avatar rendering did not return a result.");
+      }
+
+      const resolvedAvatar = resolveAvatarOverlay(avatarResult);
+      if (!resolvedAvatar) {
+        return markShellFailed(
+          repository,
+          input,
+          "Stored avatar metadata could not be loaded for final compositing."
+        );
+      }
+
+      avatarAssetIds = resolvedAvatar.avatarAssetIds;
+      avatarOverlay = resolvedAvatar.avatarOverlay;
+      avatarProgressResult = avatarResult;
+    }
+
     await recordProgress(repository, input, {
       step: "rendering_scene_clips",
       label: "Scene Clips Ready",
@@ -726,6 +839,23 @@ export async function generateTourProjectVideo(
         reusedCount: sceneClipResult.clips.filter((clip) => clip.reused).length,
       },
     });
+
+    if (avatarProgressResult && avatarAssetIds) {
+      await repository.appendEvent({
+        runId: input.renderRunId,
+        projectId: input.projectId,
+        step: "generating_avatar",
+        status: "running",
+        safeMessage: avatarProgressResult.reused
+          ? "A matching reusable avatar overlay was selected."
+          : "Avatar video and compositing metadata were generated and persisted.",
+        metadata: {
+          ...avatarAssetIds,
+          fingerprintHash: avatarProgressResult.fingerprintHash,
+          reused: avatarProgressResult.reused,
+        },
+      });
+    }
 
     await recordProgress(repository, input, {
       step: "joining_video",

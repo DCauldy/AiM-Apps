@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   toursAccessErrorResponse: vi.fn((access: { error: string; status: number }) =>
     Response.json({ error: access.error }, { status: access.status })
   ),
-  getUserApiKey: vi.fn(),
+  getSlotState: vi.fn(),
+  getProfileApiKey: vi.fn(),
   listHeyGenDigitalTwinAvatarLooks: vi.fn(),
 }));
 
@@ -15,7 +16,11 @@ vi.mock("@/lib/tours/access.server", () => ({
 }));
 
 vi.mock("@/lib/user-api-keys/service", () => ({
-  getUserApiKey: mocks.getUserApiKey,
+  getProfileApiKey: mocks.getProfileApiKey,
+}));
+
+vi.mock("@/lib/profiles/server", () => ({
+  getSlotState: mocks.getSlotState,
 }));
 
 vi.mock("@/lib/tours/rendering/heygen-avatars", async (importOriginal) => {
@@ -34,7 +39,7 @@ describe("GET /api/apps/tours/avatars", () => {
     vi.clearAllMocks();
   });
 
-  it("returns normalized avatar looks for the authenticated user's HeyGen key", async () => {
+  it("returns normalized avatar looks for the active profile's HeyGen key", async () => {
     const avatars = [
       {
         id: "look-1",
@@ -50,20 +55,22 @@ describe("GET /api/apps/tours/avatars", () => {
       },
     ];
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
-    mocks.getUserApiKey.mockResolvedValue("heygen-key");
+    mocks.getSlotState.mockResolvedValue({ active_profile_id: "profile-1" });
+    mocks.getProfileApiKey.mockResolvedValue("heygen-key");
     mocks.listHeyGenDigitalTwinAvatarLooks.mockResolvedValue(avatars);
 
     const response = await GET();
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ avatars });
-    expect(mocks.getUserApiKey).toHaveBeenCalledWith("user-1", "heygen");
+    expect(mocks.getProfileApiKey).toHaveBeenCalledWith("profile-1", "heygen");
     expect(mocks.listHeyGenDigitalTwinAvatarLooks).toHaveBeenCalledWith({ apiKey: "heygen-key" });
   });
 
   it("returns 422 when the user has no HeyGen API key", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
-    mocks.getUserApiKey.mockResolvedValue(null);
+    mocks.getSlotState.mockResolvedValue({ active_profile_id: "profile-1" });
+    mocks.getProfileApiKey.mockResolvedValue(null);
 
     const response = await GET();
 
@@ -74,9 +81,24 @@ describe("GET /api/apps/tours/avatars", () => {
     expect(mocks.listHeyGenDigitalTwinAvatarLooks).not.toHaveBeenCalled();
   });
 
+  it("returns 422 when the user has no active profile", async () => {
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.getSlotState.mockResolvedValue({ active_profile_id: null });
+
+    const response = await GET();
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: "Set up a profile before choosing an avatar.",
+    });
+    expect(mocks.getProfileApiKey).not.toHaveBeenCalled();
+    expect(mocks.listHeyGenDigitalTwinAvatarLooks).not.toHaveBeenCalled();
+  });
+
   it("returns a safe 502 for provider errors", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
-    mocks.getUserApiKey.mockResolvedValue("heygen-key");
+    mocks.getSlotState.mockResolvedValue({ active_profile_id: "profile-1" });
+    mocks.getProfileApiKey.mockResolvedValue("heygen-key");
     mocks.listHeyGenDigitalTwinAvatarLooks.mockRejectedValue(
       new HeyGenAvatarsError("Could not load HeyGen avatars.", "HEYGEN_AVATARS_FAILED")
     );
@@ -97,7 +119,8 @@ describe("GET /api/apps/tours/avatars", () => {
     const response = await GET();
 
     expect(response.status).toBe(401);
-    expect(mocks.getUserApiKey).not.toHaveBeenCalled();
+    expect(mocks.getSlotState).not.toHaveBeenCalled();
+    expect(mocks.getProfileApiKey).not.toHaveBeenCalled();
     expect(mocks.listHeyGenDigitalTwinAvatarLooks).not.toHaveBeenCalled();
   });
 });
