@@ -64,21 +64,25 @@ export type TourRenderPreflightScene = Omit<RenderableTourScene, "authoritativeP
   authoritativePhoto: RenderableTourScene["authoritativePhoto"] | null;
 };
 
+export type RenderableTourSceneSourcePhoto = {
+  id: string;
+  storagePath: string;
+  fileName: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  byteSize: number;
+  width: number | null;
+  height: number | null;
+  priority: number;
+};
+
 export type RenderableTourScene = {
   id: string;
   title: string;
   sortOrder: number;
   included: boolean;
   cameraMotion: TourSceneCameraMotion;
-  authoritativePhoto: {
-    id: string;
-    storagePath: string;
-    fileName: string;
-    contentType: "image/jpeg" | "image/png" | "image/webp";
-    byteSize: number;
-    width: number | null;
-    height: number | null;
-  };
+  authoritativePhoto: RenderableTourSceneSourcePhoto;
+  sourcePhotos: RenderableTourSceneSourcePhoto[];
   proofedFacts: Array<{
     id: string;
     text: string;

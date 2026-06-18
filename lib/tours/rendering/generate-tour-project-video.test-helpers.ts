@@ -2,6 +2,7 @@ import { vi } from "vitest";
 
 import type {
   RenderableTourProject,
+  RenderableTourSceneSourcePhoto,
   TourRenderAsset,
   TourRenderRepository,
   TourRenderRun,
@@ -28,6 +29,17 @@ export const baseRun: TourRenderRun = {
   updatedAt: "2026-06-13T12:00:00.000Z",
 };
 
+const baseKitchenPhoto: RenderableTourSceneSourcePhoto = {
+  id: "photo-1",
+  storagePath: "user-1/project-1/kitchen.jpg",
+  fileName: "kitchen.jpg",
+  contentType: "image/jpeg",
+  byteSize: 123,
+  width: 1200,
+  height: 800,
+  priority: 0,
+};
+
 export const baseProject: RenderableTourProject = {
   project: {
     id: "project-1",
@@ -44,15 +56,8 @@ export const baseProject: RenderableTourProject = {
       sortOrder: 1,
       included: true,
       cameraMotion: "slow_push",
-      authoritativePhoto: {
-        id: "photo-1",
-        storagePath: "user-1/project-1/kitchen.jpg",
-        fileName: "kitchen.jpg",
-        contentType: "image/jpeg",
-        byteSize: 123,
-        width: 1200,
-        height: 800,
-      },
+      authoritativePhoto: baseKitchenPhoto,
+      sourcePhotos: [baseKitchenPhoto],
       proofedFacts: [
         {
           id: "fact-1",

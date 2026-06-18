@@ -3,11 +3,26 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { preflightTourRender, type TourRenderOptions } from "./tour-render-preflight";
-import type { TourRenderPreflightProject, TourRenderRepository } from "./tour-render.repository";
+import type {
+  RenderableTourSceneSourcePhoto,
+  TourRenderPreflightProject,
+  TourRenderRepository,
+} from "./tour-render.repository";
 
 const avatarPlacement = {
   frame: { width: 1080 as const, height: 1920 as const },
   offsets: { top: 240, left: 540, bottom: 0, right: 40 },
+};
+
+const kitchenPhoto: RenderableTourSceneSourcePhoto = {
+  id: "photo-1",
+  storagePath: "user-1/project-1/kitchen.jpg",
+  fileName: "kitchen.jpg",
+  contentType: "image/jpeg",
+  byteSize: 123,
+  width: 1600,
+  height: 900,
+  priority: 0,
 };
 
 const baseProject: TourRenderPreflightProject = {
@@ -27,15 +42,8 @@ const baseProject: TourRenderPreflightProject = {
       sortOrder: 0,
       included: true,
       cameraMotion: "slow_push",
-      authoritativePhoto: {
-        id: "photo-1",
-        storagePath: "user-1/project-1/kitchen.jpg",
-        fileName: "kitchen.jpg",
-        contentType: "image/jpeg",
-        byteSize: 123,
-        width: 1600,
-        height: 900,
-      },
+      authoritativePhoto: kitchenPhoto,
+      sourcePhotos: [kitchenPhoto],
       proofedFacts: [],
     },
   ],

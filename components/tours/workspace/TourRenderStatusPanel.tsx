@@ -102,6 +102,7 @@ export function TourRenderStatusPanel({
 }) {
   const active = isTourRenderRunActive(run);
   const completed = run.status === "completed";
+  const failed = run.status === "failed";
   const steps =
     run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
   const activeStep = completed
@@ -167,6 +168,12 @@ export function TourRenderStatusPanel({
               </p>
             </div>
           </div>
+
+          {failed && run.error?.message && (
+            <div className="mt-5 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              {run.error.message}
+            </div>
+          )}
 
           {completed && (run.result?.downloadUrl || onDone) && (
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">

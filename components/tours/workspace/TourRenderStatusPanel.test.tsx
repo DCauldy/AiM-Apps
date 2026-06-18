@@ -39,6 +39,24 @@ function completedRun(): TourRenderRunStatusResponse {
   };
 }
 
+function failedRun(): TourRenderRunStatusResponse {
+  return {
+    ...completedRun(),
+    status: "failed",
+    step: "failed",
+    label: "Failed",
+    progressPercent: 68,
+    sceneClipCounts: {
+      completed: 0,
+      total: 2,
+    },
+    result: null,
+    error: {
+      message: "Scene clip rendering failed.",
+    },
+  };
+}
+
 function renderWithQueryClient(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -77,6 +95,12 @@ test("shows completed render download and done controls", async () => {
 
   await user.click(screen.getByRole("button", { name: "Back to workspace" }));
   assert.equal(doneClicks, 1);
+});
+
+test("shows failed render error message", () => {
+  renderWithQueryClient(<TourRenderStatusPanel run={failedRun()} />);
+
+  assert.ok(screen.getByText("Scene clip rendering failed."));
 });
 
 test("communicates when historical intermediate assets are no longer downloadable", async () => {

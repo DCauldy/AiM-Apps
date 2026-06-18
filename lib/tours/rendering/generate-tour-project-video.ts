@@ -483,6 +483,7 @@ export async function generateTourProjectVideo(
         renderMode: input.options?.renderMode ?? preflightResult.summary.renderMode,
         reuseExistingAssets: shouldReuseAsset(input.options, "sceneClips"),
         providerModelId: input.options?.sceneClipProviderModelId,
+        includeSecondarySourceImages: input.options?.sceneClipIncludeSecondarySourceImages,
         renderSettings: input.options?.sceneClipRenderSettings,
         concurrencyLimit: input.options?.sceneClipConcurrencyLimit,
       },

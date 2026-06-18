@@ -15,6 +15,7 @@ export type {
   DeleteTourRenderAssetReason,
   RenderableTourProject,
   RenderableTourScene,
+  RenderableTourSceneSourcePhoto,
   SignedGeneratedMediaUrl,
   SignedSourcePhotoUrl,
   TourRenderAsset,

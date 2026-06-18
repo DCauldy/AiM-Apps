@@ -264,6 +264,9 @@ describe("tour render repository", () => {
     });
     expect(project?.scenes.map((scene) => scene.id)).toEqual(["scene-1", "scene-2"]);
     expect(project?.scenes[0]?.authoritativePhoto.storagePath).toBe("user-1/project-1/kitchen.jpg");
+    expect(project?.scenes[0]?.sourcePhotos.map((photo) => photo.storagePath)).toEqual([
+      "user-1/project-1/kitchen.jpg",
+    ]);
     expect(project?.scenes[0]?.proofedFacts.map((fact) => fact.text)).toEqual([
       "Bright kitchen.",
       "Updated appliances.",

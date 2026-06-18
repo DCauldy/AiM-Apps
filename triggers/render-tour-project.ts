@@ -6,6 +6,7 @@ import {
   type TourAvatarBatchItem,
   type TourAvatarBatchResult,
 } from "@/lib/tours/rendering/generate-tour-project-video";
+import { safeErrorMessage } from "@/lib/tours/rendering/generate-tour-project-video.helpers";
 import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/tour-voiceover";
 import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/openrouter-script-planning-provider";
 import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/tour-transitions";
@@ -25,6 +26,9 @@ import { getDefaultTourRenderMode } from "@/lib/tours/rendering/tour-render-pref
 
 export const renderTourSceneClipTask = task({
   id: "render-tour-scene-clip",
+  retry: {
+    maxAttempts: 1,
+  },
   queue: {
     name: "tour-scene-clip-renders",
     concurrencyLimit: 2,
@@ -48,19 +52,55 @@ export const renderTourSceneClipTask = task({
       reuseExistingAssets: payload.options.reuseExistingAssets,
     });
 
-    const clip = await renderSceneClipBatchItem({
-      item: payload,
-      repository: createServiceRoleTourRenderRepository(),
-      provider: createOpenRouterImageToVideoProvider({
-        apiKey: process.env.OPENROUTER_API_KEY ?? "",
-      }),
-    });
+    const repository = createServiceRoleTourRenderRepository();
+    try {
+      const clip = await renderSceneClipBatchItem({
+        item: payload,
+        repository,
+        provider: createOpenRouterImageToVideoProvider({
+          apiKey: process.env.OPENROUTER_API_KEY ?? "",
+        }),
+      });
 
-    metadata.set("status", "completed");
-    metadata.set("assetId", clip.asset.id);
-    await metadata.flush();
+      metadata.set("status", "completed");
+      metadata.set("assetId", clip.asset.id);
+      await metadata.flush();
 
-    return { index: payload.index, clip };
+      return { index: payload.index, clip };
+    } catch (error) {
+      const safeMessage = safeErrorMessage(error);
+      logger.error("Tours scene clip task failed.", {
+        projectId: payload.projectId,
+        renderRunId: payload.runId,
+        sceneId: payload.scene.id,
+        sceneTitle: payload.scene.title,
+        error,
+        safeMessage,
+      });
+      await repository.markFailed({
+        runId: payload.runId,
+        projectId: payload.projectId,
+        userId: payload.userId,
+        step: "failed",
+        label: "Failed",
+        safeMessage,
+      });
+      await repository.appendEvent({
+        runId: payload.runId,
+        projectId: payload.projectId,
+        step: "rendering_scene_clips",
+        status: "failed",
+        safeMessage,
+        metadata: {
+          sceneId: payload.scene.id,
+          sceneTitle: payload.scene.title,
+        },
+      });
+      metadata.set("status", "failed");
+      metadata.set("errorMessage", safeMessage);
+      await metadata.flush();
+      throw error;
+    }
   },
 });
 
@@ -193,6 +233,8 @@ export const renderTourProjectTask = task({
       renderMode: payload.options?.renderMode ?? getDefaultTourRenderMode(),
       sceneClipProviderModelId:
         payload.options?.sceneClipProviderModelId ?? null,
+      sceneClipIncludeSecondarySourceImages:
+        payload.options?.sceneClipIncludeSecondarySourceImages ?? true,
       reuseExistingAssets: payload.options?.reuseExistingAssets,
       providerVisibleSupabaseUrl: getProviderVisibleSupabaseUrlForLog(),
     });

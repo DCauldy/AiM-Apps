@@ -13,12 +13,24 @@ import {
   type SceneClipBatchItem,
   type SceneClipRenderer,
 } from "./tour-scene-clips";
+import { buildOpenRouterSceneClipPrompt } from "./tour-scene-clip-openrouter";
 import type {
   RenderableTourProject,
   TourRenderAsset,
   TourRenderRepository,
 } from "./tour-render.repository";
 import type { SceneDuration } from "./tour-transitions";
+
+const primarySourcePhoto = {
+  id: "photo-1",
+  storagePath: "user-1/project-1/kitchen.jpg",
+  fileName: "kitchen.jpg",
+  contentType: "image/jpeg" as const,
+  byteSize: 123,
+  width: 1200,
+  height: 800,
+  priority: 0,
+};
 
 const project: RenderableTourProject = {
   project: {
@@ -36,15 +48,8 @@ const project: RenderableTourProject = {
       sortOrder: 1,
       included: true,
       cameraMotion: "slow_push",
-      authoritativePhoto: {
-        id: "photo-1",
-        storagePath: "user-1/project-1/kitchen.jpg",
-        fileName: "kitchen.jpg",
-        contentType: "image/jpeg",
-        byteSize: 123,
-        width: 1200,
-        height: 800,
-      },
+      authoritativePhoto: primarySourcePhoto,
+      sourcePhotos: [primarySourcePhoto],
       proofedFacts: [],
     },
   ],
@@ -74,6 +79,14 @@ const multiSceneProject: RenderableTourProject = {
         storagePath: "user-1/project-1/patio.jpg",
         fileName: "patio.jpg",
       },
+      sourcePhotos: [
+        {
+          ...project.scenes[0]!.authoritativePhoto,
+          id: "photo-2",
+          storagePath: "user-1/project-1/patio.jpg",
+          fileName: "patio.jpg",
+        },
+      ],
     },
     {
       ...project.scenes[0]!,
@@ -86,6 +99,14 @@ const multiSceneProject: RenderableTourProject = {
         storagePath: "user-1/project-1/bedroom.jpg",
         fileName: "bedroom.jpg",
       },
+      sourcePhotos: [
+        {
+          ...project.scenes[0]!.authoritativePhoto,
+          id: "photo-3",
+          storagePath: "user-1/project-1/bedroom.jpg",
+          fileName: "bedroom.jpg",
+        },
+      ],
     },
   ],
 };
@@ -174,11 +195,16 @@ describe("renderSceneClipsStage", () => {
       expect.objectContaining({
         renderMode: "provider_image_to_video",
         providerModelId: "kwaivgi/kling-v3.0-std",
+        includeSecondarySourceImages: true,
       })
     );
     expect(resolveSceneClipStageOptions({ renderMode: "ken_burns_ffmpeg" }).renderMode).toBe(
       "ken_burns_ffmpeg"
     );
+    expect(
+      resolveSceneClipStageOptions({ includeSecondarySourceImages: false })
+        .includeSecondarySourceImages
+    ).toBe(false);
   });
 
   it("selects reusable scene clips when fingerprints match", async () => {
@@ -480,6 +506,77 @@ describe("renderSceneClipsStage", () => {
     );
   });
 
+  it("passes non-authoritative source photos as secondary provider references", async () => {
+    const secondaryPhoto = {
+      ...primarySourcePhoto,
+      id: "photo-2",
+      storagePath: "user-1/project-1/kitchen-detail.jpg",
+      fileName: "kitchen-detail.jpg",
+      priority: 1,
+    };
+    const projectWithSecondaryPhotos: RenderableTourProject = {
+      ...project,
+      scenes: [
+        {
+          ...project.scenes[0]!,
+          sourcePhotos: [project.scenes[0]!.authoritativePhoto, secondaryPhoto],
+        },
+      ],
+    };
+    const repository = createRepository({
+      createSignedSourcePhotoUrls: vi.fn().mockResolvedValue([
+        {
+          storagePath: "user-1/project-1/kitchen.jpg",
+          signedUrl: "https://signed.example/kitchen.jpg",
+        },
+        {
+          storagePath: "user-1/project-1/kitchen-detail.jpg",
+          signedUrl: "https://signed.example/kitchen-detail.jpg",
+        },
+      ]),
+    });
+    const provider: ImageToVideoProvider = {
+      renderSceneClip: vi.fn().mockResolvedValue({
+        outputUrl: "https://provider.example/output.mp4",
+      }),
+    };
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(Buffer.from("provider-mp4"), {
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+      })
+    );
+
+    await renderSceneClipsStage({
+      project: projectWithSecondaryPhotos,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      durations,
+      provider,
+      fetcher,
+      options: {
+        renderMode: "provider_image_to_video",
+        providerModelId: "openrouter/kling",
+        reuseExistingAssets: false,
+      },
+    });
+
+    expect(repository.createSignedSourcePhotoUrls).toHaveBeenCalledWith({
+      storagePaths: [
+        "user-1/project-1/kitchen.jpg",
+        "user-1/project-1/kitchen-detail.jpg",
+      ],
+      expiresInSeconds: 600,
+    });
+    expect(provider.renderSceneClip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceImageUrl: "https://signed.example/kitchen.jpg",
+        secondarySourceImageUrls: ["https://signed.example/kitchen-detail.jpg"],
+      })
+    );
+  });
+
   it("uses provider download headers when importing authenticated image-to-video output", async () => {
     const repository = createRepository();
     const provider: ImageToVideoProvider = {
@@ -546,6 +643,7 @@ describe("renderSceneClipsStage", () => {
     const result = await provider.renderSceneClip({
       scene: project.scenes[0]!,
       sourceImageUrl: "https://signed.example/kitchen.jpg",
+      secondarySourceImageUrls: ["https://signed.example/kitchen-detail.jpg"],
       durationSeconds: 4.25,
       modelId: "kwaivgi/kling-v3.0-std",
       settings: {
@@ -573,7 +671,33 @@ describe("renderSceneClipsStage", () => {
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual(
       expect.objectContaining({
         duration: 4,
+        input_references: [
+          {
+            type: "image_url",
+            image_url: { url: "https://signed.example/kitchen-detail.jpg" },
+          },
+        ],
       })
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).prompt).toBe(
+      buildOpenRouterSceneClipPrompt({
+        scene: project.scenes[0]!,
+        sourceImageUrl: "https://signed.example/kitchen.jpg",
+        secondarySourceImageUrls: ["https://signed.example/kitchen-detail.jpg"],
+        durationSeconds: 4.25,
+        modelId: "kwaivgi/kling-v3.0-std",
+        settings: {
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          crf: 18,
+          fadeSeconds: 0.25,
+          cropMode: "cover",
+        },
+      })
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).prompt).toContain(
+      "Secondary reference images are provided only as additional room/property context"
     );
     expect(fetcher).toHaveBeenNthCalledWith(
       2,
@@ -645,6 +769,7 @@ describe("buildSceneClipFingerprint", () => {
       durationSeconds: 4,
       renderMode: "provider_image_to_video",
       providerModelId: "openrouter/kling",
+      includeSecondarySourceImages: true,
       renderSettings: {
         width: 1080,
         height: 1920,

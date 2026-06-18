@@ -6,9 +6,38 @@ import {
 } from "./tour-script-planning";
 import type {
   RenderableTourProject,
+  RenderableTourSceneSourcePhoto,
   TourRenderAsset,
   TourRenderRepository,
 } from "./tour-render.repository";
+
+function sourcePhoto(input: {
+  id: string;
+  storagePath: string;
+  fileName: string;
+  byteSize: number;
+}): RenderableTourSceneSourcePhoto {
+  return {
+    ...input,
+    contentType: "image/jpeg",
+    width: input.id === "photo-excluded" ? 100 : 1200,
+    height: input.id === "photo-excluded" ? 100 : 800,
+    priority: 0,
+  };
+}
+
+const garagePhoto = sourcePhoto({
+  id: "photo-excluded",
+  storagePath: "user-1/project-1/garage.jpg",
+  fileName: "garage.jpg",
+  byteSize: 10,
+});
+const kitchenPhoto = sourcePhoto({
+  id: "photo-1",
+  storagePath: "user-1/project-1/kitchen.jpg",
+  fileName: "kitchen.jpg",
+  byteSize: 123,
+});
 
 const project: RenderableTourProject = {
   project: {
@@ -26,15 +55,8 @@ const project: RenderableTourProject = {
       sortOrder: 0,
       included: false,
       cameraMotion: "static_hold",
-      authoritativePhoto: {
-        id: "photo-excluded",
-        storagePath: "user-1/project-1/garage.jpg",
-        fileName: "garage.jpg",
-        contentType: "image/jpeg",
-        byteSize: 10,
-        width: 100,
-        height: 100,
-      },
+      authoritativePhoto: garagePhoto,
+      sourcePhotos: [garagePhoto],
       proofedFacts: [{ id: "fact-excluded", text: "Do not send", sortOrder: 1, sourcePhotoId: null }],
     },
     {
@@ -43,15 +65,8 @@ const project: RenderableTourProject = {
       sortOrder: 1,
       included: true,
       cameraMotion: "slow_push",
-      authoritativePhoto: {
-        id: "photo-1",
-        storagePath: "user-1/project-1/kitchen.jpg",
-        fileName: "kitchen.jpg",
-        contentType: "image/jpeg",
-        byteSize: 123,
-        width: 1200,
-        height: 800,
-      },
+      authoritativePhoto: kitchenPhoto,
+      sourcePhotos: [kitchenPhoto],
       proofedFacts: [{ id: "fact-1", text: "Quartz counters", sortOrder: 1, sourcePhotoId: "photo-1" }],
     },
   ],

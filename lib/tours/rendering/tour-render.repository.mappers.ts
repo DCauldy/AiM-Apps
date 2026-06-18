@@ -96,9 +96,10 @@ export function mapTourRenderPreflightProject(input: {
   const scenes = [...input.scenes]
     .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
     .map((scene) => {
-      const [authoritativePhoto] = [...(sourcePhotosBySceneId.get(scene.id) ?? [])].sort(
+      const sortedSourcePhotos = [...(sourcePhotosBySceneId.get(scene.id) ?? [])].sort(
         (a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at)
       );
+      const [authoritativePhoto] = sortedSourcePhotos;
       return {
         id: scene.id,
         title: scene.title,
@@ -114,8 +115,19 @@ export function mapTourRenderPreflightProject(input: {
               byteSize: authoritativePhoto.byte_size,
               width: authoritativePhoto.width,
               height: authoritativePhoto.height,
+              priority: authoritativePhoto.priority,
             }
           : null,
+        sourcePhotos: sortedSourcePhotos.map((photo) => ({
+          id: photo.id,
+          storagePath: photo.storage_path,
+          fileName: photo.file_name,
+          contentType: photo.content_type,
+          byteSize: photo.byte_size,
+          width: photo.width,
+          height: photo.height,
+          priority: photo.priority,
+        })),
         proofedFacts: [...(proofedFactsBySceneId.get(scene.id) ?? [])]
           .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at))
           .map((fact) => ({

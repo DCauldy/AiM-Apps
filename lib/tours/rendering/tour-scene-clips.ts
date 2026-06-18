@@ -3,19 +3,22 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { getTourSceneCameraMotionLabel } from "@/lib/tours/scenes.core";
 import type {
   RenderableTourProject,
   RenderableTourScene,
+  RenderableTourSceneSourcePhoto,
   TourRenderAsset,
   TourRenderRepository,
 } from "./tour-render.repository";
 import type { SceneDuration } from "./tour-transitions";
 import { getDefaultTourRenderMode, type TourRenderMode } from "./tour-render-preflight";
+import { TourSceneClipRenderError } from "./tour-scene-clip-errors";
 
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
-export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v1";
+export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v2";
 export const DEFAULT_SCENE_CLIP_PROVIDER_MODEL = "kwaivgi/kling-v3.0-std";
+export { TourSceneClipRenderError } from "./tour-scene-clip-errors";
+export { createOpenRouterImageToVideoProvider } from "./tour-scene-clip-openrouter";
 
 export type SceneClipRenderSettings = {
   width?: number;
@@ -32,6 +35,7 @@ export type SceneClipStageOptions = {
   renderMode?: TourRenderMode;
   reuseExistingAssets?: boolean;
   providerModelId?: string;
+  includeSecondarySourceImages?: boolean;
   renderSettings?: SceneClipRenderSettings;
   concurrencyLimit?: number;
 };
@@ -53,6 +57,7 @@ export type SceneClipRenderer = {
 export type ImageToVideoProviderInput = {
   scene: RenderableTourScene;
   sourceImageUrl: string;
+  secondarySourceImageUrls: string[];
   durationSeconds: number;
   modelId: string;
   settings: ResolvedSceneClipRenderSettings;
@@ -65,14 +70,6 @@ export type ImageToVideoProvider = {
     contentType?: string;
     metadata?: Record<string, unknown>;
   }>;
-};
-
-type OpenRouterVideoJob = {
-  id?: string;
-  status?: string;
-  polling_url?: string;
-  error?: string;
-  unsigned_urls?: string[];
 };
 
 export type SceneClipStageResult = {
@@ -131,28 +128,10 @@ export type SceneClipFingerprint = {
     width: number | null;
     height: number | null;
   };
+  secondarySourcePhotos: Array<SceneClipFingerprint["sourcePhoto"] & { priority: number }>;
   durationSeconds: number;
   renderSettings: ResolvedSceneClipRenderSettings;
 };
-
-export class TourSceneClipRenderError extends Error {
-  constructor(
-    message: string,
-    readonly code:
-      | "PROJECT_HAS_NO_INCLUDED_SCENES"
-      | "SCENE_DURATION_MISSING"
-      | "SOURCE_PHOTO_DOWNLOAD_FAILED"
-      | "SIGNED_SOURCE_PHOTO_URL_MISSING"
-      | "SCENE_CLIP_RENDER_FAILED"
-      | "SCENE_CLIP_PROVIDER_FAILED"
-      | "SCENE_CLIP_PROVIDER_OUTPUT_IMPORT_FAILED"
-      | "SCENE_CLIP_UPLOAD_FAILED"
-      | "SCENE_CLIP_ASSET_CREATE_FAILED"
-  ) {
-    super(message);
-    this.name = "TourSceneClipRenderError";
-  }
-}
 
 const DEFAULT_RENDER_SETTINGS: ResolvedSceneClipRenderSettings = {
   width: 1080,
@@ -178,6 +157,7 @@ export function resolveSceneClipStageOptions(
   renderMode: TourRenderMode;
   reuseExistingAssets: boolean;
   providerModelId: string;
+  includeSecondarySourceImages: boolean;
   renderSettings: ResolvedSceneClipRenderSettings;
   concurrencyLimit: number;
 } {
@@ -185,6 +165,7 @@ export function resolveSceneClipStageOptions(
     renderMode: options.renderMode ?? getDefaultTourRenderMode(),
     reuseExistingAssets: options.reuseExistingAssets !== false,
     providerModelId: options.providerModelId ?? DEFAULT_SCENE_CLIP_PROVIDER_MODEL,
+    includeSecondarySourceImages: options.includeSecondarySourceImages !== false,
     renderSettings: {
       ...DEFAULT_RENDER_SETTINGS,
       ...(options.renderSettings ?? {}),
@@ -198,6 +179,7 @@ export function buildSceneClipFingerprint(input: {
   durationSeconds: number;
   renderMode: TourRenderMode;
   providerModelId: string;
+  includeSecondarySourceImages: boolean;
   renderSettings: ResolvedSceneClipRenderSettings;
 }): SceneClipFingerprint {
   const adapterVersion =
@@ -229,6 +211,19 @@ export function buildSceneClipFingerprint(input: {
       width: input.scene.authoritativePhoto.width,
       height: input.scene.authoritativePhoto.height,
     },
+    secondarySourcePhotos:
+      input.renderMode === "provider_image_to_video" && input.includeSecondarySourceImages
+        ? getSecondarySourcePhotos(input.scene).map((photo) => ({
+            id: photo.id,
+            storagePath: photo.storagePath,
+            fileName: photo.fileName,
+            contentType: photo.contentType,
+            byteSize: photo.byteSize,
+            width: photo.width,
+            height: photo.height,
+            priority: photo.priority,
+          }))
+        : [],
     durationSeconds: input.durationSeconds,
     renderSettings: input.renderSettings,
   };
@@ -355,6 +350,7 @@ async function renderOrReuseSceneClip(input: {
     durationSeconds: duration.durationSeconds,
     renderMode: input.options.renderMode,
     providerModelId: input.options.providerModelId,
+    includeSecondarySourceImages: input.options.includeSecondarySourceImages,
     renderSettings: input.options.renderSettings,
   });
   const fingerprintHash = hashSceneClipFingerprint(fingerprint);
@@ -397,6 +393,7 @@ async function renderOrReuseSceneClip(input: {
           runId: input.runId,
           modelId: input.options.providerModelId,
           settings: input.options.renderSettings,
+          includeSecondarySourceImages: input.options.includeSecondarySourceImages,
         })
       : await renderKenBurnsSceneClip({
           scene: input.scene,
@@ -520,144 +517,6 @@ export function createKenBurnsSceneClipRenderer(): SceneClipRenderer {
   };
 }
 
-export function createOpenRouterImageToVideoProvider(options: {
-  apiKey: string;
-  fetcher?: typeof fetch;
-  pollIntervalMs?: number;
-  maxPollAttempts?: number;
-}): ImageToVideoProvider {
-  const fetcher = options.fetcher ?? fetch;
-  const pollIntervalMs = options.pollIntervalMs ?? 20_000;
-  const maxPollAttempts = options.maxPollAttempts ?? 90;
-
-  return {
-    async renderSceneClip(input) {
-      if (!options.apiKey) {
-        throw new TourSceneClipRenderError(
-          "OpenRouter API key is required for image-to-video rendering.",
-          "SCENE_CLIP_PROVIDER_FAILED"
-        );
-      }
-
-      const prompt = buildOpenRouterSceneClipPrompt(input);
-      const providerDurationSeconds = normalizeOpenRouterVideoDuration(input.durationSeconds);
-      console.log("OpenRouter image-to-video submit started.", {
-        sceneId: input.scene.id,
-        sceneTitle: input.scene.title,
-        modelId: input.modelId,
-        durationSeconds: input.durationSeconds,
-        providerDurationSeconds,
-      });
-
-      let submitResponse: Response;
-      try {
-        submitResponse = await fetcher("https://openrouter.ai/api/v1/videos", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${options.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: input.modelId,
-            prompt,
-            duration: providerDurationSeconds,
-            resolution: "720p",
-            aspect_ratio: "9:16",
-            generate_audio: false,
-            frame_images: [
-              {
-                type: "image_url",
-                image_url: { url: input.sourceImageUrl },
-                frame_type: "first_frame",
-              },
-            ],
-          }),
-        });
-      } catch (error) {
-        console.error("OpenRouter image-to-video submit threw.", {
-          sceneId: input.scene.id,
-          sceneTitle: input.scene.title,
-          modelId: input.modelId,
-          errorName: error instanceof Error ? error.name : typeof error,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
-        throw new TourSceneClipRenderError(
-          "OpenRouter image-to-video request failed.",
-          "SCENE_CLIP_PROVIDER_FAILED"
-        );
-      }
-
-      if (!submitResponse.ok) {
-        const responseText = await submitResponse.text().catch(() => "");
-        console.error("OpenRouter image-to-video submit failed.", {
-          sceneId: input.scene.id,
-          sceneTitle: input.scene.title,
-          modelId: input.modelId,
-          status: submitResponse.status,
-          responseText: truncateForLog(responseText),
-        });
-        throw new TourSceneClipRenderError(
-          "OpenRouter image-to-video request failed.",
-          "SCENE_CLIP_PROVIDER_FAILED"
-        );
-      }
-
-      const submitted = await submitResponse.json().catch(() => null) as OpenRouterVideoJob | null;
-      console.log("OpenRouter image-to-video submit accepted.", {
-        sceneId: input.scene.id,
-        sceneTitle: input.scene.title,
-        modelId: input.modelId,
-        providerJobId: submitted?.id ?? null,
-        status: submitted?.status ?? null,
-      });
-      const completed = await waitForOpenRouterVideoJob({
-        job: submitted,
-        apiKey: options.apiKey,
-        fetcher,
-        pollIntervalMs,
-        maxPollAttempts,
-        sceneId: input.scene.id,
-        sceneTitle: input.scene.title,
-        modelId: input.modelId,
-      });
-      const outputUrl = completed.unsigned_urls?.[0] ?? null;
-
-      if (!outputUrl) {
-        console.error("OpenRouter image-to-video completed without unsigned output URL.", {
-          sceneId: input.scene.id,
-          sceneTitle: input.scene.title,
-          modelId: input.modelId,
-          providerJobId: completed.id ?? null,
-          status: completed.status ?? null,
-        });
-        throw new TourSceneClipRenderError(
-          "OpenRouter image-to-video response did not include an unsigned output URL.",
-          "SCENE_CLIP_PROVIDER_FAILED"
-        );
-      }
-
-      console.log("OpenRouter image-to-video completed.", {
-        sceneId: input.scene.id,
-        sceneTitle: input.scene.title,
-        modelId: input.modelId,
-        providerJobId: completed.id ?? null,
-        outputUrlHost: safeUrlHost(outputUrl),
-      });
-
-      return {
-        outputUrl,
-        downloadHeaders: outputUrl.startsWith("https://openrouter.ai/api/")
-          ? { Authorization: `Bearer ${options.apiKey}` }
-          : undefined,
-        metadata: {
-          providerJobId: completed.id ?? null,
-          prompt,
-        },
-      };
-    },
-  };
-}
-
 async function renderKenBurnsSceneClip(input: {
   scene: RenderableTourScene;
   durationSeconds: number;
@@ -722,6 +581,7 @@ async function renderProviderSceneClip(input: {
   runId: string;
   modelId: string;
   settings: ResolvedSceneClipRenderSettings;
+  includeSecondarySourceImages: boolean;
 }): Promise<{ content: Buffer; contentType: string; metadata?: Record<string, unknown> }> {
   if (!input.provider) {
     throw new TourSceneClipRenderError(
@@ -730,20 +590,34 @@ async function renderProviderSceneClip(input: {
     );
   }
 
-  const [sourceUrl] = await input.repository.createSignedSourcePhotoUrls({
-    storagePaths: [input.scene.authoritativePhoto.storagePath],
+  const secondarySourcePhotos = input.includeSecondarySourceImages
+    ? getSecondarySourcePhotos(input.scene)
+    : [];
+  const signedSourcePhotoUrls = await input.repository.createSignedSourcePhotoUrls({
+    storagePaths: [
+      input.scene.authoritativePhoto.storagePath,
+      ...secondarySourcePhotos.map((photo) => photo.storagePath),
+    ],
     expiresInSeconds: 10 * 60,
   });
-  if (!sourceUrl?.signedUrl) {
+  const signedUrlByStoragePath = new Map(
+    signedSourcePhotoUrls.map((sourceUrl) => [sourceUrl.storagePath, sourceUrl.signedUrl])
+  );
+  const sourceImageUrl = signedUrlByStoragePath.get(input.scene.authoritativePhoto.storagePath);
+  if (!sourceImageUrl) {
     throw new TourSceneClipRenderError(
       "Could not create a signed source photo URL for image-to-video rendering.",
       "SIGNED_SOURCE_PHOTO_URL_MISSING"
     );
   }
+  const secondarySourceImageUrls = secondarySourcePhotos
+    .map((photo) => signedUrlByStoragePath.get(photo.storagePath))
+    .filter((url): url is string => Boolean(url));
 
   const rendered = await input.provider.renderSceneClip({
     scene: input.scene,
-    sourceImageUrl: sourceUrl.signedUrl,
+    sourceImageUrl,
+    secondarySourceImageUrls,
     durationSeconds: input.durationSeconds,
     modelId: input.modelId,
     settings: input.settings,
@@ -807,128 +681,8 @@ function includedRenderableScenes(project: RenderableTourProject): RenderableTou
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
 }
 
-function buildOpenRouterSceneClipPrompt(input: ImageToVideoProviderInput): string {
-  const cameraMotion =
-    input.scene.cameraMotion === "auto"
-      ? "Choose the strongest camera motion for an Instagram real-estate hook based on this image"
-      : getTourSceneCameraMotionLabel(input.scene.cameraMotion);
-
-  return [
-    cameraMotion,
-    `through ${input.scene.title}.`,
-    "Preserve all visible property details exactly.",
-    "Do not add or remove rooms, fixtures, doors, windows, openings, light sources, or architectural details.",
-  ].join(" ");
-}
-
-function normalizeOpenRouterVideoDuration(durationSeconds: number): number {
-  const rounded = Math.round(durationSeconds);
-  if (!Number.isFinite(rounded)) {
-    return 5;
-  }
-  return Math.max(1, rounded);
-}
-
-async function waitForOpenRouterVideoJob(input: {
-  job: OpenRouterVideoJob | null;
-  apiKey: string;
-  fetcher: typeof fetch;
-  pollIntervalMs: number;
-  maxPollAttempts: number;
-  sceneId: string;
-  sceneTitle: string;
-  modelId: string;
-}): Promise<OpenRouterVideoJob> {
-  let current = input.job;
-  for (let attempt = 0; attempt <= input.maxPollAttempts; attempt += 1) {
-    console.log("OpenRouter image-to-video poll status.", {
-      sceneId: input.sceneId,
-      sceneTitle: input.sceneTitle,
-      modelId: input.modelId,
-      providerJobId: current?.id ?? null,
-      status: current?.status ?? null,
-      attempt,
-      maxPollAttempts: input.maxPollAttempts,
-    });
-    if (current?.status === "completed") {
-      return current;
-    }
-    if (current?.status && ["failed", "cancelled", "expired"].includes(current.status)) {
-      console.error("OpenRouter image-to-video terminal failure.", {
-        sceneId: input.sceneId,
-        sceneTitle: input.sceneTitle,
-        modelId: input.modelId,
-        providerJobId: current.id ?? null,
-        status: current.status,
-        error: current.error ?? null,
-      });
-      throw new TourSceneClipRenderError(
-        "OpenRouter image-to-video generation failed.",
-        "SCENE_CLIP_PROVIDER_FAILED"
-      );
-    }
-    if (!current?.id && !current?.polling_url) {
-      console.error("OpenRouter image-to-video job missing poll target.", {
-        sceneId: input.sceneId,
-        sceneTitle: input.sceneTitle,
-        modelId: input.modelId,
-        status: current?.status ?? null,
-      });
-      throw new TourSceneClipRenderError(
-        "OpenRouter image-to-video response did not include a job id.",
-        "SCENE_CLIP_PROVIDER_FAILED"
-      );
-    }
-    if (attempt === input.maxPollAttempts) {
-      break;
-    }
-
-    await sleep(input.pollIntervalMs);
-    const pollingUrl = new URL(
-      current.polling_url ?? `/api/v1/videos/${encodeURIComponent(current.id ?? "")}`,
-      "https://openrouter.ai"
-    );
-    let response: Response;
-    try {
-      response = await input.fetcher(pollingUrl, {
-        headers: { Authorization: `Bearer ${input.apiKey}` },
-      });
-    } catch (error) {
-      console.error("OpenRouter image-to-video poll threw.", {
-        sceneId: input.sceneId,
-        sceneTitle: input.sceneTitle,
-        modelId: input.modelId,
-        providerJobId: current.id ?? null,
-        errorName: error instanceof Error ? error.name : typeof error,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
-      throw new TourSceneClipRenderError(
-        "OpenRouter image-to-video polling failed.",
-        "SCENE_CLIP_PROVIDER_FAILED"
-      );
-    }
-    if (!response.ok) {
-      const responseText = await response.text().catch(() => "");
-      console.error("OpenRouter image-to-video poll failed.", {
-        sceneId: input.sceneId,
-        sceneTitle: input.sceneTitle,
-        modelId: input.modelId,
-        providerJobId: current.id ?? null,
-        status: response.status,
-        responseText: truncateForLog(responseText),
-      });
-      throw new TourSceneClipRenderError(
-        "OpenRouter image-to-video polling failed.",
-        "SCENE_CLIP_PROVIDER_FAILED"
-      );
-    }
-    current = await response.json().catch(() => null) as OpenRouterVideoJob | null;
-  }
-
-  throw new TourSceneClipRenderError(
-    "OpenRouter image-to-video generation timed out.",
-    "SCENE_CLIP_PROVIDER_FAILED"
-  );
+function getSecondarySourcePhotos(scene: RenderableTourScene): RenderableTourSceneSourcePhoto[] {
+  return scene.sourcePhotos.filter((photo) => photo.id !== scene.authoritativePhoto.id);
 }
 
 function truncateForLog(value: string, maxLength = 1200): string {
@@ -941,10 +695,6 @@ function safeUrlHost(value: string): string | null {
   } catch {
     return null;
   }
-}
-
-async function sleep(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 async function runProcess(command: string, args: string[]): Promise<void> {

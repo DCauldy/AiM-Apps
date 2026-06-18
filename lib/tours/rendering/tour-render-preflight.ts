@@ -48,6 +48,7 @@ export type TourRenderOptions = {
   transitionMinimumDurationSeconds?: number;
   transitionDurationRoundingIncrementSeconds?: number;
   sceneClipProviderModelId?: string;
+  sceneClipIncludeSecondarySourceImages?: boolean;
   sceneClipRenderSettings?: {
     width?: number;
     height?: number;

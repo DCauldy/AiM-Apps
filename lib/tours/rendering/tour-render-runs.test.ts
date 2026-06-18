@@ -9,6 +9,7 @@ import {
 } from "./tour-render-runs";
 import type {
   RenderableTourProject,
+  RenderableTourSceneSourcePhoto,
   TourRenderRepository,
   TourRenderRun,
 } from "./tour-render.repository";
@@ -34,6 +35,17 @@ const baseRun: TourRenderRun = {
   updatedAt: "2026-06-13T12:00:00.000Z",
 };
 
+const kitchenPhoto: RenderableTourSceneSourcePhoto = {
+  id: "photo-1",
+  storagePath: "user-1/project-1/kitchen.jpg",
+  fileName: "kitchen.jpg",
+  contentType: "image/jpeg",
+  byteSize: 123,
+  width: 1600,
+  height: 900,
+  priority: 0,
+};
+
 const renderableProject: RenderableTourProject = {
   project: {
     id: "project-1",
@@ -50,15 +62,8 @@ const renderableProject: RenderableTourProject = {
       sortOrder: 0,
       included: true,
       cameraMotion: "slow_push",
-      authoritativePhoto: {
-        id: "photo-1",
-        storagePath: "user-1/project-1/kitchen.jpg",
-        fileName: "kitchen.jpg",
-        contentType: "image/jpeg",
-        byteSize: 123,
-        width: 1600,
-        height: 900,
-      },
+      authoritativePhoto: kitchenPhoto,
+      sourcePhotos: [kitchenPhoto],
       proofedFacts: [],
     },
   ],

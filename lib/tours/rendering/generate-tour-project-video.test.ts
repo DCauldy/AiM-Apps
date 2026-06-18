@@ -678,6 +678,14 @@ describe("generateTourProjectVideo", () => {
             storagePath: "user-1/project-1/patio.jpg",
             fileName: "patio.jpg",
           },
+          sourcePhotos: [
+            {
+              ...baseProject.scenes[0].authoritativePhoto,
+              id: "photo-2",
+              storagePath: "user-1/project-1/patio.jpg",
+              fileName: "patio.jpg",
+            },
+          ],
           proofedFacts: [
             {
               id: "fact-2",

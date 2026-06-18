@@ -12,9 +12,38 @@ import {
 } from "./tour-transitions";
 import type {
   RenderableTourProject,
+  RenderableTourSceneSourcePhoto,
   TourRenderAsset,
   TourRenderRepository,
 } from "./tour-render.repository";
+
+function sourcePhoto(input: {
+  id: string;
+  storagePath: string;
+  fileName: string;
+  byteSize: number;
+}): RenderableTourSceneSourcePhoto {
+  return {
+    ...input,
+    contentType: "image/jpeg",
+    width: 1200,
+    height: 800,
+    priority: 0,
+  };
+}
+
+const kitchenPhoto = sourcePhoto({
+  id: "photo-1",
+  storagePath: "user-1/project-1/kitchen.jpg",
+  fileName: "kitchen.jpg",
+  byteSize: 123,
+});
+const patioPhoto = sourcePhoto({
+  id: "photo-2",
+  storagePath: "user-1/project-1/patio.jpg",
+  fileName: "patio.jpg",
+  byteSize: 456,
+});
 
 const project: RenderableTourProject = {
   project: {
@@ -32,15 +61,8 @@ const project: RenderableTourProject = {
       sortOrder: 1,
       included: true,
       cameraMotion: "slow_push",
-      authoritativePhoto: {
-        id: "photo-1",
-        storagePath: "user-1/project-1/kitchen.jpg",
-        fileName: "kitchen.jpg",
-        contentType: "image/jpeg",
-        byteSize: 123,
-        width: 1200,
-        height: 800,
-      },
+      authoritativePhoto: kitchenPhoto,
+      sourcePhotos: [kitchenPhoto],
       proofedFacts: [
         {
           id: "fact-1",
@@ -56,15 +78,8 @@ const project: RenderableTourProject = {
       sortOrder: 2,
       included: true,
       cameraMotion: "slow_pan",
-      authoritativePhoto: {
-        id: "photo-2",
-        storagePath: "user-1/project-1/patio.jpg",
-        fileName: "patio.jpg",
-        contentType: "image/jpeg",
-        byteSize: 456,
-        width: 1200,
-        height: 800,
-      },
+      authoritativePhoto: patioPhoto,
+      sourcePhotos: [patioPhoto],
       proofedFacts: [
         {
           id: "fact-2",
