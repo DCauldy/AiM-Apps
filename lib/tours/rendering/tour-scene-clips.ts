@@ -544,7 +544,7 @@ export function createFfmpegProviderSceneClipNormalizer(): ProviderSceneClipNorm
         "-i",
         input.inputVideoPath,
         "-vf",
-        `scale=${input.settings.width}:${input.settings.height}:force_original_aspect_ratio=increase,crop=${input.settings.width}:${input.settings.height},fps=${input.settings.fps},setpts=PTS-STARTPTS`,
+        `scale=${input.settings.width}:${input.settings.height}:force_original_aspect_ratio=increase,crop=${input.settings.width}:${input.settings.height},setsar=1,fps=${input.settings.fps},setpts=PTS-STARTPTS`,
         "-an",
         "-c:v",
         "libx264",
