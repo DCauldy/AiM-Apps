@@ -13,6 +13,19 @@ import type {
 import type { SceneDuration } from "./tour-transitions";
 import { getDefaultTourRenderMode, type TourRenderMode } from "./tour-render-preflight";
 import { TourSceneClipRenderError } from "./tour-scene-clip-errors";
+import {
+  buildSceneClipTransitionFingerprint,
+  planSceneClipHandles,
+  resolveTourSceneTransitionSettings,
+  type SceneClipHandlePlan,
+  type SceneClipTransitionFingerprint,
+  type TourSceneTransitionSettings,
+} from "./tour-render-transitions";
+import {
+  assertVideoDurationAtLeast,
+  probeVideoDurationSeconds,
+  type VideoDurationProbe,
+} from "./video-duration";
 
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
 export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v3";
@@ -38,6 +51,9 @@ export type SceneClipStageOptions = {
   includeSecondarySourceImages?: boolean;
   renderSettings?: SceneClipRenderSettings;
   concurrencyLimit?: number;
+  sceneTransitions?: {
+    enabled?: boolean;
+  };
 };
 
 export type SceneClipRendererInput = {
@@ -93,6 +109,8 @@ export type SceneClipStageResult = {
     reused: boolean;
     fingerprintHash: string;
     fingerprint: SceneClipFingerprint;
+    requestedDurationSeconds: number;
+    handlePlan: SceneClipHandlePlan;
   }>;
   completedCount: number;
   totalCount: number;
@@ -104,6 +122,7 @@ export type SceneClipBatchItem = {
   index: number;
   scene: RenderableTourScene;
   duration: SceneDuration;
+  handlePlan: SceneClipHandlePlan;
   projectId: string;
   runId: string;
   userId: string;
@@ -143,6 +162,8 @@ export type SceneClipFingerprint = {
   };
   secondarySourcePhotos: Array<SceneClipFingerprint["sourcePhoto"] & { priority: number }>;
   durationSeconds: number;
+  targetDurationSeconds: number;
+  transition: SceneClipTransitionFingerprint;
   renderSettings: ResolvedSceneClipRenderSettings;
 };
 
@@ -173,6 +194,7 @@ export function resolveSceneClipStageOptions(
   includeSecondarySourceImages: boolean;
   renderSettings: ResolvedSceneClipRenderSettings;
   concurrencyLimit: number;
+  sceneTransitions: TourSceneTransitionSettings;
 } {
   return {
     renderMode: options.renderMode ?? getDefaultTourRenderMode(),
@@ -184,12 +206,15 @@ export function resolveSceneClipStageOptions(
       ...(options.renderSettings ?? {}),
     },
     concurrencyLimit: normalizeConcurrencyLimit(options.concurrencyLimit),
+    sceneTransitions: resolveTourSceneTransitionSettings(options.sceneTransitions),
   };
 }
 
 export function buildSceneClipFingerprint(input: {
   scene: RenderableTourScene;
   durationSeconds: number;
+  handlePlan: SceneClipHandlePlan;
+  sceneTransitions: TourSceneTransitionSettings;
   renderMode: TourRenderMode;
   providerModelId: string;
   includeSecondarySourceImages: boolean;
@@ -238,6 +263,11 @@ export function buildSceneClipFingerprint(input: {
           }))
         : [],
     durationSeconds: input.durationSeconds,
+    targetDurationSeconds: input.handlePlan.targetDurationSeconds,
+    transition: buildSceneClipTransitionFingerprint({
+      transitionSettings: input.sceneTransitions,
+      handlePlan: input.handlePlan,
+    }),
     renderSettings: input.renderSettings,
   };
 }
@@ -258,6 +288,8 @@ export async function renderSceneClipsStage(input: {
   fetcher?: typeof fetch;
   options?: SceneClipStageOptions;
   batchRunner?: SceneClipBatchRunner;
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
   onClipCompleted?: (progress: { completedCount: number; totalCount: number }) => Promise<void> | void;
 }): Promise<SceneClipStageResult> {
   const resolvedOptions = resolveSceneClipStageOptions(input.options);
@@ -270,6 +302,12 @@ export async function renderSceneClipsStage(input: {
   }
 
   const durationBySceneId = new Map(input.durations.map((duration) => [duration.sceneId, duration]));
+  const handlePlanBySceneId = new Map(
+    planSceneClipHandles({
+      durations: input.durations,
+      transitionSettings: resolvedOptions.sceneTransitions,
+    }).map((plan) => [plan.sceneId, plan])
+  );
   const totalCount = scenes.length;
   let completedCount = 0;
   const items = scenes.map((scene, index) => {
@@ -280,11 +318,19 @@ export async function renderSceneClipsStage(input: {
         "SCENE_DURATION_MISSING"
       );
     }
+    const handlePlan = handlePlanBySceneId.get(scene.id);
+    if (!handlePlan) {
+      throw new TourSceneClipRenderError(
+        `Scene "${scene.title}" is missing a transition handle plan.`,
+        "SCENE_DURATION_MISSING"
+      );
+    }
 
     return {
       scene,
       index,
       duration,
+      handlePlan,
       projectId: input.project.project.id,
       runId: input.runId,
       userId: input.userId,
@@ -305,6 +351,8 @@ export async function renderSceneClipsStage(input: {
         provider: input.provider,
         providerNormalizer: input.providerNormalizer,
         fetcher: input.fetcher,
+        durationProbe: input.durationProbe,
+        durationToleranceSeconds: input.durationToleranceSeconds,
       });
       completedCount += 1;
       await input.onClipCompleted?.({ completedCount, totalCount });
@@ -333,10 +381,13 @@ export async function renderSceneClipBatchItem(input: {
   provider?: ImageToVideoProvider;
   providerNormalizer?: ProviderSceneClipNormalizer;
   fetcher?: typeof fetch;
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
 }): Promise<SceneClipStageClip> {
   return renderOrReuseSceneClip({
     scene: input.item.scene,
     duration: input.item.duration,
+    handlePlan: input.item.handlePlan,
     projectId: input.item.projectId,
     repository: input.repository,
     runId: input.item.runId,
@@ -345,6 +396,8 @@ export async function renderSceneClipBatchItem(input: {
     provider: input.provider,
     providerNormalizer: input.providerNormalizer,
     fetcher: input.fetcher,
+    durationProbe: input.durationProbe,
+    durationToleranceSeconds: input.durationToleranceSeconds,
     options: input.item.options,
   });
 }
@@ -352,6 +405,7 @@ export async function renderSceneClipBatchItem(input: {
 async function renderOrReuseSceneClip(input: {
   scene: RenderableTourScene;
   duration: SceneDuration;
+  handlePlan: SceneClipHandlePlan;
   projectId: string;
   repository: TourRenderRepository;
   runId: string;
@@ -360,12 +414,17 @@ async function renderOrReuseSceneClip(input: {
   provider?: ImageToVideoProvider;
   providerNormalizer?: ProviderSceneClipNormalizer;
   fetcher?: typeof fetch;
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
   options: ReturnType<typeof resolveSceneClipStageOptions>;
 }): Promise<SceneClipStageClip> {
   const duration = input.duration;
+  const handlePlan = input.handlePlan;
   const fingerprint = buildSceneClipFingerprint({
     scene: input.scene,
-    durationSeconds: duration.durationSeconds,
+    durationSeconds: handlePlan.requestedDurationSeconds,
+    handlePlan,
+    sceneTransitions: input.options.sceneTransitions,
     renderMode: input.options.renderMode,
     providerModelId: input.options.providerModelId,
     includeSecondarySourceImages: input.options.includeSecondarySourceImages,
@@ -394,6 +453,8 @@ async function renderOrReuseSceneClip(input: {
         reused: true,
         fingerprintHash,
         fingerprint,
+        requestedDurationSeconds: handlePlan.requestedDurationSeconds,
+        handlePlan,
       };
     }
   }
@@ -402,7 +463,8 @@ async function renderOrReuseSceneClip(input: {
     input.options.renderMode === "provider_image_to_video"
       ? await renderProviderSceneClip({
           scene: input.scene,
-          durationSeconds: duration.durationSeconds,
+          durationSeconds: handlePlan.requestedDurationSeconds,
+          targetDurationSeconds: duration.durationSeconds,
           repository: input.repository,
           provider: input.provider,
           normalizer: input.providerNormalizer ?? createFfmpegProviderSceneClipNormalizer(),
@@ -413,10 +475,12 @@ async function renderOrReuseSceneClip(input: {
           modelId: input.options.providerModelId,
           settings: input.options.renderSettings,
           includeSecondarySourceImages: input.options.includeSecondarySourceImages,
+          durationProbe: input.durationProbe,
+          durationToleranceSeconds: input.durationToleranceSeconds,
         })
       : await renderKenBurnsSceneClip({
           scene: input.scene,
-          durationSeconds: duration.durationSeconds,
+          durationSeconds: handlePlan.requestedDurationSeconds,
           repository: input.repository,
           renderer: input.renderer ?? createKenBurnsSceneClipRenderer(),
           runId: input.runId,
@@ -453,7 +517,12 @@ async function renderOrReuseSceneClip(input: {
     metadata: {
       sceneId: input.scene.id,
       durationSeconds: duration.durationSeconds,
+      requestedDurationSeconds: handlePlan.requestedDurationSeconds,
       renderMode: input.options.renderMode,
+      transition: buildSceneClipTransitionFingerprint({
+        transitionSettings: input.options.sceneTransitions,
+        handlePlan,
+      }),
       providerModelId:
         input.options.renderMode === "provider_image_to_video"
           ? input.options.providerModelId
@@ -477,10 +546,12 @@ async function renderOrReuseSceneClip(input: {
   return {
     sceneId: input.scene.id,
     durationSeconds: duration.durationSeconds,
+    requestedDurationSeconds: handlePlan.requestedDurationSeconds,
     asset,
     reused: false,
     fingerprintHash,
     fingerprint,
+    handlePlan,
   };
 }
 
@@ -625,6 +696,7 @@ async function renderKenBurnsSceneClip(input: {
 async function renderProviderSceneClip(input: {
   scene: RenderableTourScene;
   durationSeconds: number;
+  targetDurationSeconds: number;
   repository: TourRenderRepository;
   provider?: ImageToVideoProvider;
   normalizer: ProviderSceneClipNormalizer;
@@ -635,6 +707,8 @@ async function renderProviderSceneClip(input: {
   modelId: string;
   settings: ResolvedSceneClipRenderSettings;
   includeSecondarySourceImages: boolean;
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
 }): Promise<{ content: Buffer; contentType: string; metadata?: Record<string, unknown> }> {
   if (!input.provider) {
     throw new TourSceneClipRenderError(
@@ -726,6 +800,9 @@ async function renderProviderSceneClip(input: {
     contentType: providerContentType,
     settings: input.settings,
     normalizer: input.normalizer,
+    expectedDurationSeconds: input.durationSeconds,
+    durationProbe: input.durationProbe,
+    durationToleranceSeconds: input.durationToleranceSeconds,
   });
 
   return {
@@ -736,6 +813,8 @@ async function renderProviderSceneClip(input: {
       modelId: input.modelId,
       providerOutputContentType: providerContentType,
       normalizedProviderOutput: true,
+      targetDurationSeconds: input.targetDurationSeconds,
+      requestedDurationSeconds: input.durationSeconds,
       ...(rendered.metadata ?? {}),
       ...(normalized.metadata ?? {}),
     },
@@ -749,6 +828,9 @@ async function normalizeProviderSceneClip(input: {
   contentType: string;
   settings: ResolvedSceneClipRenderSettings;
   normalizer: ProviderSceneClipNormalizer;
+  expectedDurationSeconds: number;
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
 }): Promise<{ content: Buffer; metadata?: Record<string, unknown> }> {
   const scratchDir = path.join(
     tmpdir(),
@@ -769,10 +851,32 @@ async function normalizeProviderSceneClip(input: {
       settings: input.settings,
       ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
     });
+    let actualDurationSeconds: number;
+    try {
+      actualDurationSeconds = await (input.durationProbe ?? probeVideoDurationSeconds)(
+        outputVideoPath
+      );
+      assertVideoDurationAtLeast({
+        actualSeconds: actualDurationSeconds,
+        expectedSeconds: input.expectedDurationSeconds,
+        toleranceSeconds: input.durationToleranceSeconds,
+        label: `Scene ${input.scene.id} normalized provider clip`,
+      });
+    } catch (error) {
+      throw new TourSceneClipRenderError(
+        error instanceof Error
+          ? error.message
+          : "Image-to-video provider output duration could not be validated.",
+        "SCENE_CLIP_DURATION_INVALID"
+      );
+    }
 
     return {
       content: await readFile(outputVideoPath),
-      metadata: normalized.metadata,
+      metadata: {
+        ...(normalized.metadata ?? {}),
+        actualDurationSeconds,
+      },
     };
   } catch (error) {
     if (error instanceof TourSceneClipRenderError) {

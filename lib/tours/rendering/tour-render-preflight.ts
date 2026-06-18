@@ -58,6 +58,9 @@ export type TourRenderOptions = {
     cropMode?: "cover" | "contain";
   };
   sceneClipConcurrencyLimit?: number;
+  sceneTransitions?: {
+    enabled?: boolean;
+  };
   finalMuxSettings?: {
     width?: number;
     height?: number;

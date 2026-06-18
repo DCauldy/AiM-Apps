@@ -153,6 +153,8 @@ export function createOpenRouterImageToVideoProvider(options: {
           : undefined,
         metadata: {
           providerJobId: completed.id ?? null,
+          requestedDurationSeconds: input.durationSeconds,
+          providerRequestedDurationSeconds: providerDurationSeconds,
           prompt,
         },
       };
@@ -217,11 +219,11 @@ export function buildOpenRouterSceneClipRequestBody(input: {
 }
 
 function normalizeOpenRouterVideoDuration(durationSeconds: number): number {
-  const rounded = Math.round(durationSeconds);
-  if (!Number.isFinite(rounded)) {
+  const roundedUp = Math.ceil(durationSeconds);
+  if (!Number.isFinite(roundedUp)) {
     return 5;
   }
-  return Math.max(1, rounded);
+  return Math.max(1, roundedUp);
 }
 
 async function waitForOpenRouterVideoJob(input: {

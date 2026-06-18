@@ -486,6 +486,7 @@ export async function generateTourProjectVideo(
         includeSecondarySourceImages: input.options?.sceneClipIncludeSecondarySourceImages,
         renderSettings: input.options?.sceneClipRenderSettings,
         concurrencyLimit: input.options?.sceneClipConcurrencyLimit,
+        sceneTransitions: input.options?.sceneTransitions,
       },
       onClipCompleted: async ({ completedCount, totalCount }) => {
         await recordProgress(repository, input, {
@@ -574,6 +575,9 @@ export async function generateTourProjectVideo(
       repository,
       clips: sceneClipResult.clips.map((clip) => ({
         sceneId: clip.sceneId,
+        durationSeconds: clip.durationSeconds,
+        requestedDurationSeconds: clip.requestedDurationSeconds,
+        handlePlan: clip.handlePlan,
         asset: clip.asset,
         fingerprintHash: clip.fingerprintHash,
       })),
@@ -583,6 +587,7 @@ export async function generateTourProjectVideo(
       options: {
         muxSettings: input.options?.finalMuxSettings,
         reuseExistingAssets: shouldReuseAsset(input.options, "finalVideo"),
+        sceneTransitions: input.options?.sceneTransitions,
       },
     });
 

@@ -5,6 +5,20 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
 import type { HeyGenAvatarMetadata } from "./tour-avatar";
+import {
+  buildSwipeOnTopJoinArgs,
+  expectedJoinedScenesDurationSeconds,
+  joinedSceneTransitionSegments,
+  resolveTourSceneTransitionSettings,
+  type SceneClipHandlePlan,
+  type TourSceneTransitionSettings,
+} from "./tour-render-transitions";
+import {
+  assertVideoDurationAtLeast,
+  assertVideoDurationClose,
+  probeVideoDurationSeconds,
+  type VideoDurationProbe,
+} from "./video-duration";
 
 export const FINAL_RENDERER_VERSION = "ffmpeg-final-render-v1";
 
@@ -28,10 +42,16 @@ export type FinalRenderStageOptions = {
   };
   muxSettings?: FinalRenderSettings;
   outputPreset?: "vertical_1080p_h264_aac";
+  sceneTransitions?: {
+    enabled?: boolean;
+  };
 };
 
 export type FinalRenderSceneClip = {
   sceneId: string;
+  durationSeconds: number;
+  requestedDurationSeconds: number;
+  handlePlan: SceneClipHandlePlan;
   asset: TourRenderAsset;
   fingerprintHash: string;
 };
@@ -55,6 +75,9 @@ export type JoinedScenesFingerprint = {
     safe: 0 | 1;
     copyCodec: boolean;
   };
+  transitionSettings: TourSceneTransitionSettings;
+  expectedDurationSeconds: number;
+  clipHandlePlans: ReturnType<typeof joinedSceneTransitionSegments>;
 };
 
 export type FinalVideoAvatarOverlayFingerprint = {
@@ -86,12 +109,15 @@ export type FinalVideoFingerprint = {
 export type FinalVideoRendererInput = {
   concatFilePath: string;
   sceneClipPaths: string[];
+  clips: FinalRenderSceneClip[];
   joinedScenesPath: string;
   finalVideoPath: string;
   voiceoverAudioPath?: string;
   avatarVideoPath?: string;
   avatarOverlay?: HeyGenAvatarMetadata["overlay"];
   settings: ResolvedFinalRenderSettings;
+  transitionSettings: TourSceneTransitionSettings;
+  expectedJoinedDurationSeconds: number;
   ffmpegPath: string;
 };
 
@@ -156,13 +182,16 @@ export function resolveFinalRenderStageOptions(options: FinalRenderStageOptions 
       ...(options.muxSettings ?? {}),
     },
     outputPreset: options.outputPreset ?? "vertical_1080p_h264_aac",
+    sceneTransitions: resolveTourSceneTransitionSettings(options.sceneTransitions),
   } as const;
 }
 
 export function buildJoinedScenesFingerprint(input: {
   clips: FinalRenderSceneClip[];
   concatSettings: JoinedScenesFingerprint["concatSettings"];
+  transitionSettings: TourSceneTransitionSettings;
 }): JoinedScenesFingerprint {
+  const handlePlans = input.clips.map((clip) => clip.handlePlan);
   return {
     kind: "joined_scenes",
     version: 1,
@@ -173,6 +202,9 @@ export function buildJoinedScenesFingerprint(input: {
       fingerprintHash: clip.fingerprintHash,
     })),
     concatSettings: input.concatSettings,
+    transitionSettings: input.transitionSettings,
+    expectedDurationSeconds: expectedJoinedScenesDurationSeconds(handlePlans),
+    clipHandlePlans: joinedSceneTransitionSegments(handlePlans),
   };
 }
 
@@ -226,6 +258,8 @@ export async function renderFinalVideoStage(input: {
   avatarOverlay?: FinalRenderAvatarOverlay | null;
   renderer?: FinalVideoRenderer;
   options?: FinalRenderStageOptions;
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
 }): Promise<FinalRenderStageResult> {
   if (input.clips.length === 0) {
     throw new TourFinalRenderError("Final render needs at least one scene clip.", "NO_SCENE_CLIPS");
@@ -235,6 +269,7 @@ export async function renderFinalVideoStage(input: {
   const joinedScenesFingerprint = buildJoinedScenesFingerprint({
     clips: input.clips,
     concatSettings: resolvedOptions.concatSettings,
+    transitionSettings: resolvedOptions.sceneTransitions,
   });
   const joinedScenesFingerprintHash = hashFinalRenderFingerprint(joinedScenesFingerprint);
   const finalVideoFingerprint = buildFinalVideoFingerprint({
@@ -313,6 +348,13 @@ export async function renderFinalVideoStage(input: {
         clips: input.clips,
         scratchDir,
       });
+      await validateSceneClipDurations({
+        clips: input.clips,
+        sceneClipPaths,
+        durationProbe: input.durationProbe,
+        durationToleranceSeconds: input.durationToleranceSeconds,
+        shouldProbe: Boolean(input.durationProbe) || !input.renderer,
+      });
       await writeFile(
         concatFilePath,
         `${sceneClipPaths.map((clipPath) => `file '${escapeConcatPath(clipPath)}'`).join("\n")}\n`
@@ -325,12 +367,14 @@ export async function renderFinalVideoStage(input: {
         renderer,
         concatFilePath,
         sceneClipPaths,
+        clips: input.clips,
         joinedScenesPath,
         finalVideoPath,
         voiceoverAudioPath,
         avatarVideoPath,
         avatarOverlay: input.avatarOverlay?.metadata.overlay,
         settings: resolvedOptions.muxSettings,
+        transitionSettings: resolvedOptions.sceneTransitions,
         fingerprint: joinedScenesFingerprint,
         fingerprintHash: joinedScenesFingerprintHash,
         reuseExistingAssets: false,
@@ -342,18 +386,28 @@ export async function renderFinalVideoStage(input: {
         "JOINED_SCENES_ASSET_CREATE_FAILED"
       );
     }
+    await validateJoinedScenesDuration({
+      joinedScenesPath,
+      expectedDurationSeconds: joinedScenesFingerprint.expectedDurationSeconds,
+      durationProbe: input.durationProbe,
+      durationToleranceSeconds: input.durationToleranceSeconds,
+      shouldProbe: Boolean(input.durationProbe) || !input.renderer,
+    });
 
     let final: { metadata?: Record<string, unknown> };
     try {
       final = await renderer.muxFinalVideo({
         concatFilePath,
         sceneClipPaths,
+        clips: input.clips,
         joinedScenesPath,
         finalVideoPath,
         voiceoverAudioPath,
         avatarVideoPath,
         avatarOverlay: input.avatarOverlay?.metadata.overlay,
         settings: resolvedOptions.muxSettings,
+        transitionSettings: resolvedOptions.sceneTransitions,
+        expectedJoinedDurationSeconds: joinedScenesFingerprint.expectedDurationSeconds,
         ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
       });
     } catch {
@@ -430,6 +484,31 @@ export async function renderFinalVideoStage(input: {
 export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
   return {
     async joinSceneClips(input) {
+      if (input.transitionSettings.enabled && input.sceneClipPaths.length > 1) {
+        await runProcess(
+          input.ffmpegPath,
+          buildSwipeOnTopJoinArgs({
+            sceneClipPaths: input.sceneClipPaths,
+            handlePlans: input.clips.map((clip) => clip.handlePlan),
+            transitionSettings: input.transitionSettings,
+            width: input.settings.width,
+            height: input.settings.height,
+            fps: 30,
+            videoCodec: input.settings.videoCodec,
+            preset: input.settings.preset,
+            crf: input.settings.crf,
+            outputPath: input.joinedScenesPath,
+          })
+        );
+        return {
+          metadata: {
+            renderer: "ffmpeg_swipe_on_top_transition",
+            transitionSettings: input.transitionSettings,
+            expectedDurationSeconds: input.expectedJoinedDurationSeconds,
+          },
+        };
+      }
+
       await runProcess(input.ffmpegPath, [
         "-y",
         "-f",
@@ -442,7 +521,13 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
         "copy",
         input.joinedScenesPath,
       ]);
-      return { metadata: { renderer: "ffmpeg_concat" } };
+      return {
+        metadata: {
+          renderer: "ffmpeg_concat",
+          transitionSettings: input.transitionSettings,
+          expectedDurationSeconds: input.expectedJoinedDurationSeconds,
+        },
+      };
     },
 
     async muxFinalVideo(input) {
@@ -547,12 +632,14 @@ async function joinOrReuseJoinedScenes(input: {
   renderer: FinalVideoRenderer;
   concatFilePath: string;
   sceneClipPaths: string[];
+  clips: FinalRenderSceneClip[];
   joinedScenesPath: string;
   finalVideoPath: string;
   voiceoverAudioPath?: string;
   avatarVideoPath?: string;
   avatarOverlay?: HeyGenAvatarMetadata["overlay"];
   settings: ResolvedFinalRenderSettings;
+  transitionSettings: TourSceneTransitionSettings;
   fingerprint: JoinedScenesFingerprint;
   fingerprintHash: string;
   reuseExistingAssets: boolean;
@@ -565,12 +652,15 @@ async function joinOrReuseJoinedScenes(input: {
     joined = await input.renderer.joinSceneClips({
       concatFilePath: input.concatFilePath,
       sceneClipPaths: input.sceneClipPaths,
+      clips: input.clips,
       joinedScenesPath: input.joinedScenesPath,
       finalVideoPath: input.finalVideoPath,
       voiceoverAudioPath: input.voiceoverAudioPath,
       avatarVideoPath: input.avatarVideoPath,
       avatarOverlay: input.avatarOverlay,
       settings: input.settings,
+      transitionSettings: input.transitionSettings,
+      expectedJoinedDurationSeconds: input.fingerprint.expectedDurationSeconds,
       ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
     });
   } catch {
@@ -774,6 +864,65 @@ async function writeJoinedScenesToScratch(input: {
   }
 
   await writeFile(input.joinedScenesPath, bytes);
+}
+
+async function validateSceneClipDurations(input: {
+  clips: FinalRenderSceneClip[];
+  sceneClipPaths: string[];
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
+  shouldProbe: boolean;
+}): Promise<void> {
+  if (!input.shouldProbe) return;
+  const durationProbe = input.durationProbe ?? probeVideoDurationSeconds;
+
+  try {
+    for (const [index, clip] of input.clips.entries()) {
+      const sceneClipPath = input.sceneClipPaths[index];
+      if (!sceneClipPath) {
+        throw new Error(`Scene ${clip.sceneId} is missing a downloaded clip path.`);
+      }
+      const actualSeconds = await durationProbe(sceneClipPath);
+      assertVideoDurationAtLeast({
+        actualSeconds,
+        expectedSeconds: clip.requestedDurationSeconds,
+        toleranceSeconds: input.durationToleranceSeconds,
+        label: `Scene ${clip.sceneId} clip`,
+      });
+    }
+  } catch (error) {
+    throw new TourFinalRenderError(
+      error instanceof Error ? error.message : "Scene clip duration validation failed.",
+      "CONCAT_FAILED"
+    );
+  }
+}
+
+async function validateJoinedScenesDuration(input: {
+  joinedScenesPath: string;
+  expectedDurationSeconds: number;
+  durationProbe?: VideoDurationProbe;
+  durationToleranceSeconds?: number;
+  shouldProbe: boolean;
+}): Promise<void> {
+  if (!input.shouldProbe) return;
+
+  try {
+    const actualSeconds = await (input.durationProbe ?? probeVideoDurationSeconds)(
+      input.joinedScenesPath
+    );
+    assertVideoDurationClose({
+      actualSeconds,
+      expectedSeconds: input.expectedDurationSeconds,
+      toleranceSeconds: input.durationToleranceSeconds,
+      label: "Joined scenes",
+    });
+  } catch (error) {
+    throw new TourFinalRenderError(
+      error instanceof Error ? error.message : "Joined scenes duration validation failed.",
+      "CONCAT_FAILED"
+    );
+  }
 }
 
 async function runProcess(command: string, args: string[]): Promise<void> {

@@ -9,6 +9,7 @@ export class TourSceneClipRenderError extends Error {
       | "SCENE_CLIP_RENDER_FAILED"
       | "SCENE_CLIP_PROVIDER_FAILED"
       | "SCENE_CLIP_PROVIDER_OUTPUT_IMPORT_FAILED"
+      | "SCENE_CLIP_DURATION_INVALID"
       | "SCENE_CLIP_UPLOAD_FAILED"
       | "SCENE_CLIP_ASSET_CREATE_FAILED"
   ) {

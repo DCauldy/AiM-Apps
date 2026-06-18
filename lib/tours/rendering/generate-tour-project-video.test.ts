@@ -576,6 +576,8 @@ describe("generateTourProjectVideo", () => {
             clip: {
               sceneId: item.scene.id,
               durationSeconds: item.duration.durationSeconds,
+              requestedDurationSeconds: item.handlePlan.requestedDurationSeconds,
+              handlePlan: item.handlePlan,
               asset: sceneClipAsset,
               reused: false,
               fingerprintHash: "scene-clip-fingerprint",

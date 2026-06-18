@@ -73,6 +73,9 @@ export function safeErrorMessage(_error: unknown): string {
     if (_error.code === "SCENE_CLIP_ASSET_CREATE_FAILED") {
       return "Scene clip asset could not be recorded.";
     }
+    if (_error.code === "SCENE_CLIP_DURATION_INVALID") {
+      return "Scene clip duration could not be validated.";
+    }
     return "Scene clip rendering failed.";
   }
   if (_error instanceof TourFinalRenderError) {

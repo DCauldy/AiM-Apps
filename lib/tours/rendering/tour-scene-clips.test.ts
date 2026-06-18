@@ -15,11 +15,8 @@ import {
   type SceneClipRenderer,
 } from "./tour-scene-clips";
 import { buildOpenRouterSceneClipPrompt } from "./tour-scene-clip-openrouter";
-import type {
-  RenderableTourProject,
-  TourRenderAsset,
-  TourRenderRepository,
-} from "./tour-render.repository";
+import type { RenderableTourProject, TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
+import { planSceneClipHandles, resolveTourSceneTransitionSettings } from "./tour-render-transitions";
 import type { SceneDuration } from "./tour-transitions";
 
 const primarySourcePhoto = {
@@ -329,6 +326,8 @@ describe("renderSceneClipsStage", () => {
             reused: false,
             fingerprintHash: `hash-${item.scene.id}`,
             fingerprint: {},
+            requestedDurationSeconds: item.handlePlan.requestedDurationSeconds,
+            handlePlan: item.handlePlan,
           },
         }))
         .reverse()
@@ -468,11 +467,11 @@ describe("renderSceneClipsStage", () => {
         metadata: { providerJobId: "job-1" },
       }),
     };
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response(Buffer.from("provider-mp4"), {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(Buffer.from("provider-mp4"), {
         status: 200,
         headers: { "content-type": "video/mp4" },
-      })
+      }))
     );
 
     await renderSceneClipsStage({
@@ -484,6 +483,7 @@ describe("renderSceneClipsStage", () => {
       provider,
       providerNormalizer,
       fetcher,
+      durationProbe: vi.fn().mockResolvedValue(4),
       options: {
         renderMode: "provider_image_to_video",
         providerModelId: "openrouter/kling",
@@ -495,6 +495,7 @@ describe("renderSceneClipsStage", () => {
       expect.objectContaining({
         sourceImageUrl: "https://signed.example/kitchen.jpg",
         modelId: "openrouter/kling",
+        durationSeconds: 4,
       })
     );
     expect(fetcher).toHaveBeenCalledWith("https://provider.example/output.mp4", {
@@ -567,11 +568,13 @@ describe("renderSceneClipsStage", () => {
         outputUrl: "https://provider.example/output.mp4",
       }),
     };
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response(Buffer.from("provider-mp4"), {
-        status: 200,
-        headers: { "content-type": "video/mp4" },
-      })
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(Buffer.from("provider-mp4"), {
+          status: 200,
+          headers: { "content-type": "video/mp4" },
+        })
+      )
     );
 
     await renderSceneClipsStage({
@@ -583,6 +586,7 @@ describe("renderSceneClipsStage", () => {
       provider,
       providerNormalizer,
       fetcher,
+      durationProbe: vi.fn().mockResolvedValue(4),
       options: {
         renderMode: "provider_image_to_video",
         providerModelId: "openrouter/kling",
@@ -614,11 +618,13 @@ describe("renderSceneClipsStage", () => {
         downloadHeaders: { Authorization: "Bearer openrouter-key" },
       }),
     };
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response(Buffer.from("provider-mp4"), {
-        status: 200,
-        headers: { "content-type": "video/mp4" },
-      })
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(Buffer.from("provider-mp4"), {
+          status: 200,
+          headers: { "content-type": "video/mp4" },
+        })
+      )
     );
 
     await renderSceneClipsStage({
@@ -630,6 +636,7 @@ describe("renderSceneClipsStage", () => {
       provider,
       providerNormalizer,
       fetcher,
+      durationProbe: vi.fn().mockResolvedValue(4),
       options: {
         renderMode: "provider_image_to_video",
         providerModelId: "openrouter/kling",
@@ -674,7 +681,7 @@ describe("renderSceneClipsStage", () => {
       scene: project.scenes[0]!,
       sourceImageUrl: "https://signed.example/kitchen.jpg",
       secondarySourceImageUrls: ["https://signed.example/kitchen-detail.jpg"],
-      durationSeconds: 4.25,
+      durationSeconds: 4.4,
       modelId: "kwaivgi/kling-v3.0-std",
       settings: {
         width: 1080,
@@ -700,7 +707,7 @@ describe("renderSceneClipsStage", () => {
     );
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual(
       expect.objectContaining({
-        duration: 4,
+        duration: 5,
         input_references: [
           {
             type: "image_url",
@@ -714,7 +721,7 @@ describe("renderSceneClipsStage", () => {
         scene: project.scenes[0]!,
         sourceImageUrl: "https://signed.example/kitchen.jpg",
         secondarySourceImageUrls: ["https://signed.example/kitchen-detail.jpg"],
-        durationSeconds: 4.25,
+        durationSeconds: 4.4,
         modelId: "kwaivgi/kling-v3.0-std",
         settings: {
           width: 1080,
@@ -729,6 +736,10 @@ describe("renderSceneClipsStage", () => {
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).prompt).toContain(
       "Secondary reference images are provided only as additional room/property context"
     );
+    expect(result.metadata).toMatchObject({
+      requestedDurationSeconds: 4.4,
+      providerRequestedDurationSeconds: 5,
+    });
     expect(fetcher).toHaveBeenNthCalledWith(
       2,
       new URL("https://openrouter.ai/api/v1/videos/video-job-1"),
@@ -793,10 +804,168 @@ describe("renderSceneClipsStage", () => {
 });
 
 describe("buildSceneClipFingerprint", () => {
+  it("plans fixed incoming and outgoing transition handles for first, middle, and last scenes", () => {
+    expect(
+      planSceneClipHandles({
+        durations: multiSceneDurations,
+        transitionSettings: resolveTourSceneTransitionSettings(),
+      })
+    ).toEqual([
+      expect.objectContaining({
+        sceneId: "scene-1",
+        targetDurationSeconds: 4,
+        requestedDurationSeconds: 4.5,
+        incomingHandleSeconds: 0,
+        outgoingHandleSeconds: 0.5,
+      }),
+      expect.objectContaining({
+        sceneId: "scene-2",
+        targetDurationSeconds: 5,
+        requestedDurationSeconds: 6,
+        incomingHandleSeconds: 0.5,
+        outgoingHandleSeconds: 0.5,
+      }),
+      expect.objectContaining({
+        sceneId: "scene-3",
+        targetDurationSeconds: 6,
+        requestedDurationSeconds: 6.5,
+        incomingHandleSeconds: 0.5,
+        outgoingHandleSeconds: 0,
+      }),
+    ]);
+  });
+
+  it("requests provider clips with handle duration and stores transition audit metadata", async () => {
+    const repository = createRepository({
+      createSignedSourcePhotoUrls: vi.fn((input) =>
+        Promise.resolve(
+          input.storagePaths.map((storagePath: string) => ({
+            storagePath,
+            signedUrl: `https://signed.example/${storagePath.split("/").at(-1)}`,
+          }))
+        )
+      ),
+    });
+    const providerNormalizer = createProviderNormalizer();
+    const provider: ImageToVideoProvider = {
+      renderSceneClip: vi.fn().mockResolvedValue({
+        outputUrl: "https://provider.example/output.mp4",
+      }),
+    };
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(Buffer.from("provider-mp4"), {
+          status: 200,
+          headers: { "content-type": "video/mp4" },
+        })
+      )
+    );
+
+    const result = await renderSceneClipsStage({
+      project: multiSceneProject,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      durations: multiSceneDurations,
+      provider,
+      providerNormalizer,
+      fetcher,
+      durationProbe: vi
+        .fn()
+        .mockResolvedValueOnce(4.5)
+        .mockResolvedValueOnce(6)
+        .mockResolvedValueOnce(6.5),
+      options: {
+        renderMode: "provider_image_to_video",
+        providerModelId: "openrouter/kling",
+        reuseExistingAssets: false,
+      },
+    });
+
+    expect(provider.renderSceneClip).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ durationSeconds: 4.5 })
+    );
+    expect(provider.renderSceneClip).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ durationSeconds: 6 })
+    );
+    expect(provider.renderSceneClip).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ durationSeconds: 6.5 })
+    );
+    expect(result.clips.map((clip) => clip.requestedDurationSeconds)).toEqual([4.5, 6, 6.5]);
+    expect(repository.createAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          transition: expect.objectContaining({
+            settings: expect.objectContaining({
+              durationSeconds: 0.5,
+              effect: "swipe-on-top",
+            }),
+          }),
+        }),
+      })
+    );
+  });
+
+  it("fails provider rendering when the normalized output is shorter than requested handles", async () => {
+    const repository = createRepository({
+      createSignedSourcePhotoUrls: vi.fn((input) =>
+        Promise.resolve(
+          input.storagePaths.map((storagePath: string) => ({
+            storagePath,
+            signedUrl: `https://signed.example/${storagePath.split("/").at(-1)}`,
+          }))
+        )
+      ),
+    });
+    const providerNormalizer = createProviderNormalizer();
+    const provider: ImageToVideoProvider = {
+      renderSceneClip: vi.fn().mockResolvedValue({
+        outputUrl: "https://provider.example/output.mp4",
+      }),
+    };
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(Buffer.from("provider-mp4"), {
+        status: 200,
+        headers: { "content-type": "video/mp4" },
+      })
+    );
+
+    await expect(
+      renderSceneClipsStage({
+        project: multiSceneProject,
+        repository,
+        runId: "run-1",
+        userId: "user-1",
+        durations: multiSceneDurations,
+        provider,
+        providerNormalizer,
+        fetcher,
+        durationProbe: vi.fn().mockResolvedValue(3),
+        options: {
+          renderMode: "provider_image_to_video",
+          providerModelId: "openrouter/kling",
+          reuseExistingAssets: false,
+        },
+      })
+    ).rejects.toMatchObject({
+      code: "SCENE_CLIP_DURATION_INVALID",
+    } satisfies Partial<TourSceneClipRenderError>);
+    expect(repository.createAsset).not.toHaveBeenCalled();
+  });
+
   it("includes scene, source photo identity, duration, renderer policy, settings, and adapter version", () => {
+    const handlePlan = planSceneClipHandles({
+      durations,
+      transitionSettings: resolveTourSceneTransitionSettings(),
+    })[0]!;
     const fingerprint = buildSceneClipFingerprint({
       scene: project.scenes[0]!,
       durationSeconds: 4,
+      handlePlan,
+      sceneTransitions: resolveTourSceneTransitionSettings(),
       renderMode: "provider_image_to_video",
       providerModelId: "openrouter/kling",
       includeSecondarySourceImages: true,

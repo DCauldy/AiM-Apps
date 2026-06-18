@@ -8,10 +8,12 @@ import {
   buildFinalVideoFingerprint,
   buildJoinedScenesFingerprint,
   renderFinalVideoStage,
+  type FinalRenderSceneClip,
   type FinalVideoRenderer,
 } from "./tour-final-render";
 import type { HeyGenAvatarMetadata } from "./tour-avatar";
 import type { TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
+import { resolveTourSceneTransitionSettings } from "./tour-render-transitions";
 
 const sceneClipAsset1: TourRenderAsset = {
   id: "asset-clip-1",
@@ -39,6 +41,51 @@ const sceneClipAsset2: TourRenderAsset = {
   storagePath: "user-1/project-1/run-1/scene-clip-2.mp4",
   fingerprintHash: "clip-hash-2",
 };
+
+function finalSceneClip(input: {
+  sceneId: string;
+  asset: TourRenderAsset;
+  fingerprintHash: string;
+  index?: number;
+  totalSceneCount?: number;
+  durationSeconds?: number;
+  requestedDurationSeconds?: number;
+  incomingHandleSeconds?: number;
+  outgoingHandleSeconds?: number;
+}): FinalRenderSceneClip {
+  const durationSeconds = input.durationSeconds ?? 4;
+  const requestedDurationSeconds = input.requestedDurationSeconds ?? durationSeconds;
+  return {
+    sceneId: input.sceneId,
+    asset: input.asset,
+    fingerprintHash: input.fingerprintHash,
+    durationSeconds,
+    requestedDurationSeconds,
+    handlePlan: {
+      sceneId: input.sceneId,
+      index: input.index ?? 0,
+      totalSceneCount: input.totalSceneCount ?? 1,
+      targetDurationSeconds: durationSeconds,
+      requestedDurationSeconds,
+      incomingHandleSeconds: input.incomingHandleSeconds ?? 0,
+      outgoingHandleSeconds: input.outgoingHandleSeconds ?? 0,
+    },
+  };
+}
+
+const finalSceneClip1 = finalSceneClip({
+  sceneId: "scene-1",
+  asset: sceneClipAsset1,
+  fingerprintHash: "clip-hash-1",
+});
+
+const finalSceneClip2 = finalSceneClip({
+  sceneId: "scene-2",
+  asset: sceneClipAsset2,
+  fingerprintHash: "clip-hash-2",
+  index: 1,
+  totalSceneCount: 2,
+});
 
 const voiceoverAsset: TourRenderAsset = {
   ...sceneClipAsset1,
@@ -207,8 +254,8 @@ describe("renderFinalVideoStage", () => {
       runId: "run-final",
       repository,
       clips: [
-        { sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" },
-        { sceneId: "scene-2", asset: sceneClipAsset2, fingerprintHash: "clip-hash-2" },
+        finalSceneClip1,
+        finalSceneClip2,
       ],
       voiceoverAsset,
       renderer,
@@ -287,7 +334,7 @@ describe("renderFinalVideoStage", () => {
       userId: "user-1",
       runId: "run-final",
       repository,
-      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      clips: [finalSceneClip1],
       voiceoverAsset,
       renderer,
       options: { reuseExistingAssets: true },
@@ -332,7 +379,7 @@ describe("renderFinalVideoStage", () => {
       userId: "user-1",
       runId: "run-final",
       repository,
-      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      clips: [finalSceneClip1],
       voiceoverAsset,
       renderer,
       options: { reuseExistingAssets: true },
@@ -371,7 +418,7 @@ describe("renderFinalVideoStage", () => {
       userId: "user-1",
       runId: "run-final",
       repository,
-      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      clips: [finalSceneClip1],
       voiceoverAsset,
       avatarOverlay: {
         avatarAsset: avatarVideoAsset,
@@ -409,7 +456,7 @@ describe("renderFinalVideoStage", () => {
       userId: "user-1",
       runId: "run-final",
       repository,
-      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      clips: [finalSceneClip1],
       voiceoverAsset,
       renderer,
       options: { reuseExistingAssets: false },
@@ -421,6 +468,86 @@ describe("renderFinalVideoStage", () => {
     expect(renderer.muxFinalVideo).toHaveBeenCalled();
   });
 
+  it("keeps a hard-cut join path available when scene transitions are disabled", async () => {
+    const repository = createRepository();
+    const renderer = createRenderer({
+      joinSceneClips: vi.fn(async (input) => {
+        expect(input.transitionSettings.enabled).toBe(false);
+        await writeFile(input.joinedScenesPath, Buffer.from("joined-hard-cut-mp4"));
+        return { metadata: { joiner: "hard-cut-test" } };
+      }),
+    });
+
+    const result = await renderFinalVideoStage({
+      projectId: "project-1",
+      userId: "user-1",
+      runId: "run-final",
+      repository,
+      clips: [finalSceneClip1, finalSceneClip2],
+      voiceoverAsset,
+      renderer,
+      options: { sceneTransitions: { enabled: false } },
+    });
+
+    expect(result.joinedScenesFingerprint.transitionSettings.enabled).toBe(false);
+    expect(renderer.joinSceneClips).toHaveBeenCalled();
+  });
+
+  it("fails before joining when a scene clip is shorter than its requested handle duration", async () => {
+    const repository = createRepository();
+    const renderer = createRenderer();
+
+    await expect(
+      renderFinalVideoStage({
+        projectId: "project-1",
+        userId: "user-1",
+        runId: "run-final",
+        repository,
+        clips: [
+          finalSceneClip({
+            sceneId: "scene-1",
+            asset: sceneClipAsset1,
+            fingerprintHash: "clip-hash-1",
+            durationSeconds: 4,
+            requestedDurationSeconds: 4.5,
+            outgoingHandleSeconds: 0.5,
+          }),
+        ],
+        renderer,
+        durationProbe: vi.fn().mockResolvedValue(4),
+      })
+    ).rejects.toMatchObject({
+      code: "CONCAT_FAILED",
+    } satisfies Partial<TourFinalRenderError>);
+    expect(renderer.joinSceneClips).not.toHaveBeenCalled();
+    expect(repository.uploadRenderAssetBytes).not.toHaveBeenCalled();
+  });
+
+  it("fails before muxing when joined-scenes duration drifts from the target sum", async () => {
+    const repository = createRepository();
+    const renderer = createRenderer();
+
+    await expect(
+      renderFinalVideoStage({
+        projectId: "project-1",
+        userId: "user-1",
+        runId: "run-final",
+        repository,
+        clips: [finalSceneClip1, finalSceneClip2],
+        renderer,
+        durationProbe: vi
+          .fn()
+          .mockResolvedValueOnce(4)
+          .mockResolvedValueOnce(4)
+          .mockResolvedValueOnce(7),
+      })
+    ).rejects.toMatchObject({
+      code: "CONCAT_FAILED",
+    } satisfies Partial<TourFinalRenderError>);
+    expect(renderer.joinSceneClips).toHaveBeenCalled();
+    expect(renderer.muxFinalVideo).not.toHaveBeenCalled();
+  });
+
   it("fails before upload when concat fails", async () => {
     const repository = createRepository();
 
@@ -430,7 +557,7 @@ describe("renderFinalVideoStage", () => {
         userId: "user-1",
         runId: "run-final",
         repository,
-        clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+        clips: [finalSceneClip1],
         renderer: createRenderer({ joinSceneClips: vi.fn().mockRejectedValue(new Error("concat")) }),
       })
     ).rejects.toMatchObject({
@@ -449,7 +576,7 @@ describe("renderFinalVideoStage", () => {
         userId: "user-1",
         runId: "run-final",
         repository,
-        clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+        clips: [finalSceneClip1],
         renderer: createRenderer({ muxFinalVideo: vi.fn().mockRejectedValue(new Error("mux")) }),
       })
     ).rejects.toMatchObject({
@@ -474,7 +601,7 @@ describe("renderFinalVideoStage", () => {
         userId: "user-1",
         runId: "run-final",
         repository,
-        clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+        clips: [finalSceneClip1],
         renderer: createRenderer(),
       })
     ).rejects.toMatchObject({
@@ -503,7 +630,7 @@ describe("renderFinalVideoStage", () => {
       userId: "user-1",
       runId: "run-final",
       repository,
-      clips: [{ sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" }],
+      clips: [finalSceneClip1],
       renderer,
     });
 
@@ -515,10 +642,11 @@ describe("final render fingerprints", () => {
   it("include ordered clip identity, voiceover identity, mux settings, preset, and avatar overlay identity", () => {
     const joined = buildJoinedScenesFingerprint({
       clips: [
-        { sceneId: "scene-1", asset: sceneClipAsset1, fingerprintHash: "clip-hash-1" },
-        { sceneId: "scene-2", asset: sceneClipAsset2, fingerprintHash: "clip-hash-2" },
+        finalSceneClip1,
+        finalSceneClip2,
       ],
       concatSettings: { safe: 0, copyCodec: true },
+      transitionSettings: resolveTourSceneTransitionSettings(),
     });
     const final = buildFinalVideoFingerprint({
       joinedScenesFingerprintHash: "joined-hash",
@@ -551,5 +679,15 @@ describe("final render fingerprints", () => {
       outputPreset: "vertical_1080p_h264_aac",
       avatarOverlay: { assetId: "asset-avatar", metadataAssetId: "asset-avatar-metadata" },
     });
+    expect(joined.transitionSettings).toMatchObject({
+      enabled: true,
+      durationSeconds: 0.5,
+      effect: "swipe-on-top",
+    });
+    expect(joined.expectedDurationSeconds).toBe(8);
+    expect(joined.clipHandlePlans).toEqual([
+      expect.objectContaining({ sceneId: "scene-1", requestedDurationSeconds: 4 }),
+      expect.objectContaining({ sceneId: "scene-2", requestedDurationSeconds: 4 }),
+    ]);
   });
 });
