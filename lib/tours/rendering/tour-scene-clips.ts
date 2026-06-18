@@ -15,7 +15,7 @@ import { getDefaultTourRenderMode, type TourRenderMode } from "./tour-render-pre
 import { TourSceneClipRenderError } from "./tour-scene-clip-errors";
 
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
-export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v2";
+export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v3";
 export const DEFAULT_SCENE_CLIP_PROVIDER_MODEL = "kwaivgi/kling-v3.0-std";
 export { TourSceneClipRenderError } from "./tour-scene-clip-errors";
 export { createOpenRouterImageToVideoProvider } from "./tour-scene-clip-openrouter";
@@ -70,6 +70,19 @@ export type ImageToVideoProvider = {
     contentType?: string;
     metadata?: Record<string, unknown>;
   }>;
+};
+
+export type ProviderSceneClipNormalizerInput = {
+  inputVideoPath: string;
+  outputVideoPath: string;
+  settings: ResolvedSceneClipRenderSettings;
+  ffmpegPath: string;
+};
+
+export type ProviderSceneClipNormalizer = {
+  normalizeSceneClip(
+    input: ProviderSceneClipNormalizerInput
+  ): Promise<{ metadata?: Record<string, unknown> }>;
 };
 
 export type SceneClipStageResult = {
@@ -241,6 +254,7 @@ export async function renderSceneClipsStage(input: {
   durations: SceneDuration[];
   renderer?: SceneClipRenderer;
   provider?: ImageToVideoProvider;
+  providerNormalizer?: ProviderSceneClipNormalizer;
   fetcher?: typeof fetch;
   options?: SceneClipStageOptions;
   batchRunner?: SceneClipBatchRunner;
@@ -289,6 +303,7 @@ export async function renderSceneClipsStage(input: {
         repository: input.repository,
         renderer: input.renderer,
         provider: input.provider,
+        providerNormalizer: input.providerNormalizer,
         fetcher: input.fetcher,
       });
       completedCount += 1;
@@ -316,6 +331,7 @@ export async function renderSceneClipBatchItem(input: {
   repository: TourRenderRepository;
   renderer?: SceneClipRenderer;
   provider?: ImageToVideoProvider;
+  providerNormalizer?: ProviderSceneClipNormalizer;
   fetcher?: typeof fetch;
 }): Promise<SceneClipStageClip> {
   return renderOrReuseSceneClip({
@@ -327,6 +343,7 @@ export async function renderSceneClipBatchItem(input: {
     userId: input.item.userId,
     renderer: input.renderer,
     provider: input.provider,
+    providerNormalizer: input.providerNormalizer,
     fetcher: input.fetcher,
     options: input.item.options,
   });
@@ -341,6 +358,7 @@ async function renderOrReuseSceneClip(input: {
   userId: string;
   renderer?: SceneClipRenderer;
   provider?: ImageToVideoProvider;
+  providerNormalizer?: ProviderSceneClipNormalizer;
   fetcher?: typeof fetch;
   options: ReturnType<typeof resolveSceneClipStageOptions>;
 }): Promise<SceneClipStageClip> {
@@ -387,6 +405,7 @@ async function renderOrReuseSceneClip(input: {
           durationSeconds: duration.durationSeconds,
           repository: input.repository,
           provider: input.provider,
+          normalizer: input.providerNormalizer ?? createFfmpegProviderSceneClipNormalizer(),
           fetcher: input.fetcher,
           userId: input.userId,
           projectId: input.projectId,
@@ -517,6 +536,39 @@ export function createKenBurnsSceneClipRenderer(): SceneClipRenderer {
   };
 }
 
+export function createFfmpegProviderSceneClipNormalizer(): ProviderSceneClipNormalizer {
+  return {
+    async normalizeSceneClip(input) {
+      await runProcess(input.ffmpegPath, [
+        "-y",
+        "-i",
+        input.inputVideoPath,
+        "-vf",
+        `scale=${input.settings.width}:${input.settings.height}:force_original_aspect_ratio=increase,crop=${input.settings.width}:${input.settings.height},fps=${input.settings.fps},setpts=PTS-STARTPTS`,
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        String(input.settings.crf),
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        input.outputVideoPath,
+      ]);
+
+      return {
+        metadata: {
+          normalizer: "ffmpeg_provider_clip_normalizer",
+          ffmpegPath: input.ffmpegPath,
+        },
+      };
+    },
+  };
+}
+
 async function renderKenBurnsSceneClip(input: {
   scene: RenderableTourScene;
   durationSeconds: number;
@@ -575,6 +627,7 @@ async function renderProviderSceneClip(input: {
   durationSeconds: number;
   repository: TourRenderRepository;
   provider?: ImageToVideoProvider;
+  normalizer: ProviderSceneClipNormalizer;
   fetcher?: typeof fetch;
   userId: string;
   projectId: string;
@@ -664,15 +717,80 @@ async function renderProviderSceneClip(input: {
     );
   }
 
+  const providerContentType = rendered.contentType ?? response.headers.get("content-type") ?? "video/mp4";
+  const providerContent = Buffer.from(await response.arrayBuffer());
+  const normalized = await normalizeProviderSceneClip({
+    scene: input.scene,
+    runId: input.runId,
+    content: providerContent,
+    contentType: providerContentType,
+    settings: input.settings,
+    normalizer: input.normalizer,
+  });
+
   return {
-    content: Buffer.from(await response.arrayBuffer()),
-    contentType: rendered.contentType ?? response.headers.get("content-type") ?? "video/mp4",
+    content: normalized.content,
+    contentType: "video/mp4",
     metadata: {
       provider: "openrouter",
       modelId: input.modelId,
+      providerOutputContentType: providerContentType,
+      normalizedProviderOutput: true,
       ...(rendered.metadata ?? {}),
+      ...(normalized.metadata ?? {}),
     },
   };
+}
+
+async function normalizeProviderSceneClip(input: {
+  scene: RenderableTourScene;
+  runId: string;
+  content: Buffer;
+  contentType: string;
+  settings: ResolvedSceneClipRenderSettings;
+  normalizer: ProviderSceneClipNormalizer;
+}): Promise<{ content: Buffer; metadata?: Record<string, unknown> }> {
+  const scratchDir = path.join(
+    tmpdir(),
+    "aim-tours-render",
+    input.runId,
+    "provider-scene-clips",
+    input.scene.id
+  );
+  const inputVideoPath = path.join(scratchDir, `provider-output${extensionForContentType(input.contentType)}`);
+  const outputVideoPath = path.join(scratchDir, `${input.scene.id}-normalized.mp4`);
+
+  try {
+    await mkdir(scratchDir, { recursive: true });
+    await writeFile(inputVideoPath, input.content);
+    const normalized = await input.normalizer.normalizeSceneClip({
+      inputVideoPath,
+      outputVideoPath,
+      settings: input.settings,
+      ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
+    });
+
+    return {
+      content: await readFile(outputVideoPath),
+      metadata: normalized.metadata,
+    };
+  } catch (error) {
+    if (error instanceof TourSceneClipRenderError) {
+      throw error;
+    }
+    throw new TourSceneClipRenderError(
+      "Image-to-video provider output normalization failed.",
+      "SCENE_CLIP_RENDER_FAILED"
+    );
+  } finally {
+    await rm(scratchDir, { recursive: true, force: true });
+  }
+}
+
+function extensionForContentType(contentType: string): string {
+  if (contentType.includes("webm")) return ".webm";
+  if (contentType.includes("quicktime")) return ".mov";
+  return ".mp4";
 }
 
 function includedRenderableScenes(project: RenderableTourProject): RenderableTourScene[] {

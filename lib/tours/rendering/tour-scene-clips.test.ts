@@ -10,6 +10,7 @@ import {
   renderSceneClipsStage,
   resolveSceneClipStageOptions,
   type ImageToVideoProvider,
+  type ProviderSceneClipNormalizer,
   type SceneClipBatchItem,
   type SceneClipRenderer,
 } from "./tour-scene-clips";
@@ -180,6 +181,15 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     findReusableAsset: vi.fn().mockResolvedValue(null),
     ...overrides,
   } as TourRenderRepository;
+}
+
+function createProviderNormalizer(): ProviderSceneClipNormalizer {
+  return {
+    normalizeSceneClip: vi.fn(async (input) => {
+      await writeFile(input.outputVideoPath, Buffer.from("normalized-provider-mp4"));
+      return { metadata: { normalizer: "test-normalizer" } };
+    }),
+  };
 }
 
 describe("renderSceneClipsStage", () => {
@@ -451,6 +461,7 @@ describe("renderSceneClipsStage", () => {
 
   it("imports provider output into generated media without persisting provider URLs", async () => {
     const repository = createRepository();
+    const providerNormalizer = createProviderNormalizer();
     const provider: ImageToVideoProvider = {
       renderSceneClip: vi.fn().mockResolvedValue({
         outputUrl: "https://provider.example/output.mp4",
@@ -471,6 +482,7 @@ describe("renderSceneClipsStage", () => {
       userId: "user-1",
       durations,
       provider,
+      providerNormalizer,
       fetcher,
       options: {
         renderMode: "provider_image_to_video",
@@ -488,6 +500,18 @@ describe("renderSceneClipsStage", () => {
     expect(fetcher).toHaveBeenCalledWith("https://provider.example/output.mp4", {
       headers: undefined,
     });
+    expect(providerNormalizer.normalizeSceneClip).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({ width: 1080, height: 1920, fps: 30 }),
+        ffmpegPath: "ffmpeg",
+      })
+    );
+    expect(repository.uploadRenderAssetBytes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: Buffer.from("normalized-provider-mp4"),
+        contentType: "video/mp4",
+      })
+    );
     expect(repository.createAsset).toHaveBeenCalledWith(
       expect.objectContaining({
         storageBucket: "tours-generated-media",
@@ -496,6 +520,8 @@ describe("renderSceneClipsStage", () => {
           provider: "openrouter",
           modelId: "openrouter/kling",
           providerJobId: "job-1",
+          normalizedProviderOutput: true,
+          normalizer: "test-normalizer",
         }),
       })
     );
@@ -535,6 +561,7 @@ describe("renderSceneClipsStage", () => {
         },
       ]),
     });
+    const providerNormalizer = createProviderNormalizer();
     const provider: ImageToVideoProvider = {
       renderSceneClip: vi.fn().mockResolvedValue({
         outputUrl: "https://provider.example/output.mp4",
@@ -554,6 +581,7 @@ describe("renderSceneClipsStage", () => {
       userId: "user-1",
       durations,
       provider,
+      providerNormalizer,
       fetcher,
       options: {
         renderMode: "provider_image_to_video",
@@ -579,6 +607,7 @@ describe("renderSceneClipsStage", () => {
 
   it("uses provider download headers when importing authenticated image-to-video output", async () => {
     const repository = createRepository();
+    const providerNormalizer = createProviderNormalizer();
     const provider: ImageToVideoProvider = {
       renderSceneClip: vi.fn().mockResolvedValue({
         outputUrl: "https://openrouter.ai/api/v1/videos/job-1/content?index=0",
@@ -599,6 +628,7 @@ describe("renderSceneClipsStage", () => {
       userId: "user-1",
       durations,
       provider,
+      providerNormalizer,
       fetcher,
       options: {
         renderMode: "provider_image_to_video",
