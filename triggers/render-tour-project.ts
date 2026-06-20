@@ -26,6 +26,8 @@ import {
 } from "@/lib/tours/rendering/scenes/scene-clips";
 import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/repositories/tour-render-retention";
 import { getDefaultTourRenderMode } from "@/lib/tours/rendering/preflight/preflight";
+import { enqueueTourRenderReadyEmailAfterCompletion } from "@/lib/tours/email/render-ready";
+import { sendTourRenderReadyEmailTask } from "./tour-render-emails";
 
 export const renderTourSceneClipTask = task({
   id: "render-tour-scene-clip",
@@ -466,6 +468,22 @@ export const renderTourProjectTask = task({
         });
       }
     }
+
+    await enqueueTourRenderReadyEmailAfterCompletion({
+      run,
+      payload: {
+        projectId: payload.projectId,
+        userId: payload.userId,
+        renderRunId: payload.renderRunId,
+        resultAssetId: run?.resultAssetId ?? "",
+      },
+      triggerEmailTask: (emailPayload, options) =>
+        sendTourRenderReadyEmailTask.trigger(emailPayload, options),
+      logger,
+      logContext: {
+        parentTriggerRunId: ctx.run.id,
+      },
+    });
 
     if (run?.status === "failed") {
       logger.error("Tours render task finished failed.", {
