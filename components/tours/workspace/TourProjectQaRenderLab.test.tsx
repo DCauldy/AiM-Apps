@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 
 import { TourProjectQaRenderLab } from "./TourProjectQaRenderLab";
 import type { TourProjectType } from "@/lib/tours/project-types";
+import type { TourRenderPromptPreviewProject } from "@/lib/tours/rendering/tour-render-prompt-previews";
 
 if (!HTMLElement.prototype.hasPointerCapture) {
   HTMLElement.prototype.hasPointerCapture = () => false;
@@ -31,11 +32,13 @@ function renderQaRenderLab({
   isAvailable = true,
   includedSceneCount = 6,
   tourType = "tour_video",
+  promptPreviewProject = promptProject,
   onSubmitOptions,
 }: {
   isAvailable?: boolean;
   includedSceneCount?: number;
   tourType?: TourProjectType;
+  promptPreviewProject?: TourRenderPromptPreviewProject | null;
   onSubmitOptions?: React.ComponentProps<
     typeof TourProjectQaRenderLab
   >["onSubmitOptions"];
@@ -45,10 +48,48 @@ function renderQaRenderLab({
       isAvailable={isAvailable}
       includedSceneCount={includedSceneCount}
       tourType={tourType}
+      promptPreviewProject={promptPreviewProject}
       onSubmitOptions={onSubmitOptions}
     />,
   );
 }
+
+const promptProject: TourRenderPromptPreviewProject = {
+  id: "project-1",
+  name: "Lake House Tour",
+  propertyAddress: "123 Lake Road",
+  listingUrl: null,
+  tourType: "tour_video",
+  scenes: [
+    {
+      id: "scene-1",
+      title: "Kitchen",
+      sortOrder: 1,
+      included: true,
+      cameraMotion: "slow_push",
+      authoritativePhoto: {
+        id: "photo-1",
+        previewUrl: "https://signed.example/kitchen.jpg",
+      },
+      sourcePhotos: [
+        { id: "photo-1", previewUrl: "https://signed.example/kitchen.jpg" },
+        {
+          id: "photo-2",
+          previewUrl: "https://signed.example/kitchen-detail.jpg",
+        },
+      ],
+      facts: [
+        {
+          id: "fact-1",
+          text: "Quartz waterfall island",
+          sourcePhotoId: "photo-1",
+          proofStatus: "proofed",
+          sortOrder: 1,
+        },
+      ],
+    },
+  ],
+};
 
 test("does not render when the server-authored availability signal is false", () => {
   renderQaRenderLab({ isAvailable: false });
@@ -97,6 +138,12 @@ test("renders a compact launcher with current estimated cost and dev-only popove
   assert.ok(screen.getByRole("combobox", { name: "Render mode" }));
   assert.ok(screen.getByLabelText("Provider scene clip model id"));
   assert.ok(screen.getByLabelText("Script planning model id"));
+  assert.ok(
+    screen.getByRole("button", { name: "View Script Planner Prompt" }),
+  );
+  assert.ok(
+    screen.getByRole("button", { name: "View Image to Video Prompt" }),
+  );
   assert.ok(screen.getByRole("switch", { name: "Script plan reuse" }));
   assert.ok(screen.getByRole("button", { name: /Start render lab run/ }));
 });
@@ -209,5 +256,80 @@ test("updates expanded estimate dollars when provider image-to-video regeneratio
     screen.getByText(
       "OpenRouter provider image-to-video is expected for 6 scene clip(s) with kwaivgi/kling-v3.0-std.",
     ),
+  );
+});
+
+test("opens and closes a formatted script planner prompt modal", async () => {
+  const user = userEvent.setup();
+
+  renderQaRenderLab();
+
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(
+    screen.getByRole("button", { name: "View Script Planner Prompt" }),
+  );
+
+  const dialog = screen.getByRole("dialog", {
+    name: "Script Planner Prompt",
+  });
+  assert.ok(dialog);
+  assert.ok(screen.getByText("System Prompt"));
+  assert.ok(screen.getByText("User Prompt"));
+  assert.ok(
+    screen.getByText(/Create a scene-ordered tour script plan/, {
+      selector: "pre",
+    }),
+  );
+  assert.ok(screen.getByText(/Quartz waterfall island/, { selector: "pre" }));
+
+  await user.click(
+    screen.getByRole("button", { name: "Close prompt preview" }),
+  );
+
+  assert.equal(
+    screen.queryByRole("dialog", { name: "Script Planner Prompt" }),
+    null,
+  );
+});
+
+test("shows an unavailable image-to-video prompt state until provider mode is selected", async () => {
+  const user = userEvent.setup();
+
+  renderQaRenderLab();
+
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(
+    screen.getByRole("button", { name: "View Image to Video Prompt" }),
+  );
+
+  assert.ok(
+    screen.getByText(
+      "Image-to-video prompt preview is unavailable while Ken Burns FFmpeg mode is selected.",
+    ),
+  );
+});
+
+test("opens formatted image-to-video prompt details in provider mode", async () => {
+  const user = userEvent.setup();
+
+  renderQaRenderLab();
+
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("combobox", { name: "Render preset" }));
+  await user.click(
+    screen.getByRole("option", {
+      name: "Provider image-to-video quality experiment",
+    }),
+  );
+  await user.click(
+    screen.getByRole("button", { name: "View Image to Video Prompt" }),
+  );
+
+  assert.ok(screen.getByRole("dialog", { name: "Image To Video Prompt" }));
+  assert.ok(screen.getByText("Provider Prompt"));
+  assert.ok(screen.getByText("Request Details"));
+  assert.ok(screen.getByText(/through Kitchen/, { selector: "pre" }));
+  assert.ok(
+    screen.getByText(/secondary_reference_count: 1/, { selector: "pre" }),
   );
 });

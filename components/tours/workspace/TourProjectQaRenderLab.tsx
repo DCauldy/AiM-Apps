@@ -1,6 +1,6 @@
 "use client";
 
-import { FlaskConical, Play, X } from "lucide-react";
+import { FileText, FlaskConical, Play, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,12 @@ import {
   type TourRenderAdvancedControlsState,
   type SupportedReuseFlag,
 } from "@/lib/tours/rendering/tour-render-options";
+import {
+  buildTourRenderImageToVideoPromptPreview,
+  buildTourRenderScriptPlannerPromptPreview,
+  type TourRenderPromptPreview,
+  type TourRenderPromptPreviewProject,
+} from "@/lib/tours/rendering/tour-render-prompt-previews";
 import type {
   TourRenderMode,
   TourRenderOptions,
@@ -48,15 +54,19 @@ export function TourProjectQaRenderLab({
   includedSceneCount,
   tourType,
   isSubmitting = false,
+  promptPreviewProject = null,
   onSubmitOptions,
 }: {
   isAvailable: boolean;
   includedSceneCount: number;
   tourType: TourProjectType;
   isSubmitting?: boolean;
+  promptPreviewProject?: TourRenderPromptPreviewProject | null;
   onSubmitOptions?: (options: TourRenderOptions) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [activePromptPreview, setActivePromptPreview] =
+    useState<TourRenderPromptPreview | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<TourRenderPreset>(
     "reuse_everything_possible",
   );
@@ -70,6 +80,22 @@ export function TourProjectQaRenderLab({
     tourType,
     options: currentOptions,
   });
+  const openScriptPlannerPromptPreview = () => {
+    setActivePromptPreview(
+      buildTourRenderScriptPlannerPromptPreview({
+        project: promptPreviewProject,
+        options: currentOptions,
+      }),
+    );
+  };
+  const openImageToVideoPromptPreview = () => {
+    setActivePromptPreview(
+      buildTourRenderImageToVideoPromptPreview({
+        project: promptPreviewProject,
+        options: currentOptions,
+      }),
+    );
+  };
 
   const handlePresetChange = (preset: TourRenderPreset) => {
     setSelectedPreset(preset);
@@ -172,6 +198,29 @@ export function TourProjectQaRenderLab({
             </div>
 
             <div className="space-y-3 border-t border-dashed border-yellow-300 pt-3">
+              <div className="grid grid-cols-1 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="justify-start"
+                  onClick={openScriptPlannerPromptPreview}
+                >
+                  <FileText className="h-4 w-4" />
+                  View Script Planner Prompt
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="justify-start"
+                  onClick={openImageToVideoPromptPreview}
+                >
+                  <FileText className="h-4 w-4" />
+                  View Image to Video Prompt
+                </Button>
+              </div>
+
               <div className="space-y-1.5">
                 <label
                   className="text-xs font-medium"
@@ -309,6 +358,13 @@ export function TourProjectQaRenderLab({
         </section>
       ) : null}
 
+      {activePromptPreview ? (
+        <PromptPreviewDialog
+          preview={activePromptPreview}
+          onClose={() => setActivePromptPreview(null)}
+        />
+      ) : null}
+
       <Button
         type="button"
         size="sm"
@@ -324,6 +380,67 @@ export function TourProjectQaRenderLab({
           {` ${spendEstimate.risk}`}
         </span>
       </Button>
+    </div>
+  );
+}
+
+function PromptPreviewDialog({
+  preview,
+  onClose,
+}: {
+  preview: TourRenderPromptPreview;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60 p-3 sm:items-center">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={preview.title}
+        className="max-h-[min(42rem,calc(100vh-2rem))] w-[min(48rem,calc(100vw-1.5rem))] overflow-hidden rounded-md border border-yellow-300 bg-background text-foreground shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-border p-4">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase text-yellow-700">
+              Prompt preview
+            </p>
+            <h3 className="mt-1 text-sm font-semibold">{preview.title}</h3>
+            {preview.available ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {preview.description}
+              </p>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            aria-label="Close prompt preview"
+            onClick={onClose}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="max-h-[calc(min(42rem,100vh-2rem)-5.5rem)] overflow-y-auto p-4">
+          {preview.available ? (
+            <div className="space-y-4">
+              {preview.sections.map((section) => (
+                <section key={section.label} className="space-y-1.5">
+                  <h4 className="text-xs font-semibold">{section.label}</h4>
+                  <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-sm border border-border bg-muted/40 p-3 text-xs leading-relaxed text-foreground">
+                    {section.content}
+                  </pre>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-sm border border-dashed border-yellow-300 bg-yellow-50/70 p-4 text-sm text-yellow-950">
+              {preview.message}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

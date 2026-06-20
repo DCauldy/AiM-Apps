@@ -9,9 +9,15 @@ import {
   RESOLVED_TOUR_SCENE_CAMERA_MOTIONS,
   type ResolvedTourSceneCameraMotion,
 } from "@/lib/tours/scenes.core";
+import {
+  DEFAULT_TOUR_SCRIPT_PLANNING_MODEL,
+  TOUR_SCRIPT_PLANNING_PROMPT_VERSION,
+} from "./openrouter-script-planning-prompts";
 
-export const DEFAULT_TOUR_SCRIPT_PLANNING_MODEL = "google/gemini-2.5-flash";
-export const TOUR_SCRIPT_PLANNING_PROMPT_VERSION = "tour-script-plan-v2-elevenlabs-v3-tags";
+export {
+  DEFAULT_TOUR_SCRIPT_PLANNING_MODEL,
+  TOUR_SCRIPT_PLANNING_PROMPT_VERSION,
+} from "./openrouter-script-planning-prompts";
 
 export type TourScriptSceneTiming = {
   sceneId: string;

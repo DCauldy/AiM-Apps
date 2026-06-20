@@ -171,6 +171,35 @@ function TourProjectLayoutContent({
         isAvailable={isQaRenderLabAvailable}
         includedSceneCount={includedSceneCount}
         tourType={viewModel.project.tourType}
+        promptPreviewProject={{
+          id: viewModel.project.id,
+          name: viewModel.project.name,
+          propertyAddress: viewModel.listing.address,
+          listingUrl: viewModel.listing.listingUrl,
+          tourType: viewModel.project.tourType,
+          scenes: viewModel.tourScenes.map((scene) => ({
+            id: scene.id,
+            title: scene.title,
+            sortOrder: scene.sortOrder,
+            included: scene.included,
+            cameraMotion: scene.cameraMotion,
+            authoritativePhoto: {
+              id: scene.authoritativePhoto.id,
+              previewUrl: scene.authoritativePhoto.previewUrl,
+            },
+            sourcePhotos: scene.sourcePhotos.map((photo) => ({
+              id: photo.id,
+              previewUrl: photo.previewUrl,
+            })),
+            facts: scene.facts.map((fact) => ({
+              id: fact.id,
+              text: fact.text,
+              sourcePhotoId: fact.sourcePhotoId,
+              proofStatus: fact.proofStatus,
+              sortOrder: fact.sortOrder,
+            })),
+          })),
+        }}
         isSubmitting={renderRuns.isCreatingOptionsRenderRun}
         onSubmitOptions={renderRuns.createOptionsRenderRun}
       />
