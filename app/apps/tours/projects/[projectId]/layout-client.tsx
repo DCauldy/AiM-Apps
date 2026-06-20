@@ -11,6 +11,7 @@ import {
   ProjectActionsMenu,
   ProjectDetailsDialog,
 } from "@/components/tours/workspace/WorkspacePresentation";
+import { TourProjectQaRenderLab } from "@/components/tours/workspace/TourProjectQaRenderLab";
 import { useTourRenderRuns } from "@/components/tours/workspace/useTourRenderRuns";
 import {
   TourProjectWorkspaceProvider,
@@ -28,19 +29,29 @@ const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
 
 export function TourProjectLayoutClient({
   initialViewModel,
+  isQaRenderLabAvailable,
   children,
 }: {
   initialViewModel: TourProjectWorkspaceViewModel;
+  isQaRenderLabAvailable: boolean;
   children: React.ReactNode;
 }) {
   return (
     <TourProjectWorkspaceProvider initialViewModel={initialViewModel}>
-      <TourProjectLayoutContent>{children}</TourProjectLayoutContent>
+      <TourProjectLayoutContent isQaRenderLabAvailable={isQaRenderLabAvailable}>
+        {children}
+      </TourProjectLayoutContent>
     </TourProjectWorkspaceProvider>
   );
 }
 
-function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
+function TourProjectLayoutContent({
+  isQaRenderLabAvailable,
+  children,
+}: {
+  isQaRenderLabAvailable: boolean;
+  children: React.ReactNode;
+}) {
   const {
     viewModel,
     projectDetails,
@@ -146,6 +157,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
         onOpenChange={setIsProjectDeleteOpen}
         onConfirm={() => archiveProjectMutation.mutate()}
       />
+      <TourProjectQaRenderLab isAvailable={isQaRenderLabAvailable} />
     </PageFrame>
   );
 }
