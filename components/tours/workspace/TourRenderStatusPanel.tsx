@@ -7,7 +7,7 @@ import {
   formatTourVideoDownloadFilename,
   isTourRenderRunActive,
   type TourRenderRunStatusResponse,
-} from "@/lib/tours/rendering/tour-render.contract";
+} from "@/lib/tours/rendering/contracts/tour-render.contract";
 import { TourRenderRunAssets } from "./TourRenderRunAssets";
 
 const FALLBACK_STEPS = [

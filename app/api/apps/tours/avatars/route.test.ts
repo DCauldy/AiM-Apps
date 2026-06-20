@@ -23,15 +23,15 @@ vi.mock("@/lib/profiles/server", () => ({
   getSlotState: mocks.getSlotState,
 }));
 
-vi.mock("@/lib/tours/rendering/heygen-avatars", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@/lib/tours/rendering/heygen-avatars")>();
+vi.mock("@/lib/tours/rendering/avatars/heygen-avatars", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/tours/rendering/avatars/heygen-avatars")>();
   return {
     ...original,
     listHeyGenDigitalTwinAvatarLooks: mocks.listHeyGenDigitalTwinAvatarLooks,
   };
 });
 
-import { HeyGenAvatarsError } from "@/lib/tours/rendering/heygen-avatars";
+import { HeyGenAvatarsError } from "@/lib/tours/rendering/avatars/heygen-avatars";
 import { GET } from "./route";
 
 describe("GET /api/apps/tours/avatars", () => {

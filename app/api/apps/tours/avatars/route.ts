@@ -2,7 +2,7 @@ import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access
 import {
   HeyGenAvatarsError,
   listHeyGenDigitalTwinAvatarLooks,
-} from "@/lib/tours/rendering/heygen-avatars";
+} from "@/lib/tours/rendering/avatars/heygen-avatars";
 import { getSlotState } from "@/lib/profiles/server";
 import { getProfileApiKey } from "@/lib/user-api-keys/service";
 

@@ -6,8 +6,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   isTourRenderRunActive,
   type TourRenderRunStatusResponse,
-} from "@/lib/tours/rendering/tour-render.contract";
-import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
+} from "@/lib/tours/rendering/contracts/tour-render.contract";
+import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/tour-render-preflight";
 import {
   createRenderRun,
   fetchRecentRenderRuns,

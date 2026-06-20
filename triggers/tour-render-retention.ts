@@ -1,6 +1,6 @@
 import { logger, metadata, schedules } from "@trigger.dev/sdk/v3";
 
-import { enforceThirtyDayGeneratedAssetRetention } from "@/lib/tours/rendering/tour-render-retention";
+import { enforceThirtyDayGeneratedAssetRetention } from "@/lib/tours/rendering/repositories/tour-render-retention";
 
 export const enforceTourRenderAssetRetentionTask = schedules.task({
   id: "enforce-tour-render-asset-retention",

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { TourProjectLayoutClient } from "./layout-client";
-import { isTourRenderDevToolAvailable } from "@/lib/tours/rendering/tour-render-dev-tool-availability";
+import { isTourRenderDevToolAvailable } from "@/lib/tours/rendering/devtools/tour-render-dev-tool-availability";
 import { getTourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 
 export default async function TourProjectLayout({

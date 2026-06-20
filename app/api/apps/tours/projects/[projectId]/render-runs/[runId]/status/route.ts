@@ -2,12 +2,12 @@ import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access
 import {
   formatTourVideoDownloadFilename,
   type TourRenderRunResponse,
-} from "@/lib/tours/rendering/tour-render.contract";
+} from "@/lib/tours/rendering/contracts/tour-render.contract";
 import {
   getTourRenderRunResultUrl,
   getTourRenderRunStatus,
   toTourRenderRunStatusResponseWithResultUrl,
-} from "@/lib/tours/rendering/tour-render-runs";
+} from "@/lib/tours/rendering/runs/tour-render-runs";
 
 export const dynamic = "force-dynamic";
 

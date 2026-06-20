@@ -4,7 +4,7 @@ import {
   formatTourVideoDownloadFilename,
   type TourRenderRunResponse,
   type TourRenderRunsResponse,
-} from "@/lib/tours/rendering/tour-render.contract";
+} from "@/lib/tours/rendering/contracts/tour-render.contract";
 import {
   createTourRenderRun,
   getTourRenderRunResultUrl,
@@ -12,11 +12,11 @@ import {
   preflightTourRenderRun,
   toTourRenderRunStatusResponse,
   toTourRenderRunStatusResponseWithResultUrl,
-} from "@/lib/tours/rendering/tour-render-runs";
-import { mergeProjectAvatarSettingsIntoRenderOptions } from "@/lib/tours/rendering/avatar-project-render-options";
-import { parseTourRenderOptionsInput } from "@/lib/tours/rendering/tour-render-options";
-import { getTourRenderProjectSettings } from "@/lib/tours/rendering/tour-render-project-settings";
-import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
+} from "@/lib/tours/rendering/runs/tour-render-runs";
+import { mergeProjectAvatarSettingsIntoRenderOptions } from "@/lib/tours/rendering/avatars/avatar-project-render-options";
+import { parseTourRenderOptionsInput } from "@/lib/tours/rendering/options/tour-render-options";
+import { getTourRenderProjectSettings } from "@/lib/tours/rendering/options/tour-render-project-settings";
+import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/tour-render-preflight";
 
 export const dynamic = "force-dynamic";
 

@@ -17,9 +17,9 @@ import {
   type TourProviderSpendEstimate,
   type TourProviderSpendLineItem,
   type TourProviderSpendRisk,
-} from "@/lib/tours/rendering/tour-render-provider-spend";
-import { formatTourRenderInvestigationExport } from "@/lib/tours/rendering/tour-render-investigation-export";
-import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
+} from "@/lib/tours/rendering/spend/tour-render-provider-spend";
+import { formatTourRenderInvestigationExport } from "@/lib/tours/rendering/devtools/tour-render-investigation-export";
+import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/tour-render.contract";
 import {
   TOUR_RENDER_MODE_LABELS,
   TOUR_RENDER_MODES,
@@ -32,17 +32,17 @@ import {
   type TourRenderPreset,
   type TourRenderAdvancedControlsState,
   type SupportedReuseFlag,
-} from "@/lib/tours/rendering/tour-render-options";
+} from "@/lib/tours/rendering/options/tour-render-options";
 import {
   buildTourRenderImageToVideoPromptPreview,
   buildTourRenderScriptPlannerPromptPreview,
   type TourRenderPromptPreview,
   type TourRenderPromptPreviewProject,
-} from "@/lib/tours/rendering/tour-render-prompt-previews";
+} from "@/lib/tours/rendering/devtools/tour-render-prompt-previews";
 import type {
   TourRenderMode,
   TourRenderOptions,
-} from "@/lib/tours/rendering/tour-render-preflight";
+} from "@/lib/tours/rendering/preflight/tour-render-preflight";
 import type { TourProjectType } from "@/lib/tours/project-types";
 
 const RISK_BADGE_CLASSES: Record<TourProviderSpendRisk, string> = {

@@ -13,8 +13,8 @@ import type {
   TourRenderRunResponse,
   TourRenderRunsResponse,
   TourRenderRunStatusResponse,
-} from "@/lib/tours/rendering/tour-render.contract";
-import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
+} from "@/lib/tours/rendering/contracts/tour-render.contract";
+import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/tour-render-preflight";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 import type { TourSceneFact } from "@/lib/tours/workspace";
 import type {

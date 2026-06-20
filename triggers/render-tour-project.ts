@@ -5,24 +5,24 @@ import {
   type GenerateTourProjectVideoInput,
   type TourAvatarBatchItem,
   type TourAvatarBatchResult,
-} from "@/lib/tours/rendering/generate-tour-project-video";
-import { safeErrorMessage } from "@/lib/tours/rendering/generate-tour-project-video.helpers";
-import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/tour-voiceover";
-import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/openrouter-script-planning-provider";
-import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/tour-transitions";
-import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/tour-render.repository";
+} from "@/lib/tours/rendering/generation/generate-tour-project-video";
+import { safeErrorMessage } from "@/lib/tours/rendering/generation/generate-tour-project-video.helpers";
+import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/voiceover/tour-voiceover";
+import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/providers/openrouter-script-planning-provider";
+import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/transitions/tour-transitions";
+import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/repositories/tour-render.repository";
 import {
   createHeyGenAvatarProvider,
   prepareHeyGenAvatarStage,
-} from "@/lib/tours/rendering/tour-avatar";
+} from "@/lib/tours/rendering/avatars/tour-avatar";
 import {
   createOpenRouterImageToVideoProvider,
   renderSceneClipBatchItem,
   type SceneClipBatchItem,
   type SceneClipBatchResult,
-} from "@/lib/tours/rendering/tour-scene-clips";
-import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/tour-render-retention";
-import { getDefaultTourRenderMode } from "@/lib/tours/rendering/tour-render-preflight";
+} from "@/lib/tours/rendering/scenes/tour-scene-clips";
+import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/repositories/tour-render-retention";
+import { getDefaultTourRenderMode } from "@/lib/tours/rendering/preflight/tour-render-preflight";
 
 export const renderTourSceneClipTask = task({
   id: "render-tour-scene-clip",

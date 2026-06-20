@@ -2,7 +2,7 @@ import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access
 import {
   ElevenLabsVoicesError,
   listElevenLabsDigitalTwinVoices,
-} from "@/lib/tours/rendering/elevenlabs-voices";
+} from "@/lib/tours/rendering/voiceover/elevenlabs-voices";
 import { getProfileApiKey } from "@/lib/user-api-keys/service";
 import { getSlotState } from "@/lib/profiles/server";
 
