@@ -8,28 +8,7 @@ import {
   EmptyState,
 } from "@/components/app-shell/PagePrimitives";
 import { Button } from "@/components/ui/button";
-import type { TourProjectType } from "@/lib/tours/project-types";
-
-type TourProject = {
-  id: string;
-  name: string;
-  property_address: string;
-  listing_url: string | null;
-  tour_type: TourProjectType;
-  status: "open" | "archived";
-  created_at: string;
-  updated_at: string;
-  cover_photo_preview_url: string | null;
-};
-
-async function fetchTourProjects() {
-  const response = await fetch("/api/apps/tours/projects");
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not load tour projects.");
-  }
-  return (payload.projects ?? []) as TourProject[];
-}
+import { fetchOpenTourProjects, tourQueryKeys } from "@/components/tours/tours-api-client";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -46,8 +25,8 @@ export function TourProjectsList() {
     isLoading,
     refetch,
   } = useQuery({
-    queryKey: ["tours", "projects", "open"],
-    queryFn: fetchTourProjects,
+    queryKey: tourQueryKeys.openProjects(),
+    queryFn: fetchOpenTourProjects,
   });
 
   if (isLoading) {

@@ -1,5 +1,10 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import { approveAllTourSceneFactsForProject } from "@/lib/tours/facts";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
+import { approveAllTourSceneFactsForProject } from "@/lib/tours/facts/facts";
+import {
+  formatTourVideoDownloadFilename,
+  type TourRenderRunResponse,
+  type TourRenderRunsResponse,
+} from "@/lib/tours/rendering/contracts/render.contract";
 import {
   createTourRenderRun,
   getTourRenderRunResultUrl,
@@ -7,9 +12,11 @@ import {
   preflightTourRenderRun,
   toTourRenderRunStatusResponse,
   toTourRenderRunStatusResponseWithResultUrl,
-} from "@/lib/tours/rendering/tour-render-runs";
-import { getTourRenderProjectSettings } from "@/lib/tours/rendering/tour-render-project-settings";
-import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
+} from "@/lib/tours/rendering/runs/render-runs";
+import { mergeProjectAvatarSettingsIntoRenderOptions } from "@/lib/tours/rendering/avatars/avatar-project-render-options";
+import { parseTourRenderOptionsInput } from "@/lib/tours/rendering/options/render-options";
+import { getTourRenderProjectSettings } from "@/lib/tours/rendering/options/project-settings";
+import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/preflight";
 
 export const dynamic = "force-dynamic";
 
@@ -35,19 +42,22 @@ export async function GET(
         runId: run.id,
         userId: access.user.id,
         resultAssetId: run.resultAssetId,
+        downloadTitle: formatTourVideoDownloadFilename(access.project?.name),
       });
 
       return toTourRenderRunStatusResponseWithResultUrl(run, resultUrl);
     })
   );
 
-  return Response.json({
+  const payload = {
     runs: runsWithResultUrls,
-  });
+  } satisfies TourRenderRunsResponse;
+
+  return Response.json(payload);
 }
 
 type CreateRenderRunRequestBody = {
-  options?: TourRenderOptions;
+  options?: unknown;
 };
 
 function mergeProjectRenderSettings(
@@ -55,14 +65,22 @@ function mergeProjectRenderSettings(
   settings: Awaited<ReturnType<typeof getTourRenderProjectSettings>>
 ): TourRenderOptions | undefined {
   const projectVoiceId = settings.elevenLabsVoiceId?.trim();
-  if (!projectVoiceId || options?.elevenLabsVoiceId) {
-    return options;
-  }
+  const voiceOptions = projectVoiceId && !options?.elevenLabsVoiceId
+    ? {
+        ...(options ?? {}),
+        elevenLabsVoiceId: projectVoiceId,
+      }
+    : options ?? {};
 
-  return {
-    ...(options ?? {}),
-    elevenLabsVoiceId: projectVoiceId,
-  };
+  const mergedOptions = mergeProjectAvatarSettingsIntoRenderOptions({
+    options: voiceOptions,
+    project: {
+      heyGenAvatarId: settings.heyGenAvatarId,
+      heyGenAvatarPlacement: settings.heyGenAvatarPlacement,
+    },
+  });
+
+  return Object.keys(mergedOptions).length > 0 ? mergedOptions : undefined;
 }
 
 async function readCreateRenderRunRequestBody(request: Request): Promise<CreateRenderRunRequestBody> {
@@ -72,13 +90,7 @@ async function readCreateRenderRunRequestBody(request: Request): Promise<CreateR
   }
 
   return {
-    options:
-      "options" in payload &&
-      payload.options &&
-      typeof payload.options === "object" &&
-      !Array.isArray(payload.options)
-        ? (payload.options as TourRenderOptions)
-        : undefined,
+    options: "options" in payload ? payload.options : undefined,
   };
 }
 
@@ -93,6 +105,17 @@ export async function POST(
     return toursAccessErrorResponse(access);
   }
 
+  const parsedOptions = parseTourRenderOptionsInput(body.options);
+  if (!parsedOptions.ok) {
+    return Response.json(
+      {
+        error: "Unsupported tour render options.",
+        details: parsedOptions.errors,
+      },
+      { status: 400 }
+    );
+  }
+
   await approveAllTourSceneFactsForProject({
     projectId,
     proofedBy: access.user.id,
@@ -101,7 +124,7 @@ export async function POST(
     projectId,
     userId: access.user.id,
   });
-  const options = mergeProjectRenderSettings(body.options, projectRenderSettings);
+  const options = mergeProjectRenderSettings(parsedOptions.options, projectRenderSettings);
 
   const preflight = await preflightTourRenderRun({
     projectId,
@@ -131,10 +154,9 @@ export async function POST(
     );
   }
 
-  return Response.json(
-    {
-      run: toTourRenderRunStatusResponse(run),
-    },
-    { status: 201 }
-  );
+  const payload = {
+    run: toTourRenderRunStatusResponse(run),
+  } satisfies TourRenderRunResponse;
+
+  return Response.json(payload, { status: 201 });
 }

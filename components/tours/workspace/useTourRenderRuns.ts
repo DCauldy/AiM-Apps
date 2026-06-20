@@ -6,95 +6,54 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   isTourRenderRunActive,
   type TourRenderRunStatusResponse,
-} from "@/lib/tours/rendering/tour-render.contract";
+} from "@/lib/tours/rendering/contracts/render.contract";
+import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/preflight";
+import {
+  createRenderRun,
+  fetchRecentRenderRuns,
+  fetchRenderRunStatus,
+  FRESH_RENDER_OPTIONS,
+  buildCreateRenderRunRequestBody,
+  tourQueryKeys,
+  type CreateRenderRunInput,
+} from "@/components/tours/tours-api-client";
 
-type RenderRunsResponse = {
-  runs: TourRenderRunStatusResponse[];
-};
+export { FRESH_RENDER_OPTIONS, buildCreateRenderRunRequestBody };
 
-type RenderRunResponse = {
-  run: TourRenderRunStatusResponse;
-};
-
-type CreateRenderRunInput = {
-  fresh?: boolean;
-};
-
-const FRESH_RENDER_OPTIONS = {
-  renderMode: "ken_burns_ffmpeg",
-  reuseExistingAssets: false,
-  reuse: {
-    scriptPlan: false,
-    voiceover: false,
-    avatar: false,
-    sceneClips: false,
-    finalVideo: false,
-  },
-} as const;
-
-async function readJsonResponse<T>(response: Response, fallbackError: string): Promise<T> {
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? fallbackError);
-  }
-  return payload as T;
-}
-
-async function fetchRecentRenderRuns(projectId: string): Promise<TourRenderRunStatusResponse[]> {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs`);
-  const payload = await readJsonResponse<RenderRunsResponse>(
-    response,
-    "Could not load render status."
-  );
-  return payload.runs;
-}
-
-async function fetchRenderRunStatus(
-  projectId: string,
-  runId: string
-): Promise<TourRenderRunStatusResponse> {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs/${runId}/status`);
-  const payload = await readJsonResponse<RenderRunResponse>(
-    response,
-    "Could not load render status."
-  );
-  return payload.run;
-}
-
-async function createRenderRun(
-  projectId: string,
-  input: CreateRenderRunInput = {}
-): Promise<TourRenderRunStatusResponse> {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input.fresh ? { options: FRESH_RENDER_OPTIONS } : {}),
-  });
-  const payload = await readJsonResponse<RenderRunResponse>(
-    response,
-    "Could not start rendering."
-  );
-  return payload.run;
-}
-
-function pickDisplayRun(runs: TourRenderRunStatusResponse[]): TourRenderRunStatusResponse | null {
+function pickDisplayRun(
+  runs: TourRenderRunStatusResponse[],
+): TourRenderRunStatusResponse | null {
   return runs.find(isTourRenderRunActive) ?? runs[0] ?? null;
 }
 
 export function pickLatestDownloadableRenderRun(
-  runs: TourRenderRunStatusResponse[]
+  runs: TourRenderRunStatusResponse[],
 ): TourRenderRunStatusResponse | null {
   return (
-    runs.find((run) => run.status === "completed" && Boolean(run.result?.downloadUrl)) ?? null
+    runs.find(
+      (run) => run.status === "completed" && Boolean(run.result?.downloadUrl),
+    ) ?? null
   );
+}
+
+export function isPlainReuseRenderRunInput(input?: CreateRenderRunInput) {
+  return !input?.fresh && !input?.options;
+}
+
+export function isFreshRenderRunInput(input?: CreateRenderRunInput) {
+  return Boolean(input?.fresh);
+}
+
+export function isOptionsRenderRunInput(input?: CreateRenderRunInput) {
+  return Boolean(input?.options) && !input?.fresh;
 }
 
 export function useTourRenderRuns(projectId: string) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const recentRunsQueryKey = useMemo(
-    () => ["tours", "render-runs", projectId] as const,
-    [projectId]
+    () => tourQueryKeys.renderRuns(projectId),
+    [projectId],
   );
 
   const recentRunsQuery = useQuery({
@@ -105,10 +64,11 @@ export function useTourRenderRuns(projectId: string) {
 
   const recentRuns = recentRunsQuery.data ?? [];
   const displayRun = pickDisplayRun(recentRuns);
-  const activeRunId = displayRun && isTourRenderRunActive(displayRun) ? displayRun.id : null;
+  const activeRunId =
+    displayRun && isTourRenderRunActive(displayRun) ? displayRun.id : null;
 
   const activeRunQuery = useQuery({
-    queryKey: ["tours", "render-runs", projectId, activeRunId, "status"],
+    queryKey: tourQueryKeys.renderRunStatus(projectId, activeRunId),
     queryFn: () => fetchRenderRunStatus(projectId, activeRunId as string),
     enabled: Boolean(activeRunId),
     refetchInterval: (query) => {
@@ -123,20 +83,27 @@ export function useTourRenderRuns(projectId: string) {
       return;
     }
 
-    queryClient.setQueryData<TourRenderRunStatusResponse[]>(recentRunsQueryKey, (runs = []) => [
-      activeRunQuery.data,
-      ...runs.filter((run) => run.id !== activeRunQuery.data?.id),
-    ]);
+    queryClient.setQueryData<TourRenderRunStatusResponse[]>(
+      recentRunsQueryKey,
+      (runs = []) => [
+        activeRunQuery.data,
+        ...runs.filter((run) => run.id !== activeRunQuery.data?.id),
+      ],
+    );
   }, [activeRunQuery.data, queryClient, recentRunsQueryKey]);
 
   const currentRun = activeRunQuery.data ?? displayRun;
   const createRenderRunMutation = useMutation({
-    mutationFn: (input: CreateRenderRunInput = {}) => createRenderRun(projectId, input),
+    mutationFn: (input: CreateRenderRunInput = {}) =>
+      createRenderRun(projectId, input),
     onSuccess: (run) => {
-      queryClient.setQueryData<TourRenderRunStatusResponse[]>(recentRunsQueryKey, (runs = []) => [
-        run,
-        ...runs.filter((existingRun) => existingRun.id !== run.id),
-      ]);
+      queryClient.setQueryData<TourRenderRunStatusResponse[]>(
+        recentRunsQueryKey,
+        (runs = []) => [
+          run,
+          ...runs.filter((existingRun) => existingRun.id !== run.id),
+        ],
+      );
       router.push(`/apps/tours/projects/${projectId}/rendering`);
     },
   });
@@ -146,14 +113,28 @@ export function useTourRenderRuns(projectId: string) {
     recentRuns,
     latestDownloadableRun: pickLatestDownloadableRenderRun(recentRuns),
     isLoadingRecentRuns: recentRunsQuery.isLoading,
-    isPollingActiveRun: activeRunQuery.fetchStatus === "fetching" && Boolean(activeRunId),
-    error: recentRunsQuery.error ?? activeRunQuery.error ?? createRenderRunMutation.error,
+    isPollingActiveRun:
+      activeRunQuery.fetchStatus === "fetching" && Boolean(activeRunId),
+    error:
+      recentRunsQuery.error ??
+      activeRunQuery.error ??
+      createRenderRunMutation.error,
     createRenderRun: () => createRenderRunMutation.mutate({ fresh: false }),
     createFreshRenderRun: () => createRenderRunMutation.mutate({ fresh: true }),
+    createOptionsRenderRun: (options: TourRenderOptions) =>
+      createRenderRunMutation.mutate({
+        fresh: false,
+        options,
+      }),
     isCreatingRenderRun:
-      createRenderRunMutation.isPending && !createRenderRunMutation.variables?.fresh,
+      createRenderRunMutation.isPending &&
+      isPlainReuseRenderRunInput(createRenderRunMutation.variables),
     isCreatingFreshRenderRun:
-      createRenderRunMutation.isPending && Boolean(createRenderRunMutation.variables?.fresh),
+      createRenderRunMutation.isPending &&
+      isFreshRenderRunInput(createRenderRunMutation.variables),
+    isCreatingOptionsRenderRun:
+      createRenderRunMutation.isPending &&
+      isOptionsRenderRunInput(createRenderRunMutation.variables),
     isCreatingAnyRenderRun: createRenderRunMutation.isPending,
   };
 }

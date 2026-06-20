@@ -6,13 +6,13 @@ import type {
   TourProjectWorkspaceViewModel,
   TourScene,
 } from "@/lib/tours/workspace";
-import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
-import { useTourSceneMutations } from "./useTourSceneMutations";
 import {
   createSceneFact,
   deleteSceneFact,
   updateSceneFact,
-} from "./useTourProjectWorkspace";
+} from "@/components/tours/tours-api-client";
+import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
+import { useTourSceneMutations } from "./useTourSceneMutations";
 
 export function useTourProjectScenesWorkspace({
   viewModel,
@@ -280,7 +280,9 @@ export function useTourProjectScenesWorkspace({
     removePhotoMutation: sceneMutations.mutations.removePhoto,
     reorderScenesMutation: sceneMutations.mutations.reorderScenes,
     toggleSceneInclusionMutation: sceneMutations.mutations.toggleSceneInclusion,
+    updateSceneCameraMotionMutation: sceneMutations.mutations.updateSceneCameraMotion,
     deleteSceneMutation: sceneMutations.mutations.deleteScene,
+    updateCameraMotion: sceneMutations.updateCameraMotion,
     handleCreateScene,
     handleReplaceScenePhoto,
     handleAddScenePhoto,

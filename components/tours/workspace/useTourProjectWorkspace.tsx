@@ -11,20 +11,15 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { TourProjectWorkspaceViewModel, TourSceneFact } from "@/lib/tours/workspace";
+import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
+import {
+  acknowledgeListingMediaAuthorization,
+  archiveTourProject,
+  fetchTourProjectWorkspace,
+  tourQueryKeys,
+  updateTourProjectDetails,
+} from "@/components/tours/tours-api-client";
 import type { ProjectDetailsForm } from "./WorkspacePresentation";
-
-type TourWorkspaceResponse = {
-  workspace: TourProjectWorkspaceViewModel;
-};
-
-export type TourProjectDetailsUpdate = ProjectDetailsForm & {
-  elevenLabsVoiceId?: string | null;
-};
-
-type SceneFactResponse = {
-  fact: TourSceneFact;
-};
 
 type TourProjectWorkspaceContextValue = {
   viewModel: TourProjectWorkspaceViewModel;
@@ -43,83 +38,8 @@ type TourProjectWorkspaceContextValue = {
 
 const TourProjectWorkspaceContext = createContext<TourProjectWorkspaceContextValue | null>(null);
 
-async function readJsonResponse<T>(response: Response, fallbackError: string): Promise<T> {
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? fallbackError);
-  }
-  return payload as T;
-}
-
 export function tourWorkspaceQueryKey(projectId: string) {
-  return ["tours", "workspace", projectId] as const;
-}
-
-export async function fetchTourProjectWorkspace(projectId: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}`);
-  const payload = await readJsonResponse<TourWorkspaceResponse>(
-    response,
-    "Could not load the tour project workspace."
-  );
-  return payload.workspace;
-}
-
-export async function acknowledgeListingMediaAuthorization(projectId: string) {
-  const response = await fetch(
-    `/api/apps/tours/projects/${projectId}/listing-media-authorization`,
-    { method: "POST" }
-  );
-  return readJsonResponse(response, "Could not record listing-media authorization.");
-}
-
-export async function updateTourProjectDetails(projectId: string, details: TourProjectDetailsUpdate) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(details),
-  });
-  return readJsonResponse(response, "Could not update the tour project.");
-}
-
-export async function archiveTourProject(projectId: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/archive`, {
-    method: "PATCH",
-  });
-  return readJsonResponse(response, "Could not delete the tour project.");
-}
-
-export async function createSceneFact(projectId: string, sceneId: string, text: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-  return readJsonResponse<SceneFactResponse>(response, "Could not save the scene fact.");
-}
-
-export async function updateSceneFact(
-  projectId: string,
-  sceneId: string,
-  factId: string,
-  text: string
-) {
-  const response = await fetch(
-    `/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts/${factId}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    }
-  );
-  return readJsonResponse<SceneFactResponse>(response, "Could not update the scene fact.");
-}
-
-export async function deleteSceneFact(projectId: string, sceneId: string, factId: string) {
-  const response = await fetch(
-    `/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts/${factId}`,
-    { method: "DELETE" }
-  );
-  return readJsonResponse(response, "Could not delete the scene fact.");
+  return tourQueryKeys.workspace(projectId);
 }
 
 export function useTourProjectWorkspaceQuery(
@@ -127,7 +47,7 @@ export function useTourProjectWorkspaceQuery(
   initialViewModel: TourProjectWorkspaceViewModel
 ) {
   return useQuery({
-    queryKey: tourWorkspaceQueryKey(projectId),
+    queryKey: tourQueryKeys.workspace(projectId),
     queryFn: () => fetchTourProjectWorkspace(projectId),
     initialData: initialViewModel,
     refetchOnWindowFocus: false,
@@ -198,7 +118,7 @@ function useArchiveTourProjectMutation(projectId: string) {
   return useMutation({
     mutationFn: () => archiveTourProject(projectId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["tours", "projects", "open"] });
+      queryClient.invalidateQueries({ queryKey: tourQueryKeys.openProjects() });
       router.push("/apps/tours/dashboard");
     },
   });
@@ -222,6 +142,8 @@ export function TourProjectWorkspaceProvider({
     propertyAddress: viewModel.listing.address,
     listingUrl: viewModel.listing.listingUrl ?? "",
     elevenLabsVoiceId: viewModel.project.elevenLabsVoiceId ?? "",
+    heyGenAvatarId: viewModel.project.heyGenAvatarId ?? "",
+    heyGenAvatarPlacement: viewModel.project.heyGenAvatarPlacement,
   });
 
   useEffect(() => {
@@ -234,12 +156,16 @@ export function TourProjectWorkspaceProvider({
       propertyAddress: viewModel.listing.address,
       listingUrl: viewModel.listing.listingUrl ?? "",
       elevenLabsVoiceId: viewModel.project.elevenLabsVoiceId ?? "",
+      heyGenAvatarId: viewModel.project.heyGenAvatarId ?? "",
+      heyGenAvatarPlacement: viewModel.project.heyGenAvatarPlacement,
     });
   }, [
     isProjectDetailsOpen,
     viewModel.listing.address,
     viewModel.listing.listingUrl,
     viewModel.project.elevenLabsVoiceId,
+    viewModel.project.heyGenAvatarId,
+    viewModel.project.heyGenAvatarPlacement,
     viewModel.project.name,
   ]);
 

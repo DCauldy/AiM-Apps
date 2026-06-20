@@ -8,6 +8,22 @@ import { SceneDetailsPanel } from "./SceneDetailsPanel";
 
 type SourcePhoto = TourScene["sourcePhotos"][number];
 
+if (!HTMLElement.prototype.hasPointerCapture) {
+  HTMLElement.prototype.hasPointerCapture = () => false;
+}
+
+if (!HTMLElement.prototype.setPointerCapture) {
+  HTMLElement.prototype.setPointerCapture = () => undefined;
+}
+
+if (!HTMLElement.prototype.releasePointerCapture) {
+  HTMLElement.prototype.releasePointerCapture = () => undefined;
+}
+
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => undefined;
+}
+
 afterEach(() => cleanup());
 
 function photo(id: string, fileName = `${id}.jpg`): SourcePhoto {
@@ -39,7 +55,7 @@ function scene(overrides: Partial<TourScene> = {}): TourScene {
     title: "Kitchen",
     sortOrder: 0,
     included: true,
-    cameraMotion: "push_in",
+    cameraMotion: "slow_push",
     authoritativePhoto,
     sourcePhotos: [authoritativePhoto],
     facts: [],
@@ -62,10 +78,34 @@ test("renders active scene heading without duplicating image state", () => {
   );
 
   assert.ok(screen.getByRole("heading", { name: "Kitchen" }));
-  assert.ok(screen.getByText("Scene 3 · push in"));
+  assert.ok(screen.getByText("Scene 3"));
+  assert.ok(screen.getByLabelText("Camera motion"));
+  assert.ok(screen.getByText("Slow push"));
   assert.equal(screen.queryByText("Scene/image description"), null);
   assert.equal(screen.queryByText("Primary source image: primary-source.jpg"), null);
   assert.equal(screen.queryByText("Viewing display image: display-angle.jpg"), null);
+});
+
+test("updates camera motion from the dropdown", async () => {
+  const user = userEvent.setup();
+  const updates: string[] = [];
+
+  render(
+    <SceneDetailsPanel
+      activeScene={scene({ cameraMotion: "auto" })}
+      displayPhoto={null}
+      sceneIndex={0}
+      onAddScene={() => {}}
+      onCameraMotionChange={(cameraMotion) => {
+        updates.push(cameraMotion);
+      }}
+    />
+  );
+
+  await user.click(screen.getByLabelText("Camera motion"));
+  await user.click(screen.getByRole("option", { name: "Hero reveal" }));
+
+  assert.deepEqual(updates, ["hero_reveal"]);
 });
 
 test("does not render skipped scene status copy in the compact details panel", () => {

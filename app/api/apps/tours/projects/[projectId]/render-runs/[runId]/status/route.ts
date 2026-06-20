@@ -1,9 +1,13 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
+import {
+  formatTourVideoDownloadFilename,
+  type TourRenderRunResponse,
+} from "@/lib/tours/rendering/contracts/render.contract";
 import {
   getTourRenderRunResultUrl,
   getTourRenderRunStatus,
   toTourRenderRunStatusResponseWithResultUrl,
-} from "@/lib/tours/rendering/tour-render-runs";
+} from "@/lib/tours/rendering/runs/render-runs";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +36,12 @@ export async function GET(
     runId,
     userId: access.user.id,
     resultAssetId: run.resultAssetId,
+    downloadTitle: formatTourVideoDownloadFilename(access.project?.name),
   });
 
-  return Response.json({
+  const payload = {
     run: toTourRenderRunStatusResponseWithResultUrl(run, resultUrl),
-  });
+  } satisfies TourRenderRunResponse;
+
+  return Response.json(payload);
 }

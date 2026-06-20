@@ -31,7 +31,7 @@ Ordered scene records owned by a Tour Project. These are the durable backbone fo
 | `title` | Human-readable scene name using Tours vocabulary, such as `Kitchen` or `Primary bedroom`. |
 | `sort_order` | Saved scene order within the project. Unique per project. |
 | `included` | Whether the scene participates in downstream script/render workflows. New scenes default to included. |
-| `camera_motion` | Initial safe camera-motion preset from the controlled set: `slow_push`, `slow_pan`, `static_hold`. |
+| `camera_motion` | Camera-motion preset from the controlled set: `auto`, `slow_push`, `slow_pan`, `static_hold`, `hero_reveal`, `detail_glide`, `vertical_rise`, `snap_push`. New scenes default to `auto`, which lets script planning choose the concrete render motion from the scene image. |
 | `created_at` | When the scene was created. |
 | `updated_at` | When the scene was last updated. |
 

@@ -1,4 +1,4 @@
-import type { TourProjectType } from "./project-types";
+import type { TourProjectType } from "./projects/project-types";
 
 export type TourProviderKey = "elevenlabs" | "heygen";
 

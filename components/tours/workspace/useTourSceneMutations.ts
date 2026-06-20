@@ -3,98 +3,20 @@
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 import type { TourScene } from "@/lib/tours/workspace";
 import { useOptimisticSortableList } from "@/hooks/useOptimisticSortableList";
-import { tourWorkspaceQueryKey } from "./useTourProjectWorkspace";
-
-async function createSceneFromListingPhoto(projectId: string, formData: FormData) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes`, {
-    method: "POST",
-    body: formData,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not create the TourScene.");
-  }
-  return payload;
-}
-
-async function replaceAuthoritativeSceneListingPhoto(projectId: string, sceneId: string, formData: FormData) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`, {
-    method: "PATCH",
-    body: formData,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not replace the authoritative listing photo.");
-  }
-  return payload;
-}
-
-async function addSceneListingPhoto(projectId: string, sceneId: string, formData: FormData) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`, {
-    method: "POST",
-    body: formData,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not add the listing photo.");
-  }
-  return payload;
-}
-
-async function removeSceneListingPhoto(projectId: string, sceneId: string, sourcePhotoId: string | null) {
-  const url = new URL(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`, window.location.origin);
-  if (sourcePhotoId) {
-    url.searchParams.set("sourcePhotoId", sourcePhotoId);
-  }
-
-  const response = await fetch(url, {
-    method: "DELETE",
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not remove the listing photo.");
-  }
-  return payload;
-}
-
-async function reorderTourScenes(projectId: string, orderedSceneIds: string[]) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/reorder`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ orderedSceneIds }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not save the TourScene order.");
-  }
-  return payload;
-}
-
-async function toggleSceneInclusion(projectId: string, sceneId: string, included: boolean) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}/inclusion`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ included }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not update TourScene inclusion.");
-  }
-  return payload;
-}
-
-async function deleteTourScene(projectId: string, sceneId: string) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/${sceneId}`, {
-    method: "DELETE",
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not remove the TourScene.");
-  }
-  return payload;
-}
+import {
+  addSceneListingPhoto,
+  createSceneFromListingPhoto,
+  deleteTourScene,
+  removeSceneListingPhoto,
+  reorderTourScenes,
+  replaceAuthoritativeSceneListingPhoto,
+  toggleSceneInclusion,
+  tourQueryKeys,
+  updateSceneCameraMotion,
+} from "@/components/tours/tours-api-client";
 
 export function useTourSceneMutations({
   projectId,
@@ -114,7 +36,7 @@ export function useTourSceneMutations({
 
   const invalidateWorkspace = useCallback(() => {
     queryClient.invalidateQueries({
-      queryKey: tourWorkspaceQueryKey(projectId),
+      queryKey: tourQueryKeys.workspace(projectId),
     });
     router.refresh();
   }, [projectId, queryClient, router]);
@@ -169,6 +91,11 @@ export function useTourSceneMutations({
       toggleSceneInclusion(projectId, sceneId, included),
     onSuccess: invalidateWorkspace,
   });
+  const updateSceneCameraMotionMutation = useMutation({
+    mutationFn: ({ sceneId, cameraMotion }: { sceneId: string; cameraMotion: TourSceneCameraMotion }) =>
+      updateSceneCameraMotion(projectId, sceneId, cameraMotion),
+    onSuccess: invalidateWorkspace,
+  });
   const deleteSceneMutation = useMutation({
     mutationFn: (sceneId: string) => deleteTourScene(projectId, sceneId),
     onSuccess: invalidateWorkspace,
@@ -194,6 +121,25 @@ export function useTourSceneMutations({
     [toggleSceneInclusionMutation, tourScenes]
   );
 
+  const updateCameraMotion = useCallback(
+    async (sceneId: string, cameraMotion: TourSceneCameraMotion) => {
+      const previousScene = tourScenes.items.find((scene) => scene.id === sceneId);
+      tourScenes.updateItem(sceneId, (scene) => ({
+        ...scene,
+        cameraMotion,
+      }));
+
+      try {
+        await updateSceneCameraMotionMutation.mutateAsync({ sceneId, cameraMotion });
+      } catch {
+        if (previousScene) {
+          tourScenes.updateItem(sceneId, () => previousScene);
+        }
+      }
+    },
+    [tourScenes, updateSceneCameraMotionMutation]
+  );
+
   return {
     tourScenes,
     createScene: createSceneMutation.mutate,
@@ -202,6 +148,7 @@ export function useTourSceneMutations({
     removePhoto: removePhotoMutation.mutate,
     reorderById: tourScenes.reorderById,
     toggleInclusion,
+    updateCameraMotion,
     deleteScene: deleteSceneMutation.mutateAsync,
     mutations: {
       createScene: createSceneMutation,
@@ -210,6 +157,7 @@ export function useTourSceneMutations({
       removePhoto: removePhotoMutation,
       reorderScenes: reorderScenesMutation,
       toggleSceneInclusion: toggleSceneInclusionMutation,
+      updateSceneCameraMotion: updateSceneCameraMotionMutation,
       deleteScene: deleteSceneMutation,
     },
   };

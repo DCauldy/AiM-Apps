@@ -8,12 +8,12 @@ const mocks = vi.hoisted(() => ({
   preflightTourRenderRun: vi.fn(),
 }));
 
-vi.mock("@/lib/tours/access.server", () => ({
+vi.mock("@/lib/tours/access/access.server", () => ({
   requireToursAccess: mocks.requireToursAccess,
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
 }));
 
-vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
+vi.mock("@/lib/tours/rendering/runs/render-runs", () => ({
   preflightTourRenderRun: mocks.preflightTourRenderRun,
 }));
 

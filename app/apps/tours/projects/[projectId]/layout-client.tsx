@@ -11,12 +11,17 @@ import {
   ProjectActionsMenu,
   ProjectDetailsDialog,
 } from "@/components/tours/workspace/WorkspacePresentation";
+import { TourProjectQaRenderLab } from "@/components/tours/workspace/TourProjectQaRenderLab";
 import { useTourRenderRuns } from "@/components/tours/workspace/useTourRenderRuns";
 import {
   TourProjectWorkspaceProvider,
   useTourProjectWorkspace,
 } from "@/components/tours/workspace/useTourProjectWorkspace";
-import { TOUR_PROJECT_TYPE_LABELS, type TourProjectType } from "@/lib/tours/project-types";
+import {
+  TOUR_PROJECT_TYPE_LABELS,
+  type TourProjectType,
+} from "@/lib/tours/projects/project-types";
+import { getTourProjectConfiguration } from "@/lib/tours/projects/project-configuration";
 import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 
 const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
@@ -27,19 +32,29 @@ const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
 
 export function TourProjectLayoutClient({
   initialViewModel,
+  isQaRenderLabAvailable,
   children,
 }: {
   initialViewModel: TourProjectWorkspaceViewModel;
+  isQaRenderLabAvailable: boolean;
   children: React.ReactNode;
 }) {
   return (
     <TourProjectWorkspaceProvider initialViewModel={initialViewModel}>
-      <TourProjectLayoutContent>{children}</TourProjectLayoutContent>
+      <TourProjectLayoutContent isQaRenderLabAvailable={isQaRenderLabAvailable}>
+        {children}
+      </TourProjectLayoutContent>
     </TourProjectWorkspaceProvider>
   );
 }
 
-function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
+function TourProjectLayoutContent({
+  isQaRenderLabAvailable,
+  children,
+}: {
+  isQaRenderLabAvailable: boolean;
+  children: React.ReactNode;
+}) {
   const {
     viewModel,
     projectDetails,
@@ -54,12 +69,18 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
   } = useTourProjectWorkspace();
   const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
   const renderRuns = useTourRenderRuns(viewModel.project.id);
-  const supportsVoiceId =
-    viewModel.project.tourType === "tour_video_voice_over" ||
-    viewModel.project.tourType === "tour_video_avatar";
+  const projectConfiguration = getTourProjectConfiguration(
+    viewModel.project.tourType,
+  );
   const isProjectRendering =
-    renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
-  const latestDownloadUrl = renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
+    renderRuns.currentRun?.status === "queued" ||
+    renderRuns.currentRun?.status === "running";
+  const includedSceneCount = viewModel.tourScenes.filter(
+    (scene) => scene.included,
+  ).length;
+  const latestDownloadUrl =
+    renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
+  const renderingHref = `/apps/tours/projects/${viewModel.project.id}/rendering`;
 
   return (
     <PageFrame className="max-w-none px-4 py-4 sm:px-6 lg:px-8">
@@ -84,7 +105,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {isProjectRendering ? (
             <Button asChild variant="secondary" size="sm">
-              <Link href={`/apps/tours/projects/${viewModel.project.id}/rendering`}>
+              <Link href={renderingHref}>
                 <Video className="h-4 w-4" />
                 View progress
               </Link>
@@ -97,6 +118,8 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
           )}
           <ProjectActionsMenu
             latestDownloadUrl={latestDownloadUrl}
+            renderingHref={renderingHref}
+            downloadTitle={viewModel.project.name}
             canGenerateReuseAssets={
               viewModel.tourScenes.length > 0 &&
               !renderRuns.isCreatingAnyRenderRun &&
@@ -125,7 +148,9 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
       <ProjectDetailsDialog
         open={isProjectDetailsOpen}
         details={projectDetails}
-        showVoiceId={supportsVoiceId}
+        tourType={viewModel.project.tourType}
+        showVoiceId={projectConfiguration.supportsVoiceSelection}
+        showAvatarSettings={projectConfiguration.supportsAvatarSettings}
         error={updateProjectMutation.error}
         isSaving={updateProjectMutation.isPending}
         onOpenChange={setIsProjectDetailsOpen}
@@ -142,6 +167,43 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
         onOpenChange={setIsProjectDeleteOpen}
         onConfirm={() => archiveProjectMutation.mutate()}
       />
+      <TourProjectQaRenderLab
+        isAvailable={isQaRenderLabAvailable}
+        includedSceneCount={includedSceneCount}
+        tourType={viewModel.project.tourType}
+        promptPreviewProject={{
+          id: viewModel.project.id,
+          name: viewModel.project.name,
+          propertyAddress: viewModel.listing.address,
+          listingUrl: viewModel.listing.listingUrl,
+          tourType: viewModel.project.tourType,
+          scenes: viewModel.tourScenes.map((scene) => ({
+            id: scene.id,
+            title: scene.title,
+            sortOrder: scene.sortOrder,
+            included: scene.included,
+            cameraMotion: scene.cameraMotion,
+            authoritativePhoto: {
+              id: scene.authoritativePhoto.id,
+              previewUrl: scene.authoritativePhoto.previewUrl,
+            },
+            sourcePhotos: scene.sourcePhotos.map((photo) => ({
+              id: photo.id,
+              previewUrl: photo.previewUrl,
+            })),
+            facts: scene.facts.map((fact) => ({
+              id: fact.id,
+              text: fact.text,
+              sourcePhotoId: fact.sourcePhotoId,
+              proofStatus: fact.proofStatus,
+              sortOrder: fact.sortOrder,
+            })),
+          })),
+        }}
+        currentRun={renderRuns.currentRun}
+        isSubmitting={renderRuns.isCreatingOptionsRenderRun}
+        onSubmitOptions={renderRuns.createOptionsRenderRun}
+      />
     </PageFrame>
   );
 }
@@ -154,7 +216,8 @@ function TourProjectRenderActions({
   renderRuns: ReturnType<typeof useTourRenderRuns>;
 }) {
   const isProjectRendering =
-    renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
+    renderRuns.currentRun?.status === "queued" ||
+    renderRuns.currentRun?.status === "running";
 
   return (
     <>
@@ -162,7 +225,11 @@ function TourProjectRenderActions({
         type="button"
         variant="outline"
         size="sm"
-        disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun || isProjectRendering}
+        disabled={
+          sceneCount === 0 ||
+          renderRuns.isCreatingAnyRenderRun ||
+          isProjectRendering
+        }
         onClick={() => {
           if (!isProjectRendering) {
             renderRuns.createFreshRenderRun();
@@ -170,7 +237,9 @@ function TourProjectRenderActions({
         }}
       >
         <Video className="h-4 w-4" />
-        {renderRuns.isCreatingFreshRenderRun ? "Starting video..." : "Generate video"}
+        {renderRuns.isCreatingFreshRenderRun
+          ? "Starting video..."
+          : "Generate video"}
       </Button>
     </>
   );

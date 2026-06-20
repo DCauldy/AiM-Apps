@@ -1,11 +1,11 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import { getListingMediaAcknowledgementForProject } from "@/lib/tours/listing-media-authorization";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
+import { getListingMediaAcknowledgementForProject } from "@/lib/tours/listing-media/listing-media-authorization";
 import { createTourSceneFromAuthoritativePhoto } from "@/lib/tours/scenes";
 import {
   LISTING_MEDIA_BUCKET,
   getListingMediaStoragePath,
   validateListingMediaFile,
-} from "@/lib/tours/listing-media-upload";
+} from "@/lib/tours/listing-media/listing-media-upload";
 
 export const dynamic = "force-dynamic";
 

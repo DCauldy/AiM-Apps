@@ -10,7 +10,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: mocks.createClient,
 }));
 
-import { createTourSceneFromAuthoritativePhoto, reorderTourScenes } from "./scenes";
+import { createTourSceneFromAuthoritativePhoto, reorderTourScenes, updateTourSceneCameraMotion } from "./scenes";
 
 const now = "2026-06-06T00:00:00.000Z";
 
@@ -73,8 +73,18 @@ function createOrderedScenesBuilder(rows: unknown[]) {
 function createOrderedSourcePhotosBuilder(rows: unknown[]) {
   const chain: Record<string, unknown> = {};
   chain.select = vi.fn(() => chain);
+  chain.eq = vi.fn(() => chain);
   chain.in = vi.fn(() => chain);
   chain.order = vi.fn().mockResolvedValue({ data: rows, error: null });
+  return chain;
+}
+
+function createMaybeSingleUpdateSceneBuilder(row: unknown) {
+  const chain: Record<string, unknown> = {};
+  chain.update = vi.fn(() => chain);
+  chain.eq = vi.fn(() => chain);
+  chain.select = vi.fn(() => chain);
+  chain.maybeSingle = vi.fn().mockResolvedValue({ data: row, error: null });
   return chain;
 }
 
@@ -90,7 +100,7 @@ test("create TourScene adapter calls the atomic create RPC with authoritative so
       scene_title: "Kitchen",
       scene_sort_order: 3,
       scene_included: true,
-      scene_camera_motion: "slow_push",
+      scene_camera_motion: "auto",
       scene_created_at: now,
       scene_updated_at: now,
       source_photo_id: "photo-1",
@@ -130,7 +140,7 @@ test("create TourScene adapter calls the atomic create RPC with authoritative so
     p_title: "Kitchen",
     p_sort_order: 3,
     p_included: true,
-    p_camera_motion: "slow_push",
+    p_camera_motion: "auto",
     p_storage_path: "user-1/project-1/kitchen.jpg",
     p_file_name: "kitchen.jpg",
     p_content_type: "image/jpeg",
@@ -139,6 +149,32 @@ test("create TourScene adapter calls the atomic create RPC with authoritative so
     p_height: 900,
     p_priority: 0,
   });
+});
+
+test("update TourScene camera motion adapter persists the requested motion", async () => {
+  const from = vi
+    .fn()
+    .mockReturnValueOnce(createListByIdsBuilder([sceneRow({ id: "scene-1", project_id: "project-1" })]))
+    .mockReturnValueOnce(
+      createMaybeSingleUpdateSceneBuilder(
+        sceneRow({ id: "scene-1", project_id: "project-1", camera_motion: "detail_glide" })
+      )
+    )
+    .mockReturnValueOnce(createOrderedSourcePhotosBuilder([sourcePhotoRow({ scene_id: "scene-1" })]));
+  mocks.createClient.mockResolvedValue({ from, rpc: vi.fn() });
+
+  const result = await updateTourSceneCameraMotion({
+    projectId: "project-1",
+    sceneId: "scene-1",
+    cameraMotion: "detail_glide",
+  });
+
+  expect(result.ok).toBe(true);
+  expect(from).toHaveBeenNthCalledWith(2, "tour_scenes");
+  const updateBuilder = from.mock.results[1]?.value;
+  expect(updateBuilder.update).toHaveBeenCalledWith(
+    expect.objectContaining({ camera_motion: "detail_glide" })
+  );
 });
 
 test("reorder TourScenes adapter calls the reorder RPC with the complete requested order", async () => {

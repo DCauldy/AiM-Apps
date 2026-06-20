@@ -23,7 +23,7 @@ function scene(sourcePhotos: SourcePhoto[]): TourScene {
     title: "Kitchen",
     sortOrder: 0,
     included: true,
-    cameraMotion: "push_in",
+    cameraMotion: "slow_push",
     authoritativePhoto,
     sourcePhotos,
     facts: [],

@@ -1,19 +1,25 @@
 import { z } from "zod";
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import { TOUR_PROJECT_TYPES, type TourProjectType } from "@/lib/tours/project-types";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
 import {
-  getMissingProviderKeysForTourType,
-  getTourTypeAvailabilityMessage,
-} from "@/lib/tours/tour-type-availability";
+  OptionalHeyGenAvatarIdSchema,
+  OptionalHeyGenAvatarProjectPositionSchema,
+  type HeyGenAvatarProjectPosition,
+} from "@/lib/tours/avatar-settings/avatar-project-settings";
+import { TOUR_PROJECT_TYPES, type TourProjectType } from "@/lib/tours/projects/project-types";
+import {
+  getChangedTourProjectSettingsForUpdate,
+  getRequiredSettingsValidationError,
+} from "@/lib/tours/projects/project-configuration";
+import type {
+  TourProjectWorkspaceResponse,
+  UpdatedTourProject,
+  UpdateTourProjectResponse,
+} from "@/lib/tours/projects/project-api-contracts";
+import { OptionalElevenLabsVoiceIdSchema } from "@/lib/tours/projects/project-configuration.schema";
+import { getTourTypeAvailabilityErrorForUser } from "@/lib/tours/tour-type-availability.server";
 import { getTourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
-import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
-import { getSlotState } from "@/lib/profiles/server";
 
 export const dynamic = "force-dynamic";
-
-const OptionalElevenLabsVoiceIdSchema = z
-  .preprocess((value) => (value === null ? "" : value), z.string().trim().max(120, "Voice ID is too long").optional())
-  .transform((value) => (value ? value : null));
 
 const UpdateTourProjectSchema = z.object({
   name: z.string().trim().min(1, "Project name is required").max(120, "Project name is too long"),
@@ -27,25 +33,9 @@ const UpdateTourProjectSchema = z.object({
     .pipe(z.string().url("Listing URL must be a valid URL").nullable()),
   tourType: z.enum(TOUR_PROJECT_TYPES).optional(),
   elevenLabsVoiceId: OptionalElevenLabsVoiceIdSchema,
+  heyGenAvatarId: OptionalHeyGenAvatarIdSchema,
+  heyGenAvatarPlacement: OptionalHeyGenAvatarProjectPositionSchema,
 });
-
-async function getTourTypeAvailabilityError(
-  userId: string,
-  tourType: TourProjectType
-): Promise<string | null> {
-  if (tourType === "tour_video") return null;
-
-  const slot = await getSlotState(userId).catch(() => null);
-  const apiKeyStatus = slot?.active_profile_id
-    ? await getProfileApiKeyStatusMap(slot.active_profile_id, ["elevenlabs", "heygen"])
-    : {};
-
-  if (getMissingProviderKeysForTourType(tourType, apiKeyStatus).length > 0) {
-    return getTourTypeAvailabilityMessage(tourType, "choosing");
-  }
-
-  return null;
-}
 
 export async function GET(
   _request: Request,
@@ -61,7 +51,9 @@ export async function GET(
     );
   }
 
-  return Response.json({ workspace });
+  const payload = { workspace } satisfies TourProjectWorkspaceResponse;
+
+  return Response.json(payload);
 }
 
 export async function PATCH(
@@ -83,15 +75,85 @@ export async function PATCH(
     );
   }
 
-  if (parsed.data.tourType) {
-    const tourTypeAvailabilityError = await getTourTypeAvailabilityError(
-      access.user.id,
-      parsed.data.tourType
+  const { data: currentProject, error: currentProjectError } = await access.supabase
+    .from("tours_projects")
+    .select("tour_type, elevenlabs_voice_id, heygen_avatar_id, heygen_avatar_placement")
+    .eq("id", projectId)
+    .eq("user_id", access.user.id)
+    .eq("status", "open")
+    .maybeSingle<{
+      tour_type: TourProjectType;
+      elevenlabs_voice_id: string | null;
+      heygen_avatar_id: string | null;
+      heygen_avatar_placement: HeyGenAvatarProjectPosition | null;
+    }>();
+
+  if (currentProjectError) {
+    return Response.json({ error: "Could not update the tour project." }, { status: 500 });
+  }
+
+  if (!currentProject) {
+    return Response.json(
+      { error: "Tour project was not found or cannot be updated." },
+      { status: 404 }
     );
+  }
+
+  const effectiveTourType = parsed.data.tourType ?? currentProject.tour_type;
+  if (parsed.data.tourType) {
+    const tourTypeAvailabilityError = await getTourTypeAvailabilityErrorForUser({
+      userId: access.user.id,
+      tourType: parsed.data.tourType,
+      action: "choosing",
+    });
     if (tourTypeAvailabilityError) {
       return Response.json({ error: tourTypeAvailabilityError }, { status: 422 });
     }
   }
+
+  const settingsUpdates = {
+    ...(body && typeof body === "object" && "elevenLabsVoiceId" in body
+      ? { elevenLabsVoiceId: parsed.data.elevenLabsVoiceId }
+      : {}),
+    ...(body && typeof body === "object" && "heyGenAvatarId" in body
+      ? { heyGenAvatarId: parsed.data.heyGenAvatarId }
+      : {}),
+    ...(body && typeof body === "object" && "heyGenAvatarPlacement" in body
+      ? { heyGenAvatarPlacement: parsed.data.heyGenAvatarPlacement }
+      : {}),
+  };
+  const nextSettings = {
+    elevenLabsVoiceId:
+      settingsUpdates.elevenLabsVoiceId !== undefined
+        ? settingsUpdates.elevenLabsVoiceId
+        : currentProject.elevenlabs_voice_id,
+    heyGenAvatarId:
+      settingsUpdates.heyGenAvatarId !== undefined
+        ? settingsUpdates.heyGenAvatarId
+        : currentProject.heygen_avatar_id,
+    heyGenAvatarPlacement:
+      settingsUpdates.heyGenAvatarPlacement !== undefined
+        ? settingsUpdates.heyGenAvatarPlacement
+        : currentProject.heygen_avatar_placement,
+  };
+
+  const requiredSettingsError = getRequiredSettingsValidationError({
+    tourType: effectiveTourType,
+    ...nextSettings,
+  });
+  if (requiredSettingsError) {
+    return Response.json({ error: requiredSettingsError }, { status: 422 });
+  }
+
+  const projectSettingsColumns = getChangedTourProjectSettingsForUpdate({
+    tourType: effectiveTourType,
+    currentSettings: {
+      elevenLabsVoiceId: currentProject.elevenlabs_voice_id,
+      heyGenAvatarId: currentProject.heygen_avatar_id,
+      heyGenAvatarPlacement: currentProject.heygen_avatar_placement,
+    },
+    updates: settingsUpdates,
+  });
 
   const { data, error } = await access.supabase
     .from("tours_projects")
@@ -100,16 +162,14 @@ export async function PATCH(
       property_address: parsed.data.propertyAddress,
       listing_url: parsed.data.listingUrl,
       ...(parsed.data.tourType ? { tour_type: parsed.data.tourType } : {}),
-      ...(body && typeof body === "object" && "elevenLabsVoiceId" in body
-        ? { elevenlabs_voice_id: parsed.data.elevenLabsVoiceId }
-        : {}),
+      ...projectSettingsColumns,
       updated_at: new Date().toISOString(),
     })
     .eq("id", projectId)
     .eq("user_id", access.user.id)
     .eq("status", "open")
-    .select("id, name, property_address, listing_url, tour_type, elevenlabs_voice_id, status, updated_at")
-    .maybeSingle();
+    .select("id, name, property_address, listing_url, tour_type, elevenlabs_voice_id, heygen_avatar_id, heygen_avatar_placement, status, updated_at")
+    .maybeSingle<UpdatedTourProject>();
 
   if (error) {
     return Response.json({ error: "Could not update the tour project." }, { status: 500 });
@@ -122,5 +182,7 @@ export async function PATCH(
     );
   }
 
-  return Response.json({ project: data });
+  const payload = { project: data } satisfies UpdateTourProjectResponse;
+
+  return Response.json(payload);
 }

@@ -2,6 +2,12 @@
 
 import { FormEvent, KeyboardEvent, useState } from "react";
 import { CheckSquare, EllipsisVertical, ImagePlus, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  TOUR_SCENE_CAMERA_MOTION_OPTIONS,
+  getTourSceneCameraMotionLabel,
+  isTourSceneCameraMotion,
+  type TourSceneCameraMotion,
+} from "@/lib/tours/scenes.core";
 import type { TourScene, TourSceneFact } from "@/lib/tours/workspace";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +26,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type TourScenePhoto = TourScene["sourcePhotos"][number];
@@ -30,9 +43,12 @@ export function SceneDetailsPanel({
   isSubmittingFact = false,
   isUpdatingFact = false,
   isDeletingFact = false,
+  isUpdatingCameraMotion = false,
   factError = null,
   factActionError = null,
+  cameraMotionError = null,
   onAddScene,
+  onCameraMotionChange,
   onCreateFact,
   onUpdateFact,
   onDeleteFact,
@@ -43,9 +59,12 @@ export function SceneDetailsPanel({
   isSubmittingFact?: boolean;
   isUpdatingFact?: boolean;
   isDeletingFact?: boolean;
+  isUpdatingCameraMotion?: boolean;
   factError?: Error | null;
   factActionError?: Error | null;
+  cameraMotionError?: Error | null;
   onAddScene: () => void;
+  onCameraMotionChange?: (cameraMotion: TourSceneCameraMotion) => Promise<void> | void;
   onCreateFact?: (text: string) => Promise<void> | void;
   onUpdateFact?: (factId: string, text: string) => Promise<void> | void;
   onDeleteFact?: (factId: string) => Promise<void> | void;
@@ -111,9 +130,19 @@ export function SceneDetailsPanel({
         <div className="space-y-4">
           <div>
             <h2 className="text-base font-semibold text-foreground">{activeScene.title}</h2>
-            <p className="mt-1 text-xs uppercase text-muted-foreground">
-              Scene {sceneIndex + 1} · {activeScene.cameraMotion.replace("_", " ")}
-            </p>
+            <div className="mt-2 grid gap-2">
+              <p className="text-xs uppercase text-muted-foreground">Scene {sceneIndex + 1}</p>
+              <SceneCameraMotionSelect
+                value={activeScene.cameraMotion}
+                disabled={isUpdatingCameraMotion}
+                onChange={onCameraMotionChange}
+              />
+              {cameraMotionError ? (
+                <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {cameraMotionError.message}
+                </p>
+              ) : null}
+            </div>
           </div>
 
           <form className="space-y-2" onSubmit={handleFactSubmit}>
@@ -198,6 +227,46 @@ export function SceneDetailsPanel({
         </button>
       )}
     </section>
+  );
+}
+
+function SceneCameraMotionSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange?: (cameraMotion: TourSceneCameraMotion) => Promise<void> | void;
+}) {
+  const selectedValue = isTourSceneCameraMotion(value) ? value : "auto";
+
+  return (
+    <div>
+      <label htmlFor="scene-camera-motion" className="mb-1 block text-xs font-medium text-muted-foreground">
+        Camera motion
+      </label>
+      <Select
+        value={selectedValue}
+        disabled={disabled || !onChange}
+        onValueChange={(nextValue) => {
+          if (isTourSceneCameraMotion(nextValue)) {
+            void onChange?.(nextValue);
+          }
+        }}
+      >
+        <SelectTrigger id="scene-camera-motion" className="h-9">
+          <SelectValue>{getTourSceneCameraMotionLabel(selectedValue)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {TOUR_SCENE_CAMERA_MOTION_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 

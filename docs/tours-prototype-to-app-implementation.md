@@ -81,7 +81,7 @@ type RenderableTourProject = {
     title: string;
     sortOrder: number;
     included: boolean;
-    cameraMotion: "slow_push" | "slow_pan" | "static_hold";
+    cameraMotion: "auto" | "slow_push" | "slow_pan" | "static_hold" | "hero_reveal" | "detail_glide" | "vertical_rise" | "snap_push";
     authoritativePhoto: {
       id: string;
       storagePath: string;

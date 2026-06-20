@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { TourProjectLayoutClient } from "./layout-client";
+import { isTourRenderDevToolAvailable } from "@/lib/tours/rendering/devtools/availability";
 import { getTourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 
 export default async function TourProjectLayout({
@@ -17,7 +18,10 @@ export default async function TourProjectLayout({
   }
 
   return (
-    <TourProjectLayoutClient initialViewModel={viewModel}>
+    <TourProjectLayoutClient
+      initialViewModel={viewModel}
+      isQaRenderLabAvailable={isTourRenderDevToolAvailable()}
+    >
       {children}
     </TourProjectLayoutClient>
   );

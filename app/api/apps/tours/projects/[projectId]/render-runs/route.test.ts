@@ -33,20 +33,20 @@ const mocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@/lib/tours/access.server", () => ({
+vi.mock("@/lib/tours/access/access.server", () => ({
   requireToursAccess: mocks.requireToursAccess,
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
 }));
 
-vi.mock("@/lib/tours/facts", () => ({
+vi.mock("@/lib/tours/facts/facts", () => ({
   approveAllTourSceneFactsForProject: mocks.approveAllTourSceneFactsForProject,
 }));
 
-vi.mock("@/lib/tours/rendering/tour-render-project-settings", () => ({
+vi.mock("@/lib/tours/rendering/options/project-settings", () => ({
   getTourRenderProjectSettings: mocks.getTourRenderProjectSettings,
 }));
 
-vi.mock("@/lib/tours/rendering/tour-render-runs", () => ({
+vi.mock("@/lib/tours/rendering/runs/render-runs", () => ({
   createTourRenderRun: mocks.createTourRenderRun,
   getTourRenderRunResultUrl: mocks.getTourRenderRunResultUrl,
   listRecentTourRenderRuns: mocks.listRecentTourRenderRuns,
@@ -96,6 +96,56 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       {
         projectId: "project-1",
         userId: "user-1",
+      },
+      { skipPreflight: true }
+    );
+  });
+
+  it("uses project voice and avatar settings when render options do not specify them", async () => {
+    const placement = {
+      frame: { width: 1080, height: 1920 },
+      offsets: { top: 240, left: 540, bottom: 120, right: 40 },
+    };
+    const expectedOptions = {
+      elevenLabsVoiceId: "voice-project-1",
+      heyGenAvatarId: "avatar-look-1",
+      heyGenAvatarProjectPlacement: placement,
+      heyGenAvatarPositioning: {
+        anchor: "bottom-right",
+        rightMargin: 40,
+        bottomMargin: 120,
+        basis: "videoLayer",
+        avatarWidth: 500,
+        alphaThreshold: 16,
+      },
+    };
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.getTourRenderProjectSettings.mockResolvedValue({
+      elevenLabsVoiceId: "voice-project-1",
+      heyGenAvatarId: "avatar-look-1",
+      heyGenAvatarPlacement: placement,
+    });
+    mocks.preflightTourRenderRun.mockResolvedValue({
+      ok: true,
+      summary: { projectId: "project-1" },
+    });
+    mocks.createTourRenderRun.mockResolvedValue(run);
+
+    const response = await POST(new Request("http://localhost/api", { method: "POST" }), {
+      params: Promise.resolve({ projectId: "project-1" }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      options: expectedOptions,
+    });
+    expect(mocks.createTourRenderRun).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: expectedOptions,
       },
       { skipPreflight: true }
     );
@@ -210,6 +260,172 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     );
   });
 
+  it("rejects unsupported render modes before preparing or creating a render run", async () => {
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+
+    const response = await POST(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ options: { renderMode: "cinematic_orbit" } }),
+      }),
+      {
+        params: Promise.resolve({ projectId: "project-1" }),
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unsupported tour render options.",
+      details: ["renderMode must be ken_burns_ffmpeg or provider_image_to_video."],
+    });
+    expect(mocks.approveAllTourSceneFactsForProject).not.toHaveBeenCalled();
+    expect(mocks.getTourRenderProjectSettings).not.toHaveBeenCalled();
+    expect(mocks.preflightTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed reuse values before preparing or creating a render run", async () => {
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+
+    const response = await POST(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          options: {
+            reuseExistingAssets: true,
+            reuse: {
+              scriptPlan: "yes",
+              transitions: true,
+            },
+          },
+        }),
+      }),
+      {
+        params: Promise.resolve({ projectId: "project-1" }),
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unsupported tour render options.",
+      details: [
+        "reuse.scriptPlan must be a boolean when provided.",
+        "reuse.transitions is not a supported reuse flag.",
+      ],
+    });
+    expect(mocks.approveAllTourSceneFactsForProject).not.toHaveBeenCalled();
+    expect(mocks.preflightTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
+  });
+
+  it("omits blank model ID overrides before preflight and run creation", async () => {
+    const expectedOptions = {
+      renderMode: "provider_image_to_video",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    };
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.preflightTourRenderRun.mockResolvedValue({
+      ok: true,
+      summary: { projectId: "project-1" },
+    });
+    mocks.createTourRenderRun.mockResolvedValue(run);
+
+    const response = await POST(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          options: {
+            ...expectedOptions,
+            scriptPlanningModelId: "   ",
+            sceneClipProviderModelId: "\n\t",
+          },
+        }),
+      }),
+      {
+        params: Promise.resolve({ projectId: "project-1" }),
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      options: expectedOptions,
+    });
+    expect(mocks.createTourRenderRun).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: expectedOptions,
+      },
+      { skipPreflight: true }
+    );
+  });
+
+  it("accepts supported dev render options and trims model ID overrides", async () => {
+    const expectedOptions = {
+      renderMode: "provider_image_to_video",
+      scriptPlanningModelId: "openrouter/planner-model",
+      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    };
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.preflightTourRenderRun.mockResolvedValue({
+      ok: true,
+      summary: { projectId: "project-1" },
+    });
+    mocks.createTourRenderRun.mockResolvedValue(run);
+
+    const response = await POST(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          options: {
+            ...expectedOptions,
+            scriptPlanningModelId: "  openrouter/planner-model  ",
+            sceneClipProviderModelId: " kwaivgi/kling-v3.0-std ",
+          },
+        }),
+      }),
+      {
+        params: Promise.resolve({ projectId: "project-1" }),
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.preflightTourRenderRun).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      options: expectedOptions,
+    });
+    expect(mocks.createTourRenderRun).toHaveBeenCalledWith(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: expectedOptions,
+      },
+      { skipPreflight: true }
+    );
+  });
+
   it("returns recent render runs for polling from product state", async () => {
     mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
     mocks.listRecentTourRenderRuns.mockResolvedValue([run]);
@@ -231,6 +447,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       runId: "run-1",
       userId: "user-1",
       resultAssetId: undefined,
+      downloadTitle: "tour-video.mp4",
     });
   });
 
@@ -245,7 +462,11 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       downloadUrl: "https://storage.example.test/signed-final-video",
       storagePath: "user-1/project-1/run-1/final.mp4",
     };
-    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+    mocks.requireToursAccess.mockResolvedValue({
+      ok: true,
+      user: { id: "user-1" },
+      project: { id: "project-1", name: "Lake House Tour", status: "open" },
+    });
     mocks.listRecentTourRenderRuns.mockResolvedValue([completedRun]);
     mocks.getTourRenderRunResultUrl.mockResolvedValue(resultUrl);
 
@@ -270,6 +491,7 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
       runId: "run-1",
       userId: "user-1",
       resultAssetId: "asset-final-video",
+      downloadTitle: "Lake House Tour.mp4",
     });
   });
 

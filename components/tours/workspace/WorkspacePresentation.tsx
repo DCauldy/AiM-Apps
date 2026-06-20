@@ -2,7 +2,19 @@
 
 import { FormEvent, type ReactNode } from "react";
 import { useDropzone } from "react-dropzone";
-import { Download, EllipsisVertical, ImagePlus, Loader2, Pencil, Plus, RefreshCw, Trash2, UploadCloud } from "lucide-react";
+import Link from "next/link";
+import {
+  Download,
+  EllipsisVertical,
+  Images,
+  ImagePlus,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UploadCloud,
+} from "lucide-react";
 import type { TourScene } from "@/lib/tours/workspace";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,13 +33,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
+import { getRequiredSettingsState } from "@/lib/tours/projects/project-configuration";
 import { ElevenLabsVoiceSelector } from "./ElevenLabsVoiceSelector";
+import { HeyGenAvatarSelector } from "./HeyGenAvatarSelector";
+import type { HeyGenAvatarProjectPosition } from "./avatar-positioning";
+import { appendDownloadTitle } from "./TourRenderStatusPanel";
 
 export type ProjectDetailsForm = {
   name: string;
   propertyAddress: string;
   listingUrl: string;
   elevenLabsVoiceId: string;
+  heyGenAvatarId: string;
+  heyGenAvatarPlacement: HeyGenAvatarProjectPosition | null;
 };
 
 type TourScenePhoto = TourScene["sourcePhotos"][number];
@@ -253,6 +272,8 @@ export function SceneImageRail({
 
 export function ProjectActionsMenu({
   latestDownloadUrl,
+  renderingHref,
+  downloadTitle,
   canGenerateReuseAssets = false,
   isGeneratingReuseAssets = false,
   onGenerateReuseAssets,
@@ -260,6 +281,8 @@ export function ProjectActionsMenu({
   onDelete,
 }: {
   latestDownloadUrl?: string | null;
+  renderingHref: string;
+  downloadTitle: string;
   canGenerateReuseAssets?: boolean;
   isGeneratingReuseAssets?: boolean;
   onGenerateReuseAssets?: () => void;
@@ -292,17 +315,24 @@ export function ProjectActionsMenu({
           </DropdownMenuItem>
         ) : null}
         {latestDownloadUrl ? (
-          <DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <a
-              href={latestDownloadUrl}
+              href={appendDownloadTitle(latestDownloadUrl, downloadTitle)}
               target="_blank"
               rel="noreferrer"
               download
-              className="flex w-full items-center"
             >
               <Download className="mr-2 h-4 w-4" />
               Download render
             </a>
+          </DropdownMenuItem>
+        ) : null}
+        {latestDownloadUrl ? (
+          <DropdownMenuItem asChild>
+            <Link href={renderingHref}>
+              <Images className="mr-2 h-4 w-4" />
+              View render assets
+            </Link>
           </DropdownMenuItem>
         ) : null}
         {hasRenderActions ? <DropdownMenuSeparator /> : null}
@@ -383,7 +413,9 @@ export function SceneActionsMenu({
 export function ProjectDetailsDialog({
   open,
   details,
+  tourType,
   showVoiceId = false,
+  showAvatarSettings = false,
   error,
   isSaving,
   onOpenChange,
@@ -392,16 +424,28 @@ export function ProjectDetailsDialog({
 }: {
   open: boolean;
   details: ProjectDetailsForm;
+  tourType?: TourProjectType;
   showVoiceId?: boolean;
+  showAvatarSettings?: boolean;
   error: Error | null;
   isSaving: boolean;
   onOpenChange: (open: boolean) => void;
   onChange: (details: ProjectDetailsForm) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const isVoiceSelectionRequired = showVoiceId && !details.elevenLabsVoiceId.trim();
+  const effectiveTourType =
+    tourType ??
+    (showAvatarSettings ? "tour_video_avatar" : showVoiceId ? "tour_video_voice_over" : "tour_video");
+  const { isVoiceSelectionMissing, isAvatarSelectionMissing } = getRequiredSettingsState({
+    tourType: effectiveTourType,
+    elevenLabsVoiceId: details.elevenLabsVoiceId,
+    heyGenAvatarId: details.heyGenAvatarId,
+    heyGenAvatarPlacement: details.heyGenAvatarPlacement,
+  });
+  const isVoiceSelectionRequired = showVoiceId && isVoiceSelectionMissing;
+  const isAvatarSelectionRequired = showAvatarSettings && isAvatarSelectionMissing;
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    if (isVoiceSelectionRequired) {
+    if (isVoiceSelectionRequired || isAvatarSelectionRequired) {
       event.preventDefault();
       return;
     }
@@ -461,13 +505,37 @@ export function ProjectDetailsDialog({
                 ) : null}
               </div>
             ) : null}
+            {showAvatarSettings ? (
+              <div className="block text-sm font-medium text-foreground">
+                <span>HeyGen avatar look</span>
+                <div className="mt-1">
+                  <HeyGenAvatarSelector
+                    value={details.heyGenAvatarId}
+                    placement={details.heyGenAvatarPlacement}
+                    disabled={isSaving}
+                    onCommit={({ avatarId, placement }) =>
+                      onChange({
+                        ...details,
+                        heyGenAvatarId: avatarId,
+                        heyGenAvatarPlacement: placement,
+                      })
+                    }
+                  />
+                </div>
+                {isAvatarSelectionRequired ? (
+                  <p className="mt-1 text-xs text-destructive">
+                    Select and position a HeyGen avatar before saving.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSaving || isVoiceSelectionRequired}>
+            <Button type="submit" disabled={isSaving || isVoiceSelectionRequired || isAvatarSelectionRequired}>
               {isSaving ? "Saving..." : "Save details"}
             </Button>
           </DialogFooter>

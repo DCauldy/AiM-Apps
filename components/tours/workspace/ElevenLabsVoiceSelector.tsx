@@ -11,29 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-type ElevenLabsDigitalTwinVoice = {
-  id: string;
-  name: string;
-  category: "cloned" | "professional";
-  description: string | null;
-  previewUrl: string | null;
-  labels: Record<string, string>;
-  fineTuningState: string | null;
-};
-
-type ElevenLabsVoicesResponse = {
-  voices: ElevenLabsDigitalTwinVoice[];
-};
-
-async function fetchDigitalTwinVoices() {
-  const response = await fetch("/api/apps/tours/voices");
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not load ElevenLabs voices.");
-  }
-  return payload as ElevenLabsVoicesResponse;
-}
+import {
+  fetchDigitalTwinVoices,
+  tourQueryKeys,
+  type ElevenLabsDigitalTwinVoice,
+} from "@/components/tours/tours-api-client";
 
 export function ElevenLabsVoiceSelector({
   value,
@@ -47,7 +29,7 @@ export function ElevenLabsVoiceSelector({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
   const voicesQuery = useQuery({
-    queryKey: ["tours", "elevenlabs", "digital-twin-voices"],
+    queryKey: tourQueryKeys.elevenLabsDigitalTwinVoices(),
     queryFn: fetchDigitalTwinVoices,
     staleTime: 5 * 60 * 1000,
   });
