@@ -5,6 +5,9 @@ import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-ren
 import {
   FRESH_RENDER_OPTIONS,
   buildCreateRenderRunRequestBody,
+  isFreshRenderRunInput,
+  isPlainReuseRenderRunInput,
+  isPresetRenderRunInput,
   pickLatestDownloadableRenderRun,
 } from "./useTourRenderRuns";
 
@@ -95,4 +98,63 @@ test("fresh render request body sends reuse disabled without overriding render m
 
 test("default render request body leaves reuse options unset", () => {
   assert.deepEqual(buildCreateRenderRunRequestBody({ fresh: false }), {});
+});
+
+test("creation state helpers keep plain reuse renders separate from preset renders", () => {
+  const presetInput = {
+    fresh: false,
+    options: {
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    },
+  };
+
+  assert.equal(isPlainReuseRenderRunInput({ fresh: false }), true);
+  assert.equal(isPlainReuseRenderRunInput(), true);
+  assert.equal(isPlainReuseRenderRunInput({ fresh: true }), false);
+  assert.equal(isPlainReuseRenderRunInput(presetInput), false);
+
+  assert.equal(isFreshRenderRunInput({ fresh: true }), true);
+  assert.equal(isFreshRenderRunInput(presetInput), false);
+
+  assert.equal(isPresetRenderRunInput(presetInput), true);
+  assert.equal(isPresetRenderRunInput({ fresh: false }), false);
+  assert.equal(isPresetRenderRunInput({ fresh: true, options: presetInput.options }), false);
+});
+
+test("dev-tool preset render request body sends explicit preset options", () => {
+  assert.deepEqual(
+    buildCreateRenderRunRequestBody({
+      options: {
+        renderMode: "ken_burns_ffmpeg",
+        reuseExistingAssets: true,
+        reuse: {
+          scriptPlan: true,
+          voiceover: true,
+          avatar: true,
+          sceneClips: false,
+          finalVideo: false,
+        },
+      },
+    }),
+    {
+      options: {
+        renderMode: "ken_burns_ffmpeg",
+        reuseExistingAssets: true,
+        reuse: {
+          scriptPlan: true,
+          voiceover: true,
+          avatar: true,
+          sceneClips: false,
+          finalVideo: false,
+        },
+      },
+    }
+  );
 });

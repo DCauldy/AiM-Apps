@@ -13,6 +13,47 @@ const SUPPORTED_REUSE_FLAGS = [
 ] as const;
 
 type SupportedReuseFlag = (typeof SUPPORTED_REUSE_FLAGS)[number];
+export type TourRenderPreset =
+  | "reuse_everything_possible"
+  | "regenerate_scene_clips"
+  | "regenerate_final_video"
+  | "cheap_ken_burns_ux_test"
+  | "provider_image_to_video_quality_experiment"
+  | "script_model_experiment"
+  | "full_fresh_render";
+
+const DEFAULT_PROVIDER_SCENE_CLIP_MODEL_ID = "kwaivgi/kling-v3.0-std";
+const DEFAULT_SCRIPT_PLANNING_MODEL_ID = "google/gemini-2.5-flash";
+
+const REUSE_ALL_SUPPORTED_ASSETS: Required<NonNullable<TourRenderOptions["reuse"]>> = {
+  scriptPlan: true,
+  voiceover: true,
+  avatar: true,
+  sceneClips: true,
+  finalVideo: true,
+};
+
+const REGENERATE_ALL_SUPPORTED_ASSETS: Required<NonNullable<TourRenderOptions["reuse"]>> = {
+  scriptPlan: false,
+  voiceover: false,
+  avatar: false,
+  sceneClips: false,
+  finalVideo: false,
+};
+
+export const TOUR_RENDER_PRESET_LABELS: Record<TourRenderPreset, string> = {
+  reuse_everything_possible: "Reuse everything possible",
+  regenerate_scene_clips: "Regenerate scene clips",
+  regenerate_final_video: "Regenerate final video",
+  cheap_ken_burns_ux_test: "Cheap Ken Burns UX test",
+  provider_image_to_video_quality_experiment: "Provider image-to-video quality experiment",
+  script_model_experiment: "Script model experiment",
+  full_fresh_render: "Full fresh render",
+};
+
+export const TOUR_RENDER_PRESETS = Object.keys(
+  TOUR_RENDER_PRESET_LABELS
+) as TourRenderPreset[];
 
 const SUPPORTED_REUSE_FLAG_SET = new Set<string>(SUPPORTED_REUSE_FLAGS);
 const SUPPORTED_RENDER_OPTION_KEYS = new Set([
@@ -53,6 +94,60 @@ function assignModelIdOption(
   const trimmed = value.trim();
   if (trimmed) {
     options[key] = trimmed;
+  }
+}
+
+function withReuse(reuse: TourRenderOptions["reuse"]): TourRenderOptions {
+  return {
+    reuseExistingAssets: true,
+    reuse,
+  };
+}
+
+export function getTourRenderOptionsForPreset(preset: TourRenderPreset): TourRenderOptions {
+  switch (preset) {
+    case "reuse_everything_possible":
+      return withReuse({ ...REUSE_ALL_SUPPORTED_ASSETS });
+    case "regenerate_scene_clips":
+      return withReuse({
+        ...REUSE_ALL_SUPPORTED_ASSETS,
+        sceneClips: false,
+        finalVideo: false,
+      });
+    case "regenerate_final_video":
+      return withReuse({
+        ...REUSE_ALL_SUPPORTED_ASSETS,
+        finalVideo: false,
+      });
+    case "cheap_ken_burns_ux_test":
+      return {
+        renderMode: "ken_burns_ffmpeg",
+        ...withReuse({
+          ...REUSE_ALL_SUPPORTED_ASSETS,
+          sceneClips: false,
+          finalVideo: false,
+        }),
+      };
+    case "provider_image_to_video_quality_experiment":
+      return {
+        renderMode: "provider_image_to_video",
+        sceneClipProviderModelId: DEFAULT_PROVIDER_SCENE_CLIP_MODEL_ID,
+        ...withReuse({
+          ...REUSE_ALL_SUPPORTED_ASSETS,
+          sceneClips: false,
+          finalVideo: false,
+        }),
+      };
+    case "script_model_experiment":
+      return {
+        scriptPlanningModelId: DEFAULT_SCRIPT_PLANNING_MODEL_ID,
+        ...withReuse({ ...REGENERATE_ALL_SUPPORTED_ASSETS }),
+      };
+    case "full_fresh_render":
+      return {
+        reuseExistingAssets: false,
+        reuse: { ...REGENERATE_ALL_SUPPORTED_ASSETS },
+      };
   }
 }
 

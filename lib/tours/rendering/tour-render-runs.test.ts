@@ -7,6 +7,7 @@ import {
   getTourRenderRunResultUrl,
   listTourRenderRunAssetsWithUrls,
 } from "./tour-render-runs";
+import { getTourRenderOptionsForPreset } from "./tour-render-options";
 import type {
   RenderableTourProject,
   RenderableTourSceneSourcePhoto,
@@ -358,22 +359,12 @@ describe("createTourRenderRun", () => {
     );
   });
 
-  it("persists supported render options and sends them to the Trigger payload", async () => {
+  it("persists dev-tool preset render options and sends them to the Trigger payload", async () => {
     const repository = createRepository();
     const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
-    const inputOptions = {
-      renderMode: "provider_image_to_video" as const,
-      scriptPlanningModelId: "openrouter/planner-model",
-      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
-      reuseExistingAssets: true,
-      reuse: {
-        scriptPlan: true,
-        voiceover: true,
-        avatar: true,
-        sceneClips: false,
-        finalVideo: false,
-      },
-    };
+    const inputOptions = getTourRenderOptionsForPreset(
+      "provider_image_to_video_quality_experiment"
+    );
 
     await createTourRenderRun(
       {

@@ -1,15 +1,34 @@
 "use client";
 
-import { FlaskConical, X } from "lucide-react";
+import { FlaskConical, Play, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  TOUR_RENDER_PRESET_LABELS,
+  TOUR_RENDER_PRESETS,
+  type TourRenderPreset,
+} from "@/lib/tours/rendering/tour-render-options";
 
 export function TourProjectQaRenderLab({
   isAvailable,
+  isSubmitting = false,
+  onSubmitPreset,
 }: {
   isAvailable: boolean;
+  isSubmitting?: boolean;
+  onSubmitPreset?: (preset: TourRenderPreset) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState<TourRenderPreset>(
+    "reuse_everything_possible"
+  );
 
   if (!isAvailable) {
     return null;
@@ -47,8 +66,32 @@ export function TourProjectQaRenderLab({
           <p className="mt-3 text-sm text-muted-foreground">
             Tour Project QA surface is active for this workspace.
           </p>
-          <div className="mt-4 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs font-medium text-yellow-900">
-            Internal preview controls only
+          <div className="mt-4 space-y-3">
+            <Select
+              value={selectedPreset}
+              onValueChange={(value) => setSelectedPreset(value as TourRenderPreset)}
+            >
+              <SelectTrigger aria-label="Render preset" className="h-9 bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TOUR_RENDER_PRESETS.map((preset) => (
+                  <SelectItem key={preset} value={preset}>
+                    {TOUR_RENDER_PRESET_LABELS[preset]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              className="w-full bg-yellow-400 text-yellow-950 hover:bg-yellow-300"
+              disabled={!onSubmitPreset || isSubmitting}
+              onClick={() => onSubmitPreset?.(selectedPreset)}
+            >
+              <Play className="h-4 w-4" />
+              {isSubmitting ? "Starting run..." : "Start preset run"}
+            </Button>
           </div>
         </section>
       ) : null}

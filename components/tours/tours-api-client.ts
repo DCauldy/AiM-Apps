@@ -14,6 +14,7 @@ import type {
   TourRenderRunsResponse,
   TourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/tour-render.contract";
+import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 import type { TourSceneFact } from "@/lib/tours/workspace";
 import type {
@@ -51,6 +52,7 @@ export type CreateTourProjectInput = {
 
 export type CreateRenderRunInput = {
   fresh?: boolean;
+  options?: TourRenderOptions;
 };
 
 type SceneFactResponse = {
@@ -136,7 +138,11 @@ export async function readToursJsonResponse<T>(
 }
 
 export function buildCreateRenderRunRequestBody(input: CreateRenderRunInput = {}) {
-  return input.fresh ? { options: FRESH_RENDER_OPTIONS } : {};
+  if (input.fresh) {
+    return { options: FRESH_RENDER_OPTIONS };
+  }
+
+  return input.options ? { options: input.options } : {};
 }
 
 export async function fetchOpenTourProjects() {

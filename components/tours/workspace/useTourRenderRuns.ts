@@ -8,6 +8,10 @@ import {
   type TourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/tour-render.contract";
 import {
+  getTourRenderOptionsForPreset,
+  type TourRenderPreset,
+} from "@/lib/tours/rendering/tour-render-options";
+import {
   createRenderRun,
   fetchRecentRenderRuns,
   fetchRenderRunStatus,
@@ -29,6 +33,18 @@ export function pickLatestDownloadableRenderRun(
   return (
     runs.find((run) => run.status === "completed" && Boolean(run.result?.downloadUrl)) ?? null
   );
+}
+
+export function isPlainReuseRenderRunInput(input?: CreateRenderRunInput) {
+  return !input?.fresh && !input?.options;
+}
+
+export function isFreshRenderRunInput(input?: CreateRenderRunInput) {
+  return Boolean(input?.fresh);
+}
+
+export function isPresetRenderRunInput(input?: CreateRenderRunInput) {
+  return Boolean(input?.options) && !input?.fresh;
 }
 
 export function useTourRenderRuns(projectId: string) {
@@ -89,10 +105,19 @@ export function useTourRenderRuns(projectId: string) {
     error: recentRunsQuery.error ?? activeRunQuery.error ?? createRenderRunMutation.error,
     createRenderRun: () => createRenderRunMutation.mutate({ fresh: false }),
     createFreshRenderRun: () => createRenderRunMutation.mutate({ fresh: true }),
+    createPresetRenderRun: (preset: TourRenderPreset) =>
+      createRenderRunMutation.mutate({
+        fresh: false,
+        options: getTourRenderOptionsForPreset(preset),
+      }),
     isCreatingRenderRun:
-      createRenderRunMutation.isPending && !createRenderRunMutation.variables?.fresh,
+      createRenderRunMutation.isPending &&
+      isPlainReuseRenderRunInput(createRenderRunMutation.variables),
     isCreatingFreshRenderRun:
-      createRenderRunMutation.isPending && Boolean(createRenderRunMutation.variables?.fresh),
+      createRenderRunMutation.isPending && isFreshRenderRunInput(createRenderRunMutation.variables),
+    isCreatingPresetRenderRun:
+      createRenderRunMutation.isPending &&
+      isPresetRenderRunInput(createRenderRunMutation.variables),
     isCreatingAnyRenderRun: createRenderRunMutation.isPending,
   };
 }

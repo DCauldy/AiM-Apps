@@ -120,6 +120,23 @@ describe("Tours API client boundary", () => {
     expect(buildCreateRenderRunRequestBody({ fresh: false })).toEqual({});
   });
 
+  test("dev-tool render request body sends selected preset options", () => {
+    const options = {
+      renderMode: "provider_image_to_video" as const,
+      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    };
+
+    expect(buildCreateRenderRunRequestBody({ options })).toEqual({ options });
+  });
+
   test("updateTourProjectDetails sends avatar settings through the shared project route", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

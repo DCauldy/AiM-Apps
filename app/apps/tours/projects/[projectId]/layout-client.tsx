@@ -157,7 +157,11 @@ function TourProjectLayoutContent({
         onOpenChange={setIsProjectDeleteOpen}
         onConfirm={() => archiveProjectMutation.mutate()}
       />
-      <TourProjectQaRenderLab isAvailable={isQaRenderLabAvailable} />
+      <TourProjectQaRenderLab
+        isAvailable={isQaRenderLabAvailable}
+        isSubmitting={renderRuns.isCreatingPresetRenderRun}
+        onSubmitPreset={renderRuns.createPresetRenderRun}
+      />
     </PageFrame>
   );
 }
