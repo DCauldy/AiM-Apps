@@ -102,7 +102,7 @@ function TourProjectLayoutContent({
             {viewModel.listing.address}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
           {isProjectRendering ? (
             <Button asChild variant="secondary" size="sm">
               <Link href={renderingHref}>
@@ -116,24 +116,26 @@ function TourProjectLayoutContent({
               renderRuns={renderRuns}
             />
           )}
-          <ProjectActionsMenu
-            latestDownloadUrl={latestDownloadUrl}
-            renderingHref={renderingHref}
-            downloadTitle={viewModel.project.name}
-            canGenerateReuseAssets={
-              viewModel.tourScenes.length > 0 &&
-              !renderRuns.isCreatingAnyRenderRun &&
-              !isProjectRendering
-            }
-            isGeneratingReuseAssets={renderRuns.isCreatingRenderRun}
-            onGenerateReuseAssets={() => {
-              if (!isProjectRendering) {
-                renderRuns.createRenderRun();
+          <div className="ml-auto lg:ml-0">
+            <ProjectActionsMenu
+              latestDownloadUrl={latestDownloadUrl}
+              renderingHref={renderingHref}
+              downloadTitle={viewModel.project.name}
+              canGenerateReuseAssets={
+                viewModel.tourScenes.length > 0 &&
+                !renderRuns.isCreatingAnyRenderRun &&
+                !isProjectRendering
               }
-            }}
-            onEdit={() => setIsProjectDetailsOpen(true)}
-            onDelete={() => setIsProjectDeleteOpen(true)}
-          />
+              isGeneratingReuseAssets={renderRuns.isCreatingRenderRun}
+              onGenerateReuseAssets={() => {
+                if (!isProjectRendering) {
+                  renderRuns.createRenderRun();
+                }
+              }}
+              onEdit={() => setIsProjectDetailsOpen(true)}
+              onDelete={() => setIsProjectDeleteOpen(true)}
+            />
+          </div>
         </div>
       </header>
 
