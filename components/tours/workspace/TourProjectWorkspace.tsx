@@ -35,8 +35,8 @@ import { useOptimisticSortableList, type OptimisticSortableId } from "@/hooks/us
 import type { TourScene } from "@/lib/tours/workspace";
 import { getTourSceneCameraMotionLabel } from "@/lib/tours/scenes.core";
 import {
-  createSceneFromListingPhotoWithError,
-  reorderTourScenesWithError,
+  createSceneFromListingPhoto,
+  reorderTourScenes,
 } from "@/components/tours/tours-api-client";
 import { useTourProjectWorkspace } from "./useTourProjectWorkspace";
 import { ErrorMessage, SceneUploadDialog } from "./WorkspacePresentation";
@@ -52,7 +52,7 @@ export function TourProjectWorkspace() {
   const scenes = viewModel.tourScenes;
   const persistSceneOrder = useCallback(
     async (orderedSceneIds: string[]) => {
-      await reorderTourScenesWithError(
+      await reorderTourScenes(
         viewModel.project.id,
         orderedSceneIds,
         "Could not save the scene order."
@@ -217,7 +217,7 @@ function useCreateSceneForm({
   const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<string | null>(null);
   const createSceneMutation = useMutation({
     mutationFn: (formData: FormData) =>
-      createSceneFromListingPhotoWithError(projectId, formData, "Could not create the scene."),
+      createSceneFromListingPhoto(projectId, formData, "Could not create the scene."),
     onSuccess: (payload) => {
       const sceneId = typeof payload.scene?.id === "string" ? payload.scene.id : null;
       setSceneTitle("");

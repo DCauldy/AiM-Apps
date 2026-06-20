@@ -699,12 +699,12 @@ describe("renderSceneClipsStage", () => {
       "https://openrouter.ai/api/v1/videos",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({
-          Authorization: "Bearer openrouter-key",
-        }),
         body: expect.stringContaining("\"model\":\"kwaivgi/kling-v3.0-std\""),
       })
     );
+    const submitHeaders = fetcher.mock.calls[0]?.[1]?.headers as Headers;
+    expect(submitHeaders.get("Authorization")).toBe("Bearer openrouter-key");
+    expect(submitHeaders.get("X-OpenRouter-Title")).toBe("AiM Tours");
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual(
       expect.objectContaining({
         duration: 5,
@@ -742,11 +742,14 @@ describe("renderSceneClipsStage", () => {
     });
     expect(fetcher).toHaveBeenNthCalledWith(
       2,
-      new URL("https://openrouter.ai/api/v1/videos/video-job-1"),
+      "https://openrouter.ai/api/v1/videos/video-job-1",
       expect.objectContaining({
-        headers: { Authorization: "Bearer openrouter-key" },
+        headers: expect.any(Headers),
       })
     );
+    const pollHeaders = fetcher.mock.calls[1]?.[1]?.headers as Headers;
+    expect(pollHeaders.get("Authorization")).toBe("Bearer openrouter-key");
+    expect(pollHeaders.get("X-OpenRouter-Title")).toBe("AiM Tours");
   });
 
   it("fails before recording an asset when upload fails", async () => {

@@ -71,6 +71,9 @@ describe("createOpenRouterScriptPlanningProvider", () => {
       type: "image_url",
       image_url: { url: "https://signed.example/foyer.jpg" },
     });
+    const headers = fetcher.mock.calls[0]?.[1]?.headers as Headers;
+    expect(headers.get("X-OpenRouter-Title")).toBe("AiM Tours");
+    expect(headers.get("X-Title")).toBe("AiM Tours");
     expect(result.sceneTimings[0]?.selectedCameraMotion).toBe("vertical_rise");
   });
 });

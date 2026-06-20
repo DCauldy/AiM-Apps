@@ -1,5 +1,13 @@
 # Tour Render Options And Dev Tool PRD
 
+> Deprecated planning artifact.
+>
+> Do not use this document as source material for new implementation issues. It
+> mixes older provider-settings ideas with render dev-tool ideas and may not
+> match the current Tours render pipeline. For the focused render dev-tool V1,
+> use `docs/tour-project-render-dev-tool-prd.md` and verify details against the
+> current code before publishing issues.
+
 ## Problem Statement
 
 Tour rendering already has a configurable backend shape, but the product and developer UI still exposes only two actions: generate with defaults or generate fresh. That leaves important provider choices hidden in code and environment variables.

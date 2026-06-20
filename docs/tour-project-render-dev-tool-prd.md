@@ -1,158 +1,265 @@
 # Tour Project Render Dev Tool PRD
 
-## Problem Statement
+## Status
 
-QA and developers need a safe, visible way to run Tours render experiments without editing code, changing worker environment variables, or regenerating the whole pipeline every time. Today the Tours workspace exposes a normal render path and a fresh render path, but the reusable render path does not let a tester choose which assets should be reused. Important render options such as render mode and script planning model also exist in the backend contract but are not surfaced in the project UI.
+Issue-ready PRD for a focused V1. This document is organized so a later `to-issues`
+pass can split it into vertical tracer-bullet issues with clear dependencies.
 
-The immediate need is intentionally narrow: expose only the settings required to test render mode, provider video model quality, script planning model choice, and reuse behavior for the reusable generation path. This should live as a self-contained dev tool that only appears in local development and Vercel Preview environments, and only on Tour Project screens.
+This is the source document for the focused Tour Project render dev tool V1. Do
+not use the deprecated `docs/tour-render-options-and-devtool-prd.md` as source
+material for issue generation; it mixes older provider-settings ideas with
+dev-tool ideas and may not match the current render pipeline.
 
-## Solution
+## Goal
 
-Build a Tour Project render dev tool that appears in development and Vercel Preview environments. The tool lets a QA person or developer create a render run through the existing render-run flow with preset-first controls and advanced overrides:
+Give QA and developers a safe, visible way to run Tour Project render experiments
+without editing code, changing Trigger.dev worker environment variables, or
+regenerating the whole pipeline for every test.
 
-1. Choose a preset run recipe for the most common QA/debugging paths.
-2. Review an estimated provider spend/cost profile before starting the run.
-3. Optionally open advanced settings to select render mode, choose the provider video model for image-to-video runs, choose reusable asset classes, target scene clip regeneration, and enter a script planning model id.
-4. Inspect prompts, Trigger.dev job ids, and a compact bug-report export after a run exists.
+The tool should expose only the render controls needed to test:
 
-The tool should not replace the normal product render controls. It should be clearly developer-facing, isolated from production, and implemented through a small boundary that prepares a `TourRenderOptions` payload and submits it to the existing render-run API.
+- Render mode: `ken_burns_ffmpeg` or `provider_image_to_video`.
+- Provider image-to-video model id for scene clips.
+- Script planning model id.
+- Per-run reuse intent for supported generated asset classes.
+- Provider-spend risk before starting a run.
+- Run investigation details after a run exists.
 
-The implementation should prefer improving code clarity around render options rather than adding one-off UI logic. If backend changes are needed, they should make the render options contract more explicit, easier to validate, and easier to test.
+## Non-Goals
 
-## User Stories
+The V1 is not a customer-facing render settings product and not a general render
+console. It must not expose raw provider secrets, avatar internals, final mux
+settings, Trigger.dev queue settings, or arbitrary JSON editing.
 
-1. As a QA person, I want to see a render dev tool only in development and Vercel Preview, so that I can test hidden render behavior without exposing unfinished controls to production users.
-2. As a developer, I want the dev tool to appear only on Tour Project screens, so that experimental render settings stay attached to the project they affect.
-3. As a QA person, I want to select Ken Burns FFmpeg or provider image-to-video/Kling-style rendering, so that I can compare cheap local clip generation against higher-quality provider video without code changes.
-4. As a developer, I want the render mode control to use the same allowed values as the backend, so that invalid modes cannot be submitted from the guided UI.
-5. As a QA person, I want to enter a script planning model id, so that I can test model quality and regressions on the same project.
-6. As a developer, I want the script planning model id to be optional, so that leaving it blank preserves the backend default.
-7. As a QA person, I want a list of reusable asset toggles, so that I can decide which existing assets should be reused during a reusable render.
-8. As a QA person, I want a toggle being on to mean “reuse this asset,” so that the reuse controls match the mental model of saving work and spend.
-9. As a QA person, I want to reuse the script plan while regenerating scene clips, so that I can test visual output without changing narration planning.
-10. As a QA person, I want to reuse script and voiceover while regenerating the final video, so that I can debug muxing or compositing without provider spend.
-11. As a QA person, I want to reuse scene clips while regenerating only the final video, so that small final-render experiments are fast.
-12. As a developer, I want the dev tool to submit through the existing render-run endpoint, so that render history, persistence, progress polling, and Trigger.dev orchestration stay unchanged.
-13. As a developer, I want the submitted options to be persisted on the render run, so that later debugging can identify exactly which settings produced an output.
-14. As a developer, I want render option construction isolated in a small helper, so that UI tests can assert payload behavior without rendering the whole workspace.
-15. As a developer, I want the dev-only environment gate to be server-authored or build-time reliable, so that production cannot reveal the dev tool through client-side state alone.
-16. As a product owner, I want this first version to stay narrow, so that future render settings can be added intentionally instead of creating a sprawling debug panel.
-17. As a maintainer, I want any backend contract changes to improve validation and readability, so that the dev tool does not make the render pipeline harder to reason about.
-18. As a QA person, I want preset run recipes to be the primary workflow, so that I can choose common debugging paths without manually configuring every toggle.
-19. As a QA person, I want an advanced section for manual toggles, so that I can still create custom reuse/regeneration combinations when a preset is not enough.
-20. As a QA person, I want to see a render cost or provider spend estimate before starting, so that I can avoid accidentally triggering expensive provider work.
-21. As a developer, I want the spend estimate to explain which providers are expected to be called, so that QA understands why one run is more expensive than another.
-22. As a QA person, I want advanced per-scene clip regeneration controls, so that I can regenerate one or a few bad scene clips without rerunning every scene clip.
-23. As a QA person, I want to preview all prompts that will be sent to providers, so that I can validate script planning and scene clip instructions before spending render time.
-24. As a client-facing reviewer in a preview environment, I want prompt preview, so that I can understand what the system is asking models to do without needing code access.
-25. As a QA person, I want Trigger.dev task/job ids surfaced on render runs, so that I can hand engineers the exact job identifier for investigation.
-26. As an engineer, I want bug reports to include Trigger.dev job ids, project id, run id, options, and render status, so that I can jump directly to the relevant logs and records.
-27. As a QA person, I want a compact bug report export, so that I can paste a consistent investigation summary into Slack, Linear, GitHub, or a support thread.
-28. As a QA person, I want a low-priority copy packet for run settings, project id, and final render payload, so that deeper investigations can include enough context without screenshots.
-29. As a QA person, I want to switch the image-to-video provider model used for scene clips, so that I can compare Kling/model quality without changing code or environment variables.
-30. As a QA person, I want the cost estimate to make Ken Burns vs provider image-to-video cost differences obvious, so that I can choose the cheaper render path for UX testing and the provider path for quality testing.
+Selected scene clip regeneration and full pre-run prompt preview are Phase 2.
 
-## Implementation Decisions
+## Current State
 
-- The dev tool is available only when the app is running in local development or a Vercel Preview environment. It must not render in Vercel Production.
-- The dev tool is scoped to Tour Project pages. It should not appear on the Tours dashboard, app picker, admin screens, or non-Tours apps.
-- Preset run recipes are the primary interaction. Advanced controls expose the same underlying options for custom cases.
-- The initial custom controls are limited to render mode, provider scene clip model id, reusable asset toggles, per-scene clip regeneration, and script planning model id.
-- The first preset set should cover common QA intents: reuse everything possible, regenerate scene clips, regenerate selected scene clips, regenerate final video, cheap Ken Burns UX test, provider image-to-video/Kling quality experiment, script model experiment, and full fresh render.
-- The render mode control uses the existing `TourRenderMode` values: `ken_burns_ffmpeg` and `provider_image_to_video`. The UI labels should use plain language such as “Ken Burns FFmpeg (cheap/local)” and “Provider image-to-video / Kling (quality/costly)” while preserving the backend values in the payload.
-- The provider scene clip model id control should be in scope for provider image-to-video runs. It should default to the existing backend default when blank and should be visually tied to the provider/Kling render mode.
-- The script planning model id control is a text input. Blank means “do not send an override.”
-- The reusable asset controls are toggle rows where on means reuse and off means regenerate.
-- Per-scene clip regeneration belongs in advanced settings. It should be modeled as an explicit scene-level override instead of overloading the global `reuse.sceneClips` flag in a way that hides intent.
-- The reusable path should submit `reuseExistingAssets: true` plus a `reuse` object. This preserves the meaning of the normal reusable generation path while allowing per-asset overrides.
-- The initial asset classes are script plan, voiceover, avatar, scene clips, and final video, matching the currently supported `reuse` contract.
-- Transition assets are not part of this first UI unless the backend contract is expanded first. If transition reuse is added, it should be introduced as a named contract change rather than hidden under the voiceover flag.
-- The dev tool should call the existing render-run POST endpoint with `options`, not a new Trigger.dev entry point.
-- The API should continue to merge project settings for ElevenLabs voice, HeyGen avatar id, and HeyGen placement. The dev tool should not duplicate identity settings in this first version.
-- The render cost/provider spend estimate is a must-have part of the dev tool. It can start as an estimate based on selected options, reusable asset intent, included scene count, avatar/voiceover requirements, and whether provider image-to-video is selected.
-- The spend estimate should be explicit that it is an estimate. It should identify likely provider calls such as OpenRouter script planning, OpenRouter image-to-video scene clips, ElevenLabs voiceover, and HeyGen avatar generation.
-- The spend estimate should explicitly call out that Ken Burns scene clip generation is local/cheaper while provider image-to-video/Kling scene clip generation can create provider spend per regenerated scene.
-- Prompt preview should show every prompt the system can determine before or during a run, including script planning prompts and scene clip provider prompts. If a prompt depends on a generated intermediate artifact, the UI should explain when it becomes available.
-- Trigger.dev task/job ids should be visible in run details whenever available. This includes the parent render task id and, if the data is available, child scene-clip/avatar task ids.
-- Compact bug report export should collect the most useful investigation data in one copyable summary.
-- Copying run settings, project id, and final render payload is useful but lower priority because the final shape needs more design. The first version may include a simple copyable JSON/Markdown block rather than a polished packet workflow.
-- Any validation added at the API boundary should be reusable by future dev-tool options and should not live only in the component.
-- Option-building should be extracted into a small, pure helper that can be tested independently.
-- Preset-to-options mapping should be extracted into a small, pure helper so presets remain understandable and testable.
-- Cost-estimate calculation should be isolated in a small helper or service. It should not be embedded directly in the component.
-- Prompt preview construction should reuse existing prompt-building code where possible. If current prompt builders are buried inside provider adapters, extract small pure helpers rather than duplicating prompt text in the UI.
-- The environment visibility decision should be centralized behind a small helper so future dev-only Tours controls use the same rule.
-- The UI should be visually secondary to the normal project workflow. It can be a compact panel, disclosure, or developer section, but it should not look like the primary product action.
-- The implementation should avoid expanding large workspace components unnecessarily. If wiring the tool into an existing file makes that file harder to read, extract a focused component.
+The render pipeline already has most of the server-side shape needed for this
+tool:
+
+- `TourRenderOptions` exists as the per-run options type.
+- The Tour Project render-run API accepts an optional `options` object.
+- `createTourRenderRun` merges incoming options with default render options.
+- Render options are persisted on `tour_render_runs.options`.
+- Trigger.dev receives the resolved options in the render task payload.
+- The render-run status response already includes `triggerRunId`.
+- The product fresh-render path already submits `reuseExistingAssets: false`.
+- Project voice/avatar settings are merged server-side before a run starts.
+
+The key gaps are:
+
+- The render-run API currently accepts option-shaped data through a runtime cast
+  instead of validating the supported dev-tool subset.
+- QA has no guided UI for per-run render experiments.
+- Cost/provider-spend risk is not visible before starting a run.
+- Run details do not yet present a compact copyable investigation packet.
+- The dev-tool environment gate and Tour Project page scope need a clear shared
+  helper and server-authored availability signal.
+
+## V1 Scope
+
+Build an internal-only Tour Project render dev tool on Tour Project
+workspace/editor pages. It should be available only in local development and
+Vercel Preview, hidden in Vercel Production, and hidden in local production
+builds unless a future explicit opt-in flag is added.
+
+V1 delivers this workflow:
+
+1. QA opens a Tour Project workspace/editor page.
+2. If the environment allows the tool, a compact internal-only launcher button
+   appears fixed near the bottom of the viewport.
+3. The collapsed launcher shows or exposes the current low/moderate/high
+   provider-spend risk.
+4. QA opens a popover/modal-style dev-tool panel from that launcher and chooses
+   a preset recipe.
+5. QA optionally adjusts advanced controls for supported options.
+6. The panel shows the estimated provider calls and reasons.
+7. QA starts the run through the existing product render-run endpoint.
+8. The normal render-run status, persistence, polling, and Trigger.dev flow stay
+   unchanged.
+9. After a run exists, QA can copy a compact bug-report packet with run context.
+
+## V1 User Stories
+
+US-01: As a QA person, I want to see the render dev tool only in development and
+Vercel Preview, so hidden render controls are not exposed in production.
+
+US-02: As a developer, I want the dev tool to appear only on Tour Project
+workspace/editor pages, so experimental settings stay attached to the project
+they affect.
+
+US-03: As a QA person, I want a compact bottom launcher that shows or exposes
+provider-spend risk, so I can see cost risk before opening the popover/modal.
+
+US-04: As a product owner, I want the tool to look unmistakably internal, so
+preview reviewers understand it is QA/dev infrastructure rather than product UI.
+
+US-05: As a QA person, I want preset run recipes to be the primary workflow, so I
+can choose a debugging intent without configuring every option manually.
+
+US-06: As a QA person, I want advanced controls for render mode, provider scene
+clip model id, script planning model id, and reuse toggles, so I can make custom
+run configurations when presets are not enough.
+
+US-07: As a QA person, I want toggle-on to mean "reuse this asset", so reuse
+controls match the mental model of saving time and spend.
+
+US-08: As a QA person, I want to compare Ken Burns FFmpeg with provider
+image-to-video/Kling-style rendering, so I can choose cheaper UX tests or
+higher-quality provider tests without code changes.
+
+US-09: As a QA person, I want to override the script planning model id, so I can
+compare planning quality and regressions on the same Tour Project.
+
+US-10: As a QA person, I want to override the provider scene clip model id for
+provider image-to-video runs, so I can compare model quality without changing
+environment variables.
+
+US-11: As a developer, I want dev-tool runs to use the existing render-run API,
+so render history, persistence, polling, and Trigger.dev orchestration stay
+unchanged.
+
+US-12: As a developer, I want the dev-tool option contract validated at the API
+boundary, so malformed modes, reuse flags, or model ids cannot create confusing
+render runs.
+
+US-13: As a developer, I want submitted options to persist on the render run, so
+later debugging can identify what produced an output.
+
+US-14: As a QA person, I want an estimate of likely provider calls before
+starting, so I can avoid accidentally triggering expensive provider work.
+
+US-15: As a developer, I want the estimate to explain why providers are expected
+or not expected, so QA can reason about cost differences.
+
+US-16: As a QA person, I want the parent Trigger.dev run id visible when
+available, so I can hand engineers the exact job identifier for investigation.
+
+US-17: As an engineer, I want a compact bug-report export with project id, render
+run id, Trigger.dev run id, status/error, submitted options, and estimate
+summary, so I can jump to the relevant records and logs.
+
+US-18: As a maintainer, I want option building, preset mapping, cost estimation,
+and environment gating isolated in small helpers, so the workspace UI does not
+become harder to reason about.
+
+## Phase 2 Stories
+
+P2-01: As a QA person, I want selected scene clip regeneration, so I can
+regenerate one or a few bad scene clips without rerunning every scene clip.
+
+P2-02: As a QA person, I want pre-run prompt preview, so I can inspect script and
+scene clip prompts before spending render time.
+
+P2-03: As a client-facing reviewer in a Vercel Preview environment, I want prompt
+preview, so I can understand what the system is asking models to do without code
+access.
+
+P2-04: As an engineer, I want child Trigger.dev run ids for scene clip/avatar
+work if they can be persisted cleanly, so deeper investigations can jump to
+child jobs.
+
+## Decisions
+
+### Availability
+
+- The dev tool is available when `NODE_ENV === "development"` or
+  `VERCEL_ENV === "preview"`.
+- The dev tool is disabled when `VERCEL_ENV === "production"`.
+- Local production builds hide the dev tool by default.
+- Any future local production QA access requires a separate explicit opt-in flag.
+- Availability should be centralized behind a small helper.
+- Tour Project UI should receive a server-authored or build-time reliable
+  availability signal. It should not reveal the tool through client-only state.
+
+### Page Scope
+
+- The dev tool appears only on Tour Project workspace/editor pages.
+- It does not appear on the Tours dashboard, app picker, admin screens, or
+  non-Tours apps.
+- The tool does not replace normal product render controls.
+
+### Visual Treatment
+
+- The collapsed affordance is a compact fixed bottom-of-viewport launcher button,
+  preferably bottom-right unless the Tour Project layout requires a safer
+  collision-free placement.
+- Activating the launcher opens a contained popover/modal-style dev-tool panel
+  anchored visually to the launcher. Do not render the dev tool as a normal
+  in-page product section.
+- The expanded popover/modal surface has an unmistakable internal-only
+  construction/caution treatment, including a yellow dotted border on the outer
+  dev-tool surface.
+- Internal-only styling applies only to the dev-tool launcher and popover/modal
+  shell, not the surrounding customer workspace.
+- The label should use plain language such as "Dev Tool", "QA Render Lab", or
+  "Construction Mode", with "Preview/dev only" where space allows.
+
+### Controls
+
+- Presets are the primary interaction.
+- Advanced controls expose the same underlying options for custom cases.
+- V1 advanced controls are limited to:
+  - Render mode.
+  - Provider scene clip model id.
+  - Script planning model id.
+  - Supported global reuse flags.
+- Blank model id inputs mean "omit override and use backend defaults".
+- Provider scene clip model id is relevant only for
+  `provider_image_to_video` runs and should be visually tied to that mode.
+- Toggle-on means reuse; toggle-off means regenerate.
+
+### Supported Asset Reuse Flags
+
+V1 exposes the currently supported reuse contract:
+
+- `scriptPlan`
+- `voiceover`
+- `avatar`
+- `sceneClips`
+- `finalVideo`
+
+Transition reuse is not in V1 unless the backend contract adds a named
+`transitions` reuse flag first. Do not hide transition reuse under the voiceover
+flag in the UI.
+
+### Backend Contract
+
+- The dev tool submits through the existing product render-run endpoint with an
+  `options` object.
+- The tool must not create a parallel Trigger.dev entry point.
+- The API should validate the dev-tool-supported subset of `TourRenderOptions`.
+- Validation should reject unsupported render modes and malformed reuse/model
+  fields before a run is created.
+- Project settings for ElevenLabs voice and HeyGen avatar remain server-owned
+  merge behavior. The dev tool should not duplicate identity-setting logic in
+  the client.
+- Normal product render still sends no explicit dev-tool options.
+- Product fresh-render behavior remains unchanged.
+
+### Prompt Preview
+
+Full pre-run prompt preview is Phase 2. V1 may show prompt artifacts only if they
+are already available from run metadata/assets or existing pure helpers. If those
+artifacts are unavailable, the UI should show a clear unavailable state rather
+than blocking the dev tool.
+
+### Investigation
+
+- Parent Trigger.dev run id is V1 when available.
+- Child Trigger.dev run ids are Phase 2 unless already persisted cleanly.
+- The compact bug-report export should be copyable Markdown or plain text.
+- A more polished investigation packet workflow is out of scope for V1.
 
 ## Preset Run Recipes
 
-Presets should be the primary workflow because QA usually knows the debugging intent, not the exact option combination.
+Presets should express QA intent. Advanced controls may modify a preset, and the
+UI should indicate when a run configuration has become custom.
 
-- Reuse everything possible: all reuse toggles on.
-- Regenerate scene clips: reuse script plan, voiceover, and avatar; regenerate scene clips and final video.
-- Regenerate selected scene clips: reuse global reusable assets, regenerate only selected scene clips, then regenerate final video.
-- Regenerate final video: reuse script plan, voiceover, avatar, and scene clips; regenerate final video.
-- Cheap Ken Burns UX test: set render mode to `ken_burns_ffmpeg`, default to regenerating scene clips and final video without provider image-to-video spend.
-- Provider image-to-video / Kling quality experiment: set render mode to `provider_image_to_video`, expose `sceneClipProviderModelId`, and default to regenerating scene clips and final video.
-- Script model experiment: set or override `scriptPlanningModelId`, default to regenerating script plan and downstream dependent assets.
-- Full fresh render: mirror the existing fresh render behavior for comparison and smoke testing.
+### Reuse Everything Possible
 
-Advanced options should let QA inspect and modify the preset output before submitting. The UI should make it clear when a manual change has made the current run configuration custom.
-
-## Render Cost And Provider Spend Estimate
-
-The dev tool must show an estimate before starting a run. The goal is not perfect billing accuracy; the goal is to help QA understand whether a run is cheap, moderate, or expensive and which providers are likely to be called.
-
-The estimate should include:
-
-- Included scene count.
-- Number of scene clips expected to regenerate.
-- Whether OpenRouter script planning is expected.
-- Whether OpenRouter provider image-to-video is expected, and which scene clip provider model id is selected.
-- Whether ElevenLabs voiceover is expected.
-- Whether HeyGen avatar generation is expected.
-- Whether final muxing is local-only.
-- A short explanation of why each provider is or is not expected to be called.
-
-The estimate should account for selected reuse flags, selected scene clip regeneration overrides, project tour type, render mode, and selected provider scene clip model. If reusable asset availability is unknown before the run, the estimate should distinguish “requested reuse” from “confirmed reusable asset found” when the backend can provide that distinction.
-
-## Prompt Preview
-
-Prompt preview is a dev/QA feature, but it may also be valuable in client-facing preview reviews. It should remain behind the dev-tool environment gate.
-
-The preview should include:
-
-- Script planning prompt inputs and the final prompt payload shape that will be sent to the script planning provider.
-- Scene clip provider prompts for each included scene when `provider_image_to_video` is selected.
-- The selected scene clip provider model id when provider image-to-video is selected.
-- Camera motion, scene title, source photo context, and secondary reference image inclusion state where relevant.
-- A clear unavailable state for prompts that depend on generated data that does not exist yet.
-
-Prompt preview should not duplicate prompt text in a second place if the provider adapter already owns the prompt construction. Prefer extracting pure prompt builders that both the provider and the dev tool can use.
-
-## Run Investigation Tools
-
-The dev tool should help QA hand useful packets to engineering without asking them to understand the database or Trigger.dev internals.
-
-Run details should surface:
-
-- Project id.
-- Render run id.
-- Parent Trigger.dev job id.
-- Child Trigger.dev job ids for scene clip and avatar work when available.
-- Current status, current step, error message, and result asset id.
-- Submitted render options.
-- Effective render mode and reuse settings.
-- Selected scene clip provider model id when relevant.
-
-Compact bug report export should produce a copyable Markdown or plain-text block with the most useful fields. It should be optimized for pasting into Slack, Linear, GitHub, or a support thread.
-
-Copy run settings, project id, and final render payload is lower priority. The first version should treat this as an investigation aid, not a fully designed workflow. It can start as a copyable JSON/Markdown payload and evolve once QA and engineers learn what fields are actually useful.
-
-## Proposed Dev Tool Contract
-
-Default guided payload shape:
+Use the reusable path and request reuse for every supported asset class.
 
 ```json
 {
@@ -169,14 +276,29 @@ Default guided payload shape:
 }
 ```
 
-Example payload for testing provider image-to-video while reusing planning and voice assets:
+### Regenerate Scene Clips
+
+Reuse script plan, voiceover, and avatar. Regenerate scene clips and final video.
+
+### Regenerate Final Video
+
+Reuse script plan, voiceover, avatar, and scene clips. Regenerate final video.
+
+### Cheap Ken Burns UX Test
+
+Set `renderMode` to `ken_burns_ffmpeg`. Default to regenerating scene clips and
+final video without provider image-to-video spend.
+
+### Provider Image-To-Video Quality Experiment
+
+Set `renderMode` to `provider_image_to_video`. Expose
+`sceneClipProviderModelId`. Default to regenerating scene clips and final video.
 
 ```json
 {
   "options": {
     "renderMode": "provider_image_to_video",
     "sceneClipProviderModelId": "kwaivgi/kling-v3.0-std",
-    "scriptPlanningModelId": "google/gemini-2.5-flash",
     "reuseExistingAssets": true,
     "reuse": {
       "scriptPlan": true,
@@ -189,7 +311,35 @@ Example payload for testing provider image-to-video while reusing planning and v
 }
 ```
 
-Potential future contract for selected scene clip regeneration:
+### Script Model Experiment
+
+Set or override `scriptPlanningModelId`. Default to regenerating script plan and
+downstream dependent assets.
+
+### Full Fresh Render
+
+Use product fresh-render semantics for comparison and smoke testing. Submit
+`reuseExistingAssets: false` and all supported `reuse` flags as `false`.
+
+```json
+{
+  "options": {
+    "reuseExistingAssets": false,
+    "reuse": {
+      "scriptPlan": false,
+      "voiceover": false,
+      "avatar": false,
+      "sceneClips": false,
+      "finalVideo": false
+    }
+  }
+}
+```
+
+## Phase 2 Contract Candidate
+
+Selected scene clip regeneration requires an explicit backend contract before UI
+controls are added.
 
 ```json
 {
@@ -210,55 +360,231 @@ Potential future contract for selected scene clip regeneration:
 }
 ```
 
-This contract does not exist yet. It should only be added if implementation confirms the pipeline can express selected scene regeneration cleanly.
+This shape is only a candidate. It should be implemented only if the pipeline can
+express selected scene regeneration cleanly without overloading the global
+`reuse.sceneClips` flag.
 
-## Implementation Shape
+## Provider-Spend Estimate
 
-1. Add a small environment helper that answers whether Tours render dev tools are enabled.
-2. Add or reuse a route/layout prop so Tour Project UI can know whether to show the dev tool without guessing production status purely on the client.
-3. Add a small render-options builder for the dev tool.
-4. Add a preset-to-options builder for QA run recipes.
-5. Add a cost-estimate helper that can explain expected provider calls from project state and selected options.
-6. Extract or expose pure prompt builders needed for prompt preview.
-7. Add a focused Tour Project render dev tool component.
-8. Extend the render-run client hook or create a sibling function that can submit explicit `TourRenderOptions`, while preserving the existing normal and fresh render buttons.
-9. Add API validation for the subset of render options accepted by the dev tool, or add a broader reusable validation schema if that can be done cleanly.
-10. Persist the submitted options through the existing render-run persistence path.
-11. Surface Trigger.dev job ids and submitted options in run details.
-12. Add compact bug-report export.
+The estimate is a required V1 feature. It is not an exact billing promise. It is
+a pre-run explanation of cheap, moderate, or expensive provider-spend risk.
 
-## Testing Decisions
+The collapsed bottom launcher shows or exposes the risk label. The expanded
+popover/modal panel shows provider-call reasons.
 
-Tests should assert external behavior and payloads rather than implementation details.
+V1 risk labels:
 
-- Test the environment helper for development, Vercel Preview, and production cases.
-- Test the render-options builder with default toggles, disabled toggles, blank script planning model, explicit script planning model, and both render modes.
-- Test the render-options builder with blank and explicit scene clip provider model id values.
-- Test preset-to-options mapping for every preset.
-- Test the cost-estimate helper for cheap reuse, selected scene regeneration, full scene regeneration, Ken Burns local clip regeneration, provider image-to-video/Kling regeneration, voiceover tours, and avatar tours.
-- Test prompt preview builders against the same prompt construction used by the provider adapters.
-- Test that the dev-tool submit path posts the expected `options` payload.
-- Test that the existing normal render path still sends no options.
-- Test that the existing fresh render path still sends the current fresh options.
-- Test the API boundary for accepting the supported dev-tool payload and rejecting invalid render modes or malformed reuse values if validation is added.
-- Test that run details expose Trigger.dev ids when present.
-- Test that compact bug report export includes project id, run id, Trigger.dev job id, status, error, and submitted options.
-- Reuse existing Vitest patterns. Do not use Jest-only flags.
+- Low provider spend.
+- Moderate provider spend.
+- High provider spend.
 
-## Out of Scope
+V1 estimate inputs:
 
-- Surfacing ElevenLabs voice, HeyGen avatar, avatar placement, transition detection model, voice settings, final mux settings, or raw JSON editing.
+- Included scene count.
+- Expected number of regenerated scene clips.
+- Selected render mode.
+- Selected provider scene clip model id, when relevant.
+- Selected reuse flags.
+- Project tour type.
+- Whether script planning is expected.
+- Whether voiceover is expected.
+- Whether avatar generation is expected.
+- Whether final muxing is local-only.
+
+V1 provider-call reasons should mention:
+
+- OpenRouter script planning.
+- OpenRouter provider image-to-video scene clips.
+- ElevenLabs voiceover.
+- HeyGen avatar generation.
+- Local Ken Burns scene clip generation.
+- Local final muxing.
+
+If reusable asset availability is unknown before the run, the estimate should
+distinguish requested reuse from confirmed reusable assets only when the backend
+can provide that distinction. Exact dollar pricing can be added later if reliable
+provider/model pricing exists in code.
+
+## Bug-Report Export
+
+The compact export should be optimized for pasting into Slack, Linear, GitHub,
+or a support thread.
+
+V1 fields:
+
+- Project id.
+- Render run id.
+- Parent Trigger.dev run id, when available.
+- Status, current step, error message, and result asset id.
+- Submitted render options.
+- Effective render mode and reuse settings.
+- Selected provider scene clip model id, when relevant.
+- Provider-spend estimate summary.
+
+The export may start as a copyable Markdown or JSON block. Do not design a
+larger packet workflow in V1.
+
+## Architecture Requirements
+
+- Keep option building in a small pure helper.
+- Keep preset-to-options mapping in a small pure helper.
+- Keep provider-spend estimation in a small helper or service.
+- Keep environment availability in a small helper.
+- Keep bug-report export formatting in a small pure helper.
+- Keep the UI shell focused and visually secondary to the normal project
+  workflow.
+- Avoid expanding large workspace components. If wiring into an existing
+  component makes it harder to read, extract a focused component.
+- Prefer tests around helpers and request/response behavior over tests that
+  couple to internal component structure.
+
+## V1 Acceptance Criteria
+
+### Availability And Placement
+
+- The dev tool is hidden when `VERCEL_ENV === "production"`.
+- The dev tool is hidden in local production builds by default.
+- The dev tool is visible on Tour Project workspace/editor pages when
+  `NODE_ENV === "development"` or `VERCEL_ENV === "preview"`.
+- The dev tool is not visible on the Tours dashboard, app picker, admin screens,
+  or non-Tours apps.
+- Availability is determined through a centralized helper and a reliable
+  server-authored or build-time signal.
+
+### UI And Workflow
+
+- The collapsed bottom launcher shows or exposes a low/moderate/high
+  provider-spend estimate.
+- The expanded popover/modal panel shows provider-call reasons for the selected
+  preset/options.
+- The dev-tool popover/modal shell uses an unmistakable internal-only visual
+  treatment, including a yellow dotted border on its outer surface.
+- The internal-only treatment does not style the surrounding customer workspace.
+- Presets are selectable as the primary workflow.
+- Advanced controls can set render mode, provider scene clip model id, script
+  planning model id, and supported global reuse flags.
+- The UI makes custom configurations clear after manual changes to a preset.
+
+### Payloads And Validation
+
+- Presets produce deterministic `TourRenderOptions` payloads.
+- Blank script planning model id is omitted from the submitted options.
+- Blank provider scene clip model id is omitted from the submitted options.
+- The full fresh render preset submits `reuseExistingAssets: false` with all
+  supported `reuse` flags set to `false`.
+- Normal product render still sends no explicit dev-tool options.
+- Product fresh-render behavior remains unchanged.
+- Invalid render modes are rejected before a render run is created.
+- Malformed reuse values are rejected before a render run is created.
+- Submitted dev-tool options persist on the render run through the existing
+  render-run persistence path.
+
+### Investigation
+
+- Parent Trigger.dev run id is visible in run details when available.
+- Submitted/effective options are visible in dev-tool run details or the
+  bug-report export.
+- Compact bug-report export includes project id, run id, parent Trigger.dev run
+  id when available, status/error, submitted options, and estimate summary.
+
+### Explicitly Not Required For V1
+
+- Selected scene clip regeneration.
+- Full pre-run prompt preview.
+- Child Trigger.dev run id persistence if those ids are not already available.
+- Exact provider billing estimates.
+- Supabase schema changes or migrations.
+
+## Testing Plan
+
+Use Vitest and existing repo test patterns. Do not use Jest-only flags.
+
+Recommended V1 tests:
+
+- Environment helper covers development, Vercel Preview, Vercel Production, and
+  local production cases.
+- Render-options builder covers default toggles, disabled toggles, blank model
+  ids, explicit model ids, and both render modes.
+- Preset-to-options mapping covers every preset.
+- Full fresh render preset emits `reuseExistingAssets: false` and all supported
+  `reuse` flags as `false`.
+- Provider-spend estimator covers cheap reuse, full scene regeneration, Ken Burns
+  scene regeneration, provider image-to-video regeneration, voiceover tours, and
+  avatar tours.
+- Collapsed bottom launcher renders or exposes the estimate summary.
+- Dev-tool shell renders internal-only styling without leaking into production
+  rendering.
+- Dev-tool submit path posts the expected `options` payload.
+- Normal product render path still sends no dev-tool overrides.
+- Product fresh render path still sends the established fresh-render options.
+- API boundary accepts supported dev-tool payloads.
+- API boundary rejects invalid render modes and malformed reuse values.
+- Run details or export includes Trigger.dev run id when present.
+- Bug-report export includes project id, run id, Trigger.dev run id, status,
+  error, submitted options, and estimate summary.
+- Prompt artifact display, if included in V1, shows only already-available prompt
+  metadata/assets and has a clear unavailable state.
+
+## Out Of Scope
+
+- Exposing ElevenLabs voice settings, HeyGen avatar provider/key controls,
+  avatar generation/compositing settings, transition detection model controls,
+  final render settings, final mux settings, or raw JSON editing.
+- Final render controls such as dimensions, video codec, audio codec, FFmpeg
+  preset, CRF, and audio bitrate.
+- Avatar controls such as provider/key selection, avatar id, canvas, avatar size
+  preset, positioning defaults, generation format/resolution/engine,
+  alpha-analysis cadence, or frame-check timestamps.
 - Creating a full render-options console.
 - Creating new Supabase tables or migrations.
 - Changing provider API key storage.
 - Changing Trigger.dev queue concurrency or task duration.
-- Changing the default product render buttons beyond allowing the dev tool to submit explicit options.
+- Changing default product render buttons beyond allowing the dev tool to submit
+  explicit options.
 - Exposing the dev tool in production.
-- Guaranteeing exact provider billing. The first cost/spend view is an estimate and explanation tool.
-- Designing a polished long-term investigation packet workflow. Copying run settings and payloads can start simple.
+- Guaranteeing exact provider billing.
+- Selected scene clip regeneration in V1.
+- Full pre-run prompt preview in V1.
+- Child Trigger.dev run id persistence if those ids are not already available.
+- Designing a polished long-term investigation packet workflow.
 
-## Further Notes
+## Issue-Slicing Handoff
 
-The existing render-run API already accepts and persists an `options` object, so the first implementation should mostly be UI, option construction, and validation hardening. The main architectural risk is letting the dev tool become a grab bag. Keeping the first version intentionally small gives the codebase a clean place to grow later.
+When this PRD is passed to `to-issues`, prefer vertical slices that are demoable
+on their own and preserve the existing render-run flow. The first implementation
+slice should establish the backend/client contract boundary before the UI submits
+new option shapes.
 
-If implementation reveals that per-asset reuse currently has a missing asset class, add that as a small backend contract improvement with tests before surfacing it in UI.
+Suggested dependency order:
+
+1. Environment gate and Tour Project availability signal.
+2. Dev-tool option validation and pure option/preset helpers.
+3. Provider-spend estimator and collapsed bottom launcher risk summary.
+4. Preset-first dev-tool panel with advanced controls and submit path.
+5. Run investigation details and compact bug-report export.
+6. Optional V1 prompt artifact display if existing metadata makes it cheap.
+
+Likely HITL slices:
+
+- Any decision to expose Phase 2 selected scene clip regeneration.
+- Any decision to make prompt preview visible to client-facing preview reviewers.
+- Any decision to add exact provider pricing or new persisted provider metadata.
+
+Likely AFK slices:
+
+- Environment gate and page-scope availability.
+- Runtime validation for supported dev-tool options.
+- Preset-to-options helper and tests.
+- Provider-spend estimator and tests.
+- Dev-tool bottom launcher and popover/modal integration.
+- Bug-report export helper and UI.
+
+## Implementation Notes
+
+Build on the existing product render-run flow rather than creating a parallel
+orchestration path. The main architectural risk is letting this become a grab bag
+of render internals. Keeping V1 intentionally narrow gives the codebase a clean
+place to grow later.
+
+If implementation reveals a missing asset class in the reuse contract, add that
+as a named backend contract improvement with tests before surfacing it in UI.

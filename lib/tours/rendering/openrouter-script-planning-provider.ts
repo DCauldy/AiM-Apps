@@ -9,29 +9,10 @@ import {
   RESOLVED_TOUR_SCENE_CAMERA_MOTIONS,
   TOUR_SCENE_CAMERA_MOTION_LABELS,
 } from "@/lib/tours/scenes.core";
-
-type OpenRouterTextContentPart = {
-  type: "text";
-  text: string;
-};
-
-type OpenRouterImageContentPart = {
-  type: "image_url";
-  image_url: {
-    url: string;
-  };
-};
-
-type OpenRouterContentPart = OpenRouterTextContentPart | OpenRouterImageContentPart;
-
-type OpenRouterChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  usage?: unknown;
-};
+import { openRouterApps } from "@/lib/openrouter/apps";
+import { createOpenRouterClient } from "@/lib/openrouter/client";
+import { isOpenRouterError } from "@/lib/openrouter/errors";
+import type { OpenRouterChatJsonResult, OpenRouterContentPart } from "@/lib/openrouter/types";
 
 export type OpenRouterScriptPlanningProviderOptions = {
   apiKey: string;
@@ -42,11 +23,18 @@ export type OpenRouterScriptPlanningProviderOptions = {
   };
 };
 
-const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
-
 export function createOpenRouterScriptPlanningProvider(
   options: OpenRouterScriptPlanningProviderOptions
 ): TourScriptPlanningProvider {
+  const client = createOpenRouterClient({
+    apiKey: options.apiKey,
+    fetcher: options.fetcher,
+    app: {
+      title: options.appInfo?.title ?? openRouterApps.tours.title,
+      referer: options.appInfo?.referer ?? openRouterApps.tours.referer,
+    },
+  });
+
   return {
     async planScript(input) {
       if (!options.apiKey) {
@@ -56,20 +44,11 @@ export function createOpenRouterScriptPlanningProvider(
         );
       }
 
-      const response = await (options.fetcher ?? fetch)(OPENROUTER_CHAT_COMPLETIONS_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${options.apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer":
-            options.appInfo?.referer ??
-            process.env.NEXT_PUBLIC_APP_URL ??
-            "https://apps.aimarketingacademy.com",
-          "X-Title": options.appInfo?.title ?? "AiM Tours",
-        },
-        body: JSON.stringify({
+      let result: OpenRouterChatJsonResult<Partial<TourScriptPlan>>;
+      try {
+        result = await client.chat.json<Partial<TourScriptPlan>>({
+          operation: "tour.script.plan",
           model: input.modelId,
-          response_format: { type: "json_object" },
           messages: [
             {
               role: "system",
@@ -88,40 +67,21 @@ export function createOpenRouterScriptPlanningProvider(
               content: buildOpenRouterContent(input, buildScriptPlanPrompt(input)),
             },
           ],
-        }),
-      });
-
-      if (!response.ok) {
+        });
+      } catch (error) {
         throw new TourScriptPlanningError(
-          `OpenRouter script planning failed with status ${response.status}.`,
-          "PROVIDER_RESPONSE_INVALID"
-        );
-      }
-
-      const payload = (await response.json()) as OpenRouterChatCompletionResponse;
-      const content = payload.choices?.[0]?.message?.content;
-      if (!content) {
-        throw new TourScriptPlanningError(
-          "OpenRouter script planning response missing content.",
-          "PROVIDER_RESPONSE_INVALID"
-        );
-      }
-
-      let parsed: Partial<TourScriptPlan>;
-      try {
-        parsed = JSON.parse(content) as Partial<TourScriptPlan>;
-      } catch {
-        throw new TourScriptPlanningError(
-          "OpenRouter script planning response was not valid JSON.",
+          isOpenRouterError(error)
+            ? error.message
+            : "OpenRouter script planning failed.",
           "PROVIDER_RESPONSE_INVALID"
         );
       }
 
       return normalizeTourScriptPlan({
-        parsed,
+        parsed: result.value,
         scenes: input.scenes,
         modelId: input.modelId,
-        usage: payload.usage,
+        usage: result.usage,
         timing: input.timing,
       });
     },

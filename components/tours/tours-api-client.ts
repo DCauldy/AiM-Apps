@@ -85,34 +85,39 @@ export const tourQueryKeys = {
   heyGenAvatarLooks: () => ["tours", "heygen", "digital-twin-avatar-looks"] as const,
 };
 
+const encodeRouteSegment = (segment: string) => encodeURIComponent(segment);
+const projectRoute = (projectId: string) =>
+  `/api/apps/tours/projects/${encodeRouteSegment(projectId)}`;
+const sceneRoute = (projectId: string, sceneId: string) =>
+  `${projectRoute(projectId)}/scenes/${encodeRouteSegment(sceneId)}`;
+const renderRunsRoute = (projectId: string) => `${projectRoute(projectId)}/render-runs`;
+
 export const toursApiRoutes = {
   voices: () => "/api/apps/tours/voices",
   avatars: () => "/api/apps/tours/avatars",
   projects: () => "/api/apps/tours/projects",
-  project: (projectId: string) => `/api/apps/tours/projects/${projectId}`,
-  projectArchive: (projectId: string) => `/api/apps/tours/projects/${projectId}/archive`,
+  project: projectRoute,
+  projectArchive: (projectId: string) => `${projectRoute(projectId)}/archive`,
   listingMediaAuthorization: (projectId: string) =>
-    `/api/apps/tours/projects/${projectId}/listing-media-authorization`,
-  scenes: (projectId: string) => `/api/apps/tours/projects/${projectId}/scenes`,
-  scenesReorder: (projectId: string) =>
-    `/api/apps/tours/projects/${projectId}/scenes/reorder`,
-  scene: (projectId: string, sceneId: string) =>
-    `/api/apps/tours/projects/${projectId}/scenes/${sceneId}`,
+    `${projectRoute(projectId)}/listing-media-authorization`,
+  scenes: (projectId: string) => `${projectRoute(projectId)}/scenes`,
+  scenesReorder: (projectId: string) => `${projectRoute(projectId)}/scenes/reorder`,
+  scene: sceneRoute,
   sceneInclusion: (projectId: string, sceneId: string) =>
-    `/api/apps/tours/projects/${projectId}/scenes/${sceneId}/inclusion`,
+    `${sceneRoute(projectId, sceneId)}/inclusion`,
   scenePhoto: (projectId: string, sceneId: string, sourcePhotoId?: string | null) => {
-    const base = `/api/apps/tours/projects/${projectId}/scenes/${sceneId}/photo`;
+    const base = `${sceneRoute(projectId, sceneId)}/photo`;
     return sourcePhotoId ? `${base}?sourcePhotoId=${encodeURIComponent(sourcePhotoId)}` : base;
   },
   sceneFacts: (projectId: string, sceneId: string) =>
-    `/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts`,
+    `${sceneRoute(projectId, sceneId)}/facts`,
   sceneFact: (projectId: string, sceneId: string, factId: string) =>
-    `/api/apps/tours/projects/${projectId}/scenes/${sceneId}/facts/${factId}`,
-  renderRuns: (projectId: string) =>
-    `/api/apps/tours/projects/${projectId}/render-runs`,
+    `${sceneRoute(projectId, sceneId)}/facts/${encodeRouteSegment(factId)}`,
+  renderRuns: renderRunsRoute,
   renderRunStatus: (projectId: string, runId: string) =>
-    `/api/apps/tours/projects/${projectId}/render-runs/${runId}/status`,
-  renderRunAssets: (runId: string) => `/api/apps/tours/render-runs/${runId}/assets`,
+    `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/status`,
+  renderRunAssets: (runId: string) =>
+    `/api/apps/tours/render-runs/${encodeRouteSegment(runId)}/assets`,
 };
 
 export async function readToursJsonResponse<T>(
@@ -223,18 +228,10 @@ export async function deleteSceneFact(projectId: string, sceneId: string, factId
   return readToursJsonResponse(response, "Could not delete the scene fact.");
 }
 
-export async function createSceneFromListingPhoto(projectId: string, formData: FormData) {
-  const response = await fetch(toursApiRoutes.scenes(projectId), {
-    method: "POST",
-    body: formData,
-  });
-  return readToursJsonResponse<CreateSceneResponse>(response, "Could not create the TourScene.");
-}
-
-export async function createSceneFromListingPhotoWithError(
+export async function createSceneFromListingPhoto(
   projectId: string,
   formData: FormData,
-  fallbackError: string
+  fallbackError = "Could not create the TourScene."
 ) {
   const response = await fetch(toursApiRoutes.scenes(projectId), {
     method: "POST",
@@ -278,19 +275,10 @@ export async function removeSceneListingPhoto(
   return readToursJsonResponse(response, "Could not remove the listing photo.");
 }
 
-export async function reorderTourScenes(projectId: string, orderedSceneIds: string[]) {
-  const response = await fetch(toursApiRoutes.scenesReorder(projectId), {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ orderedSceneIds }),
-  });
-  return readToursJsonResponse(response, "Could not save the TourScene order.");
-}
-
-export async function reorderTourScenesWithError(
+export async function reorderTourScenes(
   projectId: string,
   orderedSceneIds: string[],
-  fallbackError: string
+  fallbackError = "Could not save the TourScene order."
 ) {
   const response = await fetch(toursApiRoutes.scenesReorder(projectId), {
     method: "PATCH",

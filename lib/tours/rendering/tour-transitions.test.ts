@@ -333,6 +333,9 @@ describe("tour transition detection", () => {
       ],
       usage: { total_tokens: 25 },
     });
+    const headers = fetcher.mock.calls[0]?.[1]?.headers as Headers;
+    expect(headers.get("X-OpenRouter-Title")).toBe("AiM Tours");
+    expect(headers.get("X-Title")).toBe("AiM Tours");
   });
 
   it("skips unusable transcript chunks before transition detection", () => {

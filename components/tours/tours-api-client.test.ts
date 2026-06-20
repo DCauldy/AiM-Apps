@@ -31,6 +31,44 @@ describe("Tours API client boundary", () => {
     );
   });
 
+  test("encodes all Tours API route path segments", () => {
+    expect(toursApiRoutes.project("project/1")).toBe("/api/apps/tours/projects/project%2F1");
+    expect(toursApiRoutes.projectArchive("project 1")).toBe(
+      "/api/apps/tours/projects/project%201/archive"
+    );
+    expect(toursApiRoutes.listingMediaAuthorization("project?1")).toBe(
+      "/api/apps/tours/projects/project%3F1/listing-media-authorization"
+    );
+    expect(toursApiRoutes.scenes("project#1")).toBe("/api/apps/tours/projects/project%231/scenes");
+    expect(toursApiRoutes.scenesReorder("project/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/scenes/reorder"
+    );
+    expect(toursApiRoutes.scene("project/1", "scene/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/scenes/scene%2F1"
+    );
+    expect(toursApiRoutes.sceneInclusion("project/1", "scene 1")).toBe(
+      "/api/apps/tours/projects/project%2F1/scenes/scene%201/inclusion"
+    );
+    expect(toursApiRoutes.scenePhoto("project/1", "scene?1", "photo/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/scenes/scene%3F1/photo?sourcePhotoId=photo%2F1"
+    );
+    expect(toursApiRoutes.sceneFacts("project/1", "scene#1")).toBe(
+      "/api/apps/tours/projects/project%2F1/scenes/scene%231/facts"
+    );
+    expect(toursApiRoutes.sceneFact("project/1", "scene/1", "fact/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/scenes/scene%2F1/facts/fact%2F1"
+    );
+    expect(toursApiRoutes.renderRuns("project/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/render-runs"
+    );
+    expect(toursApiRoutes.renderRunStatus("project/1", "run/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/render-runs/run%2F1/status"
+    );
+    expect(toursApiRoutes.renderRunAssets("run/1")).toBe(
+      "/api/apps/tours/render-runs/run%2F1/assets"
+    );
+  });
+
   test("builds shared Tours query keys", () => {
     expect(tourQueryKeys.elevenLabsDigitalTwinVoices()).toEqual([
       "tours",

@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import type { RenderableTourProject, RenderableTourScene, TourRenderAsset, TourRenderRepository } from "./tour-render.repository";
 import type { VoiceoverTranscript } from "./tour-voiceover";
+import { openRouterApps } from "@/lib/openrouter/apps";
+import { createOpenRouterClient } from "@/lib/openrouter/client";
+import { isOpenRouterError } from "@/lib/openrouter/errors";
 
 export const DEFAULT_TOUR_TRANSITION_DETECTION_MODEL = "google/gemini-2.5-flash";
 export const TOUR_TRANSITION_DETECTION_PROMPT_VERSION = "tour-transition-detection-v1";
@@ -143,17 +146,6 @@ const DEFAULT_DURATION_SETTINGS: Required<TransitionDurationSettings> = {
   minDurationSeconds: 0.2,
   roundingIncrementSeconds: 0.001,
 };
-
-type OpenRouterChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  usage?: unknown;
-};
-
-const OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export function resolveTransitionDetectionOptions(
   options: TransitionDetectionOptions = {}
@@ -572,6 +564,15 @@ export function createOpenRouterTransitionDetectionProvider(options: {
     title?: string;
   };
 }): TransitionDetectionProvider {
+  const client = createOpenRouterClient({
+    apiKey: options.apiKey,
+    fetcher: options.fetcher,
+    app: {
+      title: options.appInfo?.title ?? openRouterApps.tours.title,
+      referer: options.appInfo?.referer ?? openRouterApps.tours.referer,
+    },
+  });
+
   return {
     async detectTransitions(input) {
       if (!options.apiKey) {
@@ -581,20 +582,10 @@ export function createOpenRouterTransitionDetectionProvider(options: {
         );
       }
 
-      const response = await (options.fetcher ?? fetch)(OPENROUTER_CHAT_COMPLETIONS_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${options.apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer":
-            options.appInfo?.referer ??
-            process.env.NEXT_PUBLIC_APP_URL ??
-            "https://apps.aimarketingacademy.com",
-          "X-Title": options.appInfo?.title ?? "AiM Tours",
-        },
-        body: JSON.stringify({
+      try {
+        const result = await client.chat.json<Record<string, unknown>>({
+          operation: "tour.transition.detect",
           model: input.modelId,
-          response_format: { type: "json_object" },
           messages: [
             {
               role: "system",
@@ -623,67 +614,22 @@ export function createOpenRouterTransitionDetectionProvider(options: {
               }),
             },
           ],
-        }),
-      });
+        });
 
-      if (!response.ok) {
+        return {
+          ...result.value,
+          usage: result.usage,
+        };
+      } catch (error) {
         throw new TourTransitionDetectionError(
-          `OpenRouter transition detection failed with status ${response.status}.`,
+          isOpenRouterError(error)
+            ? error.message
+            : "OpenRouter transition detection failed.",
           "PROVIDER_RESPONSE_INVALID"
         );
       }
-
-      const payload = (await response.json()) as OpenRouterChatCompletionResponse;
-      const content = payload.choices?.[0]?.message?.content;
-      if (!content) {
-        throw new TourTransitionDetectionError(
-          "OpenRouter transition detection response missing content.",
-          "PROVIDER_RESPONSE_INVALID"
-        );
-      }
-
-      const parsed = parseJsonObjectContent(content);
-      if (!parsed) {
-        throw new TourTransitionDetectionError(
-          "OpenRouter transition detection response was not valid JSON.",
-          "PROVIDER_RESPONSE_INVALID"
-        );
-      }
-
-      return {
-        ...(isRecord(parsed) ? parsed : {}),
-        usage: payload.usage,
-      };
     },
   };
-}
-
-function parseJsonObjectContent(content: string): unknown | null {
-  const trimmed = content.trim();
-  if (!trimmed) return null;
-
-  const direct = parseJsonObject(trimmed);
-  if (direct) return direct;
-
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i)?.[1];
-  if (fenced) {
-    const parsed = parseJsonObject(fenced.trim());
-    if (parsed) return parsed;
-  }
-
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start === -1 || end <= start) return null;
-  return parseJsonObject(trimmed.slice(start, end + 1));
-}
-
-function parseJsonObject(value: string): unknown | null {
-  try {
-    const parsed = JSON.parse(value);
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
 }
 
 function parseTransitionProviderOutput(value: unknown): { transitions: unknown[] } {
