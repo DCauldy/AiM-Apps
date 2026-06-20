@@ -14,6 +14,7 @@ import {
   toTourRenderRunStatusResponseWithResultUrl,
 } from "@/lib/tours/rendering/tour-render-runs";
 import { mergeProjectAvatarSettingsIntoRenderOptions } from "@/lib/tours/rendering/avatar-project-render-options";
+import { parseTourRenderOptionsInput } from "@/lib/tours/rendering/tour-render-options";
 import { getTourRenderProjectSettings } from "@/lib/tours/rendering/tour-render-project-settings";
 import type { TourRenderOptions } from "@/lib/tours/rendering/tour-render-preflight";
 
@@ -56,7 +57,7 @@ export async function GET(
 }
 
 type CreateRenderRunRequestBody = {
-  options?: TourRenderOptions;
+  options?: unknown;
 };
 
 function mergeProjectRenderSettings(
@@ -89,13 +90,7 @@ async function readCreateRenderRunRequestBody(request: Request): Promise<CreateR
   }
 
   return {
-    options:
-      "options" in payload &&
-      payload.options &&
-      typeof payload.options === "object" &&
-      !Array.isArray(payload.options)
-        ? (payload.options as TourRenderOptions)
-        : undefined,
+    options: "options" in payload ? payload.options : undefined,
   };
 }
 
@@ -110,6 +105,17 @@ export async function POST(
     return toursAccessErrorResponse(access);
   }
 
+  const parsedOptions = parseTourRenderOptionsInput(body.options);
+  if (!parsedOptions.ok) {
+    return Response.json(
+      {
+        error: "Unsupported tour render options.",
+        details: parsedOptions.errors,
+      },
+      { status: 400 }
+    );
+  }
+
   await approveAllTourSceneFactsForProject({
     projectId,
     proofedBy: access.user.id,
@@ -118,7 +124,7 @@ export async function POST(
     projectId,
     userId: access.user.id,
   });
-  const options = mergeProjectRenderSettings(body.options, projectRenderSettings);
+  const options = mergeProjectRenderSettings(parsedOptions.options, projectRenderSettings);
 
   const preflight = await preflightTourRenderRun({
     projectId,

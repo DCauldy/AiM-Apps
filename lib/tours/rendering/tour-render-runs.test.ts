@@ -358,6 +358,50 @@ describe("createTourRenderRun", () => {
     );
   });
 
+  it("persists supported render options and sends them to the Trigger payload", async () => {
+    const repository = createRepository();
+    const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
+    const inputOptions = {
+      renderMode: "provider_image_to_video" as const,
+      scriptPlanningModelId: "openrouter/planner-model",
+      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    };
+
+    await createTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        options: inputOptions,
+      },
+      {
+        repository,
+        triggerTask,
+        skipPreflight: true,
+      }
+    );
+
+    const expectedOptions = {
+      ...inputOptions,
+      tourType: "tour_video",
+    };
+    expect(repository.createRenderRun).toHaveBeenCalledWith(
+      expect.objectContaining({ options: expectedOptions })
+    );
+    expect(triggerTask).toHaveBeenCalledWith(
+      "render-tour-project",
+      expect.objectContaining({ options: expectedOptions }),
+      expect.any(Object)
+    );
+  });
+
   it("does not enqueue a fresh run when existing assets cannot be invalidated", async () => {
     const repository = createRepository({
       markProjectAssetsNonReusable: vi.fn().mockResolvedValue(false),
