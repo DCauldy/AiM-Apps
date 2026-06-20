@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   TOUR_RENDER_PRESETS,
+  buildTourRenderOptionsFromAdvancedControls,
   getTourRenderOptionsForPreset,
   parseTourRenderOptionsInput,
 } from "./tour-render-options";
@@ -76,7 +77,11 @@ describe("tour render preset options", () => {
         finalVideo: false,
       },
     });
-    expect(getTourRenderOptionsForPreset("provider_image_to_video_quality_experiment")).toEqual({
+    expect(
+      getTourRenderOptionsForPreset(
+        "provider_image_to_video_quality_experiment",
+      ),
+    ).toEqual({
       renderMode: "provider_image_to_video",
       sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
       reuseExistingAssets: true,
@@ -103,6 +108,64 @@ describe("tour render preset options", () => {
       },
     });
     expect(getTourRenderOptionsForPreset("full_fresh_render")).toEqual({
+      reuseExistingAssets: false,
+      reuse: {
+        scriptPlan: false,
+        voiceover: false,
+        avatar: false,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    });
+  });
+});
+
+describe("advanced tour render controls", () => {
+  test("builds explicit render options from advanced control state", () => {
+    expect(
+      buildTourRenderOptionsFromAdvancedControls({
+        renderMode: "provider_image_to_video",
+        sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+        scriptPlanningModelId: "openrouter/planner-model",
+        reuse: {
+          scriptPlan: true,
+          voiceover: true,
+          avatar: false,
+          sceneClips: false,
+          finalVideo: true,
+        },
+      }),
+    ).toEqual({
+      renderMode: "provider_image_to_video",
+      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      scriptPlanningModelId: "openrouter/planner-model",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: false,
+        sceneClips: false,
+        finalVideo: true,
+      },
+    });
+  });
+
+  test("omits blank model id overrides from advanced control options", () => {
+    expect(
+      buildTourRenderOptionsFromAdvancedControls({
+        renderMode: "ken_burns_ffmpeg",
+        sceneClipProviderModelId: "   ",
+        scriptPlanningModelId: "\n\t",
+        reuse: {
+          scriptPlan: false,
+          voiceover: false,
+          avatar: false,
+          sceneClips: false,
+          finalVideo: false,
+        },
+      }),
+    ).toEqual({
+      renderMode: "ken_burns_ffmpeg",
       reuseExistingAssets: false,
       reuse: {
         scriptPlan: false,

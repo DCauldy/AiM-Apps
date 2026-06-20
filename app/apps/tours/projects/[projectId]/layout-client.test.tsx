@@ -3,8 +3,12 @@ import type React from "react";
 import { afterEach, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
-import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
+import type {
+  TourProjectWorkspaceViewModel,
+  TourScene,
+} from "@/lib/tours/workspace";
 import { TourProjectLayoutClient } from "./layout-client";
 
 vi.mock("next/navigation", () => ({
@@ -19,7 +23,49 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function workspaceViewModel(): TourProjectWorkspaceViewModel {
+if (!HTMLElement.prototype.hasPointerCapture) {
+  HTMLElement.prototype.hasPointerCapture = () => false;
+}
+
+if (!HTMLElement.prototype.setPointerCapture) {
+  HTMLElement.prototype.setPointerCapture = () => undefined;
+}
+
+if (!HTMLElement.prototype.releasePointerCapture) {
+  HTMLElement.prototype.releasePointerCapture = () => undefined;
+}
+
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => undefined;
+}
+
+function tourScene(overrides: Partial<TourScene>): TourScene {
+  const included = overrides.included ?? true;
+
+  return {
+    id: "scene-1",
+    title: "Kitchen",
+    sortOrder: 0,
+    included,
+    cameraMotion: "auto",
+    authoritativePhoto: {
+      id: "photo-1",
+      fileName: "kitchen.jpg",
+      storagePath: "project-1/kitchen.jpg",
+      contentType: "image/jpeg",
+      previewUrl: null,
+    },
+    sourcePhotos: [],
+    facts: [],
+    hasProofedContext: false,
+    status: included ? "ready" : "skipped",
+    ...overrides,
+  };
+}
+
+function workspaceViewModel(
+  overrides: Partial<TourProjectWorkspaceViewModel> = {},
+): TourProjectWorkspaceViewModel {
   return {
     project: {
       id: "project-1",
@@ -52,6 +98,7 @@ function workspaceViewModel(): TourProjectWorkspaceViewModel {
       narration: "not_started",
       export: "not_started",
     },
+    ...overrides,
   };
 }
 
@@ -76,7 +123,40 @@ test("project layout renders the QA render lab from the server-authored page sig
   );
 
   assert.ok(screen.getByText("Project workspace body"));
-  assert.ok(screen.getByRole("button", { name: "QA Render Lab" }));
+  const launcher = screen.getByRole("button", { name: /QA Render Lab/ });
+  assert.match(launcher.textContent ?? "", /\$0\.00 est, low/);
+});
+
+test("QA render lab estimate ignores skipped scenes from the workspace", async () => {
+  const user = userEvent.setup();
+  const viewModel = workspaceViewModel({
+    tourScenes: [
+      tourScene({ id: "scene-1", included: true, status: "ready" }),
+      tourScene({ id: "scene-2", included: true, status: "ready" }),
+      tourScene({ id: "scene-3", included: false, status: "skipped" }),
+    ],
+  });
+
+  renderWithProviders(
+    <TourProjectLayoutClient
+      initialViewModel={viewModel}
+      isQaRenderLabAvailable
+    >
+      <main>Project workspace body</main>
+    </TourProjectLayoutClient>,
+  );
+
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("combobox", { name: "Render preset" }));
+  await user.click(
+    screen.getByRole("option", {
+      name: "Provider image-to-video quality experiment",
+    }),
+  );
+
+  assert.ok(screen.getByText(/Estimate uses 2 included scenes at 10s per clip/));
+  assert.ok(screen.getAllByText("$2.52").length >= 1);
+  assert.equal(screen.queryByText("$3.78"), null);
 });
 
 test("project layout keeps normal workspace controls and hides the QA lab when unavailable", () => {
@@ -90,5 +170,5 @@ test("project layout keeps normal workspace controls and hides the QA lab when u
   );
 
   assert.ok(screen.getByRole("button", { name: /Generate video/ }));
-  assert.equal(screen.queryByRole("button", { name: "QA Render Lab" }), null);
+  assert.equal(screen.queryByRole("button", { name: /QA Render Lab/ }), null);
 });

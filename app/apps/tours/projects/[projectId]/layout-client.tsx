@@ -17,7 +17,10 @@ import {
   TourProjectWorkspaceProvider,
   useTourProjectWorkspace,
 } from "@/components/tours/workspace/useTourProjectWorkspace";
-import { TOUR_PROJECT_TYPE_LABELS, type TourProjectType } from "@/lib/tours/project-types";
+import {
+  TOUR_PROJECT_TYPE_LABELS,
+  type TourProjectType,
+} from "@/lib/tours/project-types";
 import { getTourProjectConfiguration } from "@/lib/tours/project-configuration";
 import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 
@@ -66,10 +69,17 @@ function TourProjectLayoutContent({
   } = useTourProjectWorkspace();
   const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
   const renderRuns = useTourRenderRuns(viewModel.project.id);
-  const projectConfiguration = getTourProjectConfiguration(viewModel.project.tourType);
+  const projectConfiguration = getTourProjectConfiguration(
+    viewModel.project.tourType,
+  );
   const isProjectRendering =
-    renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
-  const latestDownloadUrl = renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
+    renderRuns.currentRun?.status === "queued" ||
+    renderRuns.currentRun?.status === "running";
+  const includedSceneCount = viewModel.tourScenes.filter(
+    (scene) => scene.included,
+  ).length;
+  const latestDownloadUrl =
+    renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
   const renderingHref = `/apps/tours/projects/${viewModel.project.id}/rendering`;
 
   return (
@@ -159,8 +169,10 @@ function TourProjectLayoutContent({
       />
       <TourProjectQaRenderLab
         isAvailable={isQaRenderLabAvailable}
-        isSubmitting={renderRuns.isCreatingPresetRenderRun}
-        onSubmitPreset={renderRuns.createPresetRenderRun}
+        includedSceneCount={includedSceneCount}
+        tourType={viewModel.project.tourType}
+        isSubmitting={renderRuns.isCreatingOptionsRenderRun}
+        onSubmitOptions={renderRuns.createOptionsRenderRun}
       />
     </PageFrame>
   );
@@ -174,7 +186,8 @@ function TourProjectRenderActions({
   renderRuns: ReturnType<typeof useTourRenderRuns>;
 }) {
   const isProjectRendering =
-    renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
+    renderRuns.currentRun?.status === "queued" ||
+    renderRuns.currentRun?.status === "running";
 
   return (
     <>
@@ -182,7 +195,11 @@ function TourProjectRenderActions({
         type="button"
         variant="outline"
         size="sm"
-        disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun || isProjectRendering}
+        disabled={
+          sceneCount === 0 ||
+          renderRuns.isCreatingAnyRenderRun ||
+          isProjectRendering
+        }
         onClick={() => {
           if (!isProjectRendering) {
             renderRuns.createFreshRenderRun();
@@ -190,7 +207,9 @@ function TourProjectRenderActions({
         }}
       >
         <Video className="h-4 w-4" />
-        {renderRuns.isCreatingFreshRenderRun ? "Starting video..." : "Generate video"}
+        {renderRuns.isCreatingFreshRenderRun
+          ? "Starting video..."
+          : "Generate video"}
       </Button>
     </>
   );

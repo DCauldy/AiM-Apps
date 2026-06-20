@@ -6,13 +6,13 @@ import {
   FRESH_RENDER_OPTIONS,
   buildCreateRenderRunRequestBody,
   isFreshRenderRunInput,
+  isOptionsRenderRunInput,
   isPlainReuseRenderRunInput,
-  isPresetRenderRunInput,
   pickLatestDownloadableRenderRun,
 } from "./useTourRenderRuns";
 
 function renderRun(
-  overrides: Partial<TourRenderRunStatusResponse> = {}
+  overrides: Partial<TourRenderRunStatusResponse> = {},
 ): TourRenderRunStatusResponse {
   return {
     id: "run-1",
@@ -57,7 +57,7 @@ test("picks the newest completed render with a download URL", () => {
       newestDownloadableRun,
       olderDownloadableRun,
     ]),
-    newestDownloadableRun
+    newestDownloadableRun,
   );
 });
 
@@ -70,7 +70,7 @@ test("ignores completed renders without signed download URLs", () => {
         result: { assetId: "asset-final" },
       }),
     ]),
-    null
+    null,
   );
 });
 
@@ -100,8 +100,8 @@ test("default render request body leaves reuse options unset", () => {
   assert.deepEqual(buildCreateRenderRunRequestBody({ fresh: false }), {});
 });
 
-test("creation state helpers keep plain reuse renders separate from preset renders", () => {
-  const presetInput = {
+test("creation state helpers keep plain reuse renders separate from options renders", () => {
+  const optionsInput = {
     fresh: false,
     options: {
       reuseExistingAssets: true,
@@ -118,17 +118,20 @@ test("creation state helpers keep plain reuse renders separate from preset rende
   assert.equal(isPlainReuseRenderRunInput({ fresh: false }), true);
   assert.equal(isPlainReuseRenderRunInput(), true);
   assert.equal(isPlainReuseRenderRunInput({ fresh: true }), false);
-  assert.equal(isPlainReuseRenderRunInput(presetInput), false);
+  assert.equal(isPlainReuseRenderRunInput(optionsInput), false);
 
   assert.equal(isFreshRenderRunInput({ fresh: true }), true);
-  assert.equal(isFreshRenderRunInput(presetInput), false);
+  assert.equal(isFreshRenderRunInput(optionsInput), false);
 
-  assert.equal(isPresetRenderRunInput(presetInput), true);
-  assert.equal(isPresetRenderRunInput({ fresh: false }), false);
-  assert.equal(isPresetRenderRunInput({ fresh: true, options: presetInput.options }), false);
+  assert.equal(isOptionsRenderRunInput(optionsInput), true);
+  assert.equal(isOptionsRenderRunInput({ fresh: false }), false);
+  assert.equal(
+    isOptionsRenderRunInput({ fresh: true, options: optionsInput.options }),
+    false,
+  );
 });
 
-test("dev-tool preset render request body sends explicit preset options", () => {
+test("dev-tool render request body sends explicit options", () => {
   assert.deepEqual(
     buildCreateRenderRunRequestBody({
       options: {
@@ -155,6 +158,6 @@ test("dev-tool preset render request body sends explicit preset options", () => 
           finalVideo: false,
         },
       },
-    }
+    },
   );
 });

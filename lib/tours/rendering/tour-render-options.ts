@@ -1,4 +1,7 @@
-import type { TourRenderMode, TourRenderOptions } from "./tour-render-preflight";
+import type {
+  TourRenderMode,
+  TourRenderOptions,
+} from "./tour-render-preflight";
 
 type TourRenderOptionValidationResult =
   | { ok: true; options?: TourRenderOptions }
@@ -13,6 +16,15 @@ const SUPPORTED_REUSE_FLAGS = [
 ] as const;
 
 type SupportedReuseFlag = (typeof SUPPORTED_REUSE_FLAGS)[number];
+export type { SupportedReuseFlag };
+
+export type TourRenderAdvancedControlsState = {
+  renderMode: TourRenderMode;
+  scriptPlanningModelId: string;
+  sceneClipProviderModelId: string;
+  reuse: Record<SupportedReuseFlag, boolean>;
+};
+
 export type TourRenderPreset =
   | "reuse_everything_possible"
   | "regenerate_scene_clips"
@@ -25,7 +37,9 @@ export type TourRenderPreset =
 const DEFAULT_PROVIDER_SCENE_CLIP_MODEL_ID = "kwaivgi/kling-v3.0-std";
 const DEFAULT_SCRIPT_PLANNING_MODEL_ID = "google/gemini-2.5-flash";
 
-const REUSE_ALL_SUPPORTED_ASSETS: Required<NonNullable<TourRenderOptions["reuse"]>> = {
+const REUSE_ALL_SUPPORTED_ASSETS: Required<
+  NonNullable<TourRenderOptions["reuse"]>
+> = {
   scriptPlan: true,
   voiceover: true,
   avatar: true,
@@ -33,7 +47,9 @@ const REUSE_ALL_SUPPORTED_ASSETS: Required<NonNullable<TourRenderOptions["reuse"
   finalVideo: true,
 };
 
-const REGENERATE_ALL_SUPPORTED_ASSETS: Required<NonNullable<TourRenderOptions["reuse"]>> = {
+const REGENERATE_ALL_SUPPORTED_ASSETS: Required<
+  NonNullable<TourRenderOptions["reuse"]>
+> = {
   scriptPlan: false,
   voiceover: false,
   avatar: false,
@@ -46,16 +62,37 @@ export const TOUR_RENDER_PRESET_LABELS: Record<TourRenderPreset, string> = {
   regenerate_scene_clips: "Regenerate scene clips",
   regenerate_final_video: "Regenerate final video",
   cheap_ken_burns_ux_test: "Cheap Ken Burns UX test",
-  provider_image_to_video_quality_experiment: "Provider image-to-video quality experiment",
+  provider_image_to_video_quality_experiment:
+    "Provider image-to-video quality experiment",
   script_model_experiment: "Script model experiment",
   full_fresh_render: "Full fresh render",
 };
 
 export const TOUR_RENDER_PRESETS = Object.keys(
-  TOUR_RENDER_PRESET_LABELS
+  TOUR_RENDER_PRESET_LABELS,
 ) as TourRenderPreset[];
 
 const SUPPORTED_REUSE_FLAG_SET = new Set<string>(SUPPORTED_REUSE_FLAGS);
+export const TOUR_RENDER_REUSE_FLAGS = [...SUPPORTED_REUSE_FLAGS];
+export const TOUR_RENDER_REUSE_FLAG_LABELS: Record<SupportedReuseFlag, string> =
+  {
+    scriptPlan: "Script plan",
+    voiceover: "Voiceover",
+    avatar: "Avatar",
+    sceneClips: "Scene clips",
+    finalVideo: "Final video",
+  };
+
+export const TOUR_RENDER_MODES: TourRenderMode[] = [
+  "ken_burns_ffmpeg",
+  "provider_image_to_video",
+];
+
+export const TOUR_RENDER_MODE_LABELS: Record<TourRenderMode, string> = {
+  ken_burns_ffmpeg: "Ken Burns FFmpeg",
+  provider_image_to_video: "Provider image-to-video",
+};
+
 const SUPPORTED_RENDER_OPTION_KEYS = new Set([
   "renderMode",
   "reuseExistingAssets",
@@ -63,24 +100,24 @@ const SUPPORTED_RENDER_OPTION_KEYS = new Set([
   "scriptPlanningModelId",
   "sceneClipProviderModelId",
 ]);
-const SUPPORTED_RENDER_MODES = new Set<TourRenderMode>([
-  "ken_burns_ffmpeg",
-  "provider_image_to_video",
-]);
+const SUPPORTED_RENDER_MODES = new Set<TourRenderMode>([...TOUR_RENDER_MODES]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function isSupportedRenderMode(value: unknown): value is TourRenderMode {
-  return typeof value === "string" && SUPPORTED_RENDER_MODES.has(value as TourRenderMode);
+  return (
+    typeof value === "string" &&
+    SUPPORTED_RENDER_MODES.has(value as TourRenderMode)
+  );
 }
 
 function assignModelIdOption(
   options: TourRenderOptions,
   key: "scriptPlanningModelId" | "sceneClipProviderModelId",
   value: unknown,
-  errors: string[]
+  errors: string[],
 ) {
   if (value === undefined) {
     return;
@@ -104,7 +141,9 @@ function withReuse(reuse: TourRenderOptions["reuse"]): TourRenderOptions {
   };
 }
 
-export function getTourRenderOptionsForPreset(preset: TourRenderPreset): TourRenderOptions {
+export function getTourRenderOptionsForPreset(
+  preset: TourRenderPreset,
+): TourRenderOptions {
   switch (preset) {
     case "reuse_everything_possible":
       return withReuse({ ...REUSE_ALL_SUPPORTED_ASSETS });
@@ -151,8 +190,45 @@ export function getTourRenderOptionsForPreset(preset: TourRenderPreset): TourRen
   }
 }
 
+export function getAdvancedControlsStateForPreset(
+  preset: TourRenderPreset,
+): TourRenderAdvancedControlsState {
+  const options = getTourRenderOptionsForPreset(preset);
+  return {
+    renderMode: options.renderMode ?? "ken_burns_ffmpeg",
+    scriptPlanningModelId: options.scriptPlanningModelId ?? "",
+    sceneClipProviderModelId: options.sceneClipProviderModelId ?? "",
+    reuse: {
+      ...REUSE_ALL_SUPPORTED_ASSETS,
+      ...(options.reuse ?? {}),
+    },
+  };
+}
+
+export function buildTourRenderOptionsFromAdvancedControls(
+  controls: TourRenderAdvancedControlsState,
+): TourRenderOptions {
+  const options: TourRenderOptions = {
+    renderMode: controls.renderMode,
+    reuseExistingAssets: Object.values(controls.reuse).some(Boolean),
+    reuse: { ...controls.reuse },
+  };
+
+  const scriptPlanningModelId = controls.scriptPlanningModelId.trim();
+  if (scriptPlanningModelId) {
+    options.scriptPlanningModelId = scriptPlanningModelId;
+  }
+
+  const sceneClipProviderModelId = controls.sceneClipProviderModelId.trim();
+  if (sceneClipProviderModelId) {
+    options.sceneClipProviderModelId = sceneClipProviderModelId;
+  }
+
+  return options;
+}
+
 export function parseTourRenderOptionsInput(
-  value: unknown
+  value: unknown,
 ): TourRenderOptionValidationResult {
   if (value === undefined) {
     return { ok: true };
@@ -175,7 +251,9 @@ export function parseTourRenderOptionsInput(
     if (isSupportedRenderMode(value.renderMode)) {
       options.renderMode = value.renderMode;
     } else {
-      errors.push("renderMode must be ken_burns_ffmpeg or provider_image_to_video.");
+      errors.push(
+        "renderMode must be ken_burns_ffmpeg or provider_image_to_video.",
+      );
     }
   }
 
@@ -216,8 +294,18 @@ export function parseTourRenderOptionsInput(
     }
   }
 
-  assignModelIdOption(options, "scriptPlanningModelId", value.scriptPlanningModelId, errors);
-  assignModelIdOption(options, "sceneClipProviderModelId", value.sceneClipProviderModelId, errors);
+  assignModelIdOption(
+    options,
+    "scriptPlanningModelId",
+    value.scriptPlanningModelId,
+    errors,
+  );
+  assignModelIdOption(
+    options,
+    "sceneClipProviderModelId",
+    value.sceneClipProviderModelId,
+    errors,
+  );
 
   if (errors.length > 0) {
     return { ok: false, errors };
