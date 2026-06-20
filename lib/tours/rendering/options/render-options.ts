@@ -2,7 +2,7 @@ import type {
   TourRenderMode,
   TourRenderOptions,
 } from "../preflight/preflight";
-import { TOUR_PROJECT_TYPES, type TourProjectType } from "../../project-types";
+import { TOUR_PROJECT_TYPES, type TourProjectType } from "../../projects/project-types";
 
 type TourRenderOptionValidationResult =
   | { ok: true; options?: TourRenderOptions }

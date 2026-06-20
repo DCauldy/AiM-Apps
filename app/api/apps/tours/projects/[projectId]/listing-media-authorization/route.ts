@@ -1,5 +1,5 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import { recordListingMediaAcknowledgement } from "@/lib/tours/listing-media-authorization";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
+import { recordListingMediaAcknowledgement } from "@/lib/tours/listing-media/listing-media-authorization";
 
 export const dynamic = "force-dynamic";
 

@@ -8,7 +8,7 @@ import {
 import { buildOpenRouterSceneClipPrompt } from "../scenes/openrouter-scene-clip-prompts";
 import type { TourRenderOptions } from "../preflight/preflight";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
-import type { TourProjectType } from "@/lib/tours/project-types";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
 
 export type TourRenderPromptPreviewScene = {
   id: string;

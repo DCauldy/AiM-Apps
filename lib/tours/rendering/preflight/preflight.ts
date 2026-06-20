@@ -1,7 +1,7 @@
 import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
 import { resolveProfileIdForRender } from "@/lib/profiles/resolve-for-render";
-import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
-import type { TourProjectType } from "../../project-types";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-settings/avatar-project-settings";
+import type { TourProjectType } from "../../projects/project-types";
 import { getRequiredProviderKeysForTourType } from "../../tour-type-availability";
 import {
   createTourRenderRepository,

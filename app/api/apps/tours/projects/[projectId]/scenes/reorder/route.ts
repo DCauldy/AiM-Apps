@@ -1,4 +1,4 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
 import { reorderTourScenes } from "@/lib/tours/scenes";
 
 export const dynamic = "force-dynamic";

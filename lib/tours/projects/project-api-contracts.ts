@@ -1,6 +1,6 @@
-import type { HeyGenAvatarProjectPosition } from "./avatar-project-settings";
+import type { HeyGenAvatarProjectPosition } from "../avatar-settings/avatar-project-settings";
 import type { TourProjectType } from "./project-types";
-import type { TourProjectWorkspaceViewModel } from "./workspace";
+import type { TourProjectWorkspaceViewModel } from "../workspace";
 
 export type OpenTourProject = {
   id: string;

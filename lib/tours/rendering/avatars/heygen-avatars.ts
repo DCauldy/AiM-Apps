@@ -1,6 +1,6 @@
-import type { HeyGenAvatarLook } from "../../integration-picker-options";
+import type { HeyGenAvatarLook } from "../../integrations/integration-picker-options";
 
-export type { HeyGenAvatarLook } from "../../integration-picker-options";
+export type { HeyGenAvatarLook } from "../../integrations/integration-picker-options";
 
 type HeyGenAvatarLooksResponse = {
   looks: unknown[];

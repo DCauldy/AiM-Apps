@@ -5,7 +5,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { TourProjectQaRenderLab } from "./TourProjectQaRenderLab";
-import type { TourProjectType } from "@/lib/tours/project-types";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/render.contract";
 import { sanitizeTourRenderInvestigationOptions } from "@/lib/tours/rendering/options/render-options";
 import type { TourRenderPromptPreviewProject } from "@/lib/tours/rendering/devtools/prompt-previews";

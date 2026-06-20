@@ -7,7 +7,7 @@ import {
   type TourRenderTimelineStep,
   type TourRenderRunStatusResponse,
 } from "../contracts/render.contract";
-import type { TourProjectType } from "../../project-types";
+import type { TourProjectType } from "../../projects/project-types";
 import {
   createTourRenderRepository,
   type TourRenderAsset,

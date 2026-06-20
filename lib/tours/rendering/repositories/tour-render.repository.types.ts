@@ -1,6 +1,6 @@
 import type { createClient } from "@/lib/supabase/server";
-import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
-import type { TourProjectType } from "@/lib/tours/project-types";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-settings/avatar-project-settings";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 
 export type SupabaseClient = Awaited<ReturnType<typeof createClient>>;

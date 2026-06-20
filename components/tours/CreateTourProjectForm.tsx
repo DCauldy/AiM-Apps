@@ -28,12 +28,12 @@ import {
   DEFAULT_TOUR_PROJECT_TYPE,
   TOUR_PROJECT_TYPE_LABELS,
   type TourProjectType,
-} from "@/lib/tours/project-types";
+} from "@/lib/tours/projects/project-types";
 import {
   getRequiredSettingsState,
   getTourProjectConfiguration,
   getTourProjectSettingsPayloadForCreate,
-} from "@/lib/tours/project-configuration";
+} from "@/lib/tours/projects/project-configuration";
 import { isTourTypeAvailable } from "@/lib/tours/tour-type-availability";
 import {
   createTourProject,

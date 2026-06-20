@@ -1,7 +1,7 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
 import { deleteTourScene, updateTourSceneCameraMotion } from "@/lib/tours/scenes";
 import { isTourSceneCameraMotion } from "@/lib/tours/scenes.core";
-import { LISTING_MEDIA_BUCKET } from "@/lib/tours/listing-media-upload";
+import { LISTING_MEDIA_BUCKET } from "@/lib/tours/listing-media/listing-media-upload";
 
 export const dynamic = "force-dynamic";
 

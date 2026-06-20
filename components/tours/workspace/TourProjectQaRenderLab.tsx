@@ -43,7 +43,7 @@ import type {
   TourRenderMode,
   TourRenderOptions,
 } from "@/lib/tours/rendering/preflight/preflight";
-import type { TourProjectType } from "@/lib/tours/project-types";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
 
 const RISK_BADGE_CLASSES: Record<TourProviderSpendRisk, string> = {
   low: "border-emerald-200 bg-emerald-50 text-emerald-800",

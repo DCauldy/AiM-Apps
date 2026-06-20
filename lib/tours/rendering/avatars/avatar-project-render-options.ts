@@ -1,4 +1,4 @@
-import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-settings/avatar-project-settings";
 import type { HeyGenAvatarPositioningInput } from "./tour-avatar";
 import type { TourRenderOptions } from "../preflight/preflight";
 

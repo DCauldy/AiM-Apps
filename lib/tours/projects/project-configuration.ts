@@ -1,5 +1,5 @@
 import type { TourProjectType } from "./project-types";
-import type { HeyGenAvatarProjectPosition } from "./avatar-project-settings";
+import type { HeyGenAvatarProjectPosition } from "../avatar-settings/avatar-project-settings";
 
 export type TourProjectConfiguration = {
   supportsVoiceSelection: boolean;

@@ -1,6 +1,6 @@
-import type { ElevenLabsDigitalTwinVoice } from "../../integration-picker-options";
+import type { ElevenLabsDigitalTwinVoice } from "../../integrations/integration-picker-options";
 
-export type { ElevenLabsDigitalTwinVoice } from "../../integration-picker-options";
+export type { ElevenLabsDigitalTwinVoice } from "../../integrations/integration-picker-options";
 
 type ElevenLabsVoiceSearchResponse = {
   voices?: unknown[];

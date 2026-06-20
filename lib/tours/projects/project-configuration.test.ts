@@ -8,7 +8,7 @@ import {
   getTourProjectSettingsPayloadForCreate,
   type TourProjectSettings,
 } from "./project-configuration";
-import type { HeyGenAvatarProjectPosition } from "./avatar-project-settings";
+import type { HeyGenAvatarProjectPosition } from "../avatar-settings/avatar-project-settings";
 
 const placement: HeyGenAvatarProjectPosition = {
   frame: { width: 1080, height: 1920 },

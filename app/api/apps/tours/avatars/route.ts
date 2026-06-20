@@ -1,4 +1,4 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
 import {
   HeyGenAvatarsError,
   listHeyGenDigitalTwinAvatarLooks,

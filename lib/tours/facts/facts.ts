@@ -17,7 +17,7 @@ import {
   type TourSceneFactsRepository,
   type UpdateHumanTourSceneFactResult,
 } from "./facts.core";
-import { getTourScenesForProject } from "./scenes";
+import { getTourScenesForProject } from "../scenes";
 
 const FACT_SELECT =
   "id, project_id, scene_id, fact_text, source_type, source_label, source_photo_id, provenance, proof_status, proofed_at, proofed_by, proof_metadata, sort_order, created_at, updated_at";

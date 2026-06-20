@@ -1,9 +1,9 @@
 import { z } from "zod";
-import type { TourProjectType } from "./project-types";
+import type { TourProjectType } from "../projects/project-types";
 import {
   getRequiredSettingsValidationError,
   getTourProjectSettingsColumnsForSave,
-} from "./project-configuration";
+} from "../projects/project-configuration";
 
 export type HeyGenAvatarProjectPosition = {
   frame: { width: 1080; height: 1920 };

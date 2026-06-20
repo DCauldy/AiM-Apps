@@ -1,5 +1,5 @@
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import { createHumanTourSceneFact, listTourSceneFactsForScene } from "@/lib/tours/facts";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
+import { createHumanTourSceneFact, listTourSceneFactsForScene } from "@/lib/tours/facts/facts";
 
 export const dynamic = "force-dynamic";
 

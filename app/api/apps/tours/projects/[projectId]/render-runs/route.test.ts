@@ -33,12 +33,12 @@ const mocks = vi.hoisted(() => ({
   ),
 }));
 
-vi.mock("@/lib/tours/access.server", () => ({
+vi.mock("@/lib/tours/access/access.server", () => ({
   requireToursAccess: mocks.requireToursAccess,
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
 }));
 
-vi.mock("@/lib/tours/facts", () => ({
+vi.mock("@/lib/tours/facts/facts", () => ({
   approveAllTourSceneFactsForProject: mocks.approveAllTourSceneFactsForProject,
 }));
 

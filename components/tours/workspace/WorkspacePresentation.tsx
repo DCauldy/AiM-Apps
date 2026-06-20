@@ -33,8 +33,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { TourProjectType } from "@/lib/tours/project-types";
-import { getRequiredSettingsState } from "@/lib/tours/project-configuration";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
+import { getRequiredSettingsState } from "@/lib/tours/projects/project-configuration";
 import { ElevenLabsVoiceSelector } from "./ElevenLabsVoiceSelector";
 import { HeyGenAvatarSelector } from "./HeyGenAvatarSelector";
 import type { HeyGenAvatarProjectPosition } from "./avatar-positioning";

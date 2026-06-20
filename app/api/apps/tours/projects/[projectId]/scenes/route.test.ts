@@ -19,16 +19,16 @@ const mocks = vi.hoisted(() => ({
   validateListingMediaFile: vi.fn(),
 }));
 
-vi.mock("@/lib/tours/access.server", () => ({
+vi.mock("@/lib/tours/access/access.server", () => ({
   requireToursAccess: mocks.requireToursAccess,
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
 }));
 
-vi.mock("@/lib/tours/listing-media-authorization", () => ({
+vi.mock("@/lib/tours/listing-media/listing-media-authorization", () => ({
   getListingMediaAcknowledgementForProject: mocks.getListingMediaAcknowledgementForProject,
 }));
 
-vi.mock("@/lib/tours/listing-media-upload", () => ({
+vi.mock("@/lib/tours/listing-media/listing-media-upload", () => ({
   LISTING_MEDIA_BUCKET: "tours-listing-media",
   getListingMediaStoragePath: mocks.getListingMediaStoragePath,
   validateListingMediaFile: mocks.validateListingMediaFile,
@@ -42,7 +42,7 @@ vi.mock("@/lib/tours/scenes", () => ({
   deleteTourScene: mocks.deleteTourScene,
 }));
 
-vi.mock("@/lib/tours/facts", () => ({
+vi.mock("@/lib/tours/facts/facts", () => ({
   listTourSceneFactsForScene: mocks.listTourSceneFactsForScene,
   createHumanTourSceneFact: mocks.createHumanTourSceneFact,
   updateHumanTourSceneFact: mocks.updateHumanTourSceneFact,

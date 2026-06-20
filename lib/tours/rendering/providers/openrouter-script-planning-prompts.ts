@@ -3,7 +3,7 @@ import {
   TOUR_SCENE_CAMERA_MOTION_LABELS,
   type TourSceneCameraMotion,
 } from "@/lib/tours/scenes.core";
-import type { TourProjectType } from "@/lib/tours/project-types";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
 
 export const DEFAULT_TOUR_SCRIPT_PLANNING_MODEL = "google/gemini-2.5-flash";
 export const TOUR_SCRIPT_PLANNING_PROMPT_VERSION =

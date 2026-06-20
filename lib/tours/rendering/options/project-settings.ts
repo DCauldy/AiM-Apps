@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-settings/avatar-project-settings";
 
 export type TourRenderProjectSettings = {
   elevenLabsVoiceId: string | null;

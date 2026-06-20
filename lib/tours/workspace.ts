@@ -1,10 +1,10 @@
 import "server-only";
 
 import { createClient } from "@/lib/supabase/server";
-import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
-import { LISTING_MEDIA_ACKNOWLEDGEMENT_COPY } from "@/lib/tours/listing-media-authorization";
-import { listTourSceneFactsForProject } from "@/lib/tours/facts";
-import type { TourProjectType } from "@/lib/tours/project-types";
+import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-settings/avatar-project-settings";
+import { LISTING_MEDIA_ACKNOWLEDGEMENT_COPY } from "@/lib/tours/listing-media/listing-media-authorization";
+import { listTourSceneFactsForProject } from "@/lib/tours/facts/facts";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import { getTourScenesForProject, type TourSceneCameraMotion } from "@/lib/tours/scenes";
 import { getTourSceneReadinessStatus } from "@/lib/tours/scenes.core";
 

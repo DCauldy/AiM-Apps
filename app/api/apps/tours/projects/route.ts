@@ -1,22 +1,22 @@
 import { z } from "zod";
-import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access/access.server";
 import {
   OptionalHeyGenAvatarIdSchema,
   OptionalHeyGenAvatarProjectPositionSchema,
-} from "@/lib/tours/avatar-project-settings";
+} from "@/lib/tours/avatar-settings/avatar-project-settings";
 import {
   DEFAULT_TOUR_PROJECT_TYPE,
   TOUR_PROJECT_TYPES,
-} from "@/lib/tours/project-types";
+} from "@/lib/tours/projects/project-types";
 import type {
   CreateTourProjectResponse,
   OpenTourProjectsResponse,
-} from "@/lib/tours/project-api-contracts";
+} from "@/lib/tours/projects/project-api-contracts";
 import {
   getRequiredSettingsValidationError,
   getTourProjectSettingsColumnsForSave,
-} from "@/lib/tours/project-configuration";
-import { OptionalElevenLabsVoiceIdSchema } from "@/lib/tours/project-configuration.schema";
+} from "@/lib/tours/projects/project-configuration";
+import { OptionalElevenLabsVoiceIdSchema } from "@/lib/tours/projects/project-configuration.schema";
 import { getTourTypeAvailabilityErrorForUser } from "@/lib/tours/tour-type-availability.server";
 
 export const dynamic = "force-dynamic";

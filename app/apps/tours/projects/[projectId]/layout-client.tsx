@@ -20,8 +20,8 @@ import {
 import {
   TOUR_PROJECT_TYPE_LABELS,
   type TourProjectType,
-} from "@/lib/tours/project-types";
-import { getTourProjectConfiguration } from "@/lib/tours/project-configuration";
+} from "@/lib/tours/projects/project-types";
+import { getTourProjectConfiguration } from "@/lib/tours/projects/project-configuration";
 import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 
 const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {

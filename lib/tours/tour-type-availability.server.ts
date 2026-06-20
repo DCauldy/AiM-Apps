@@ -2,7 +2,7 @@ import "server-only";
 
 import { getSlotState } from "@/lib/profiles/server";
 import { getProfileApiKeyStatusMap } from "@/lib/user-api-keys/server";
-import type { TourProjectType } from "./project-types";
+import type { TourProjectType } from "./projects/project-types";
 import {
   getMissingProviderKeysForTourType,
   getTourTypeAvailabilityMessage,

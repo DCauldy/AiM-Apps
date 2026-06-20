@@ -1,12 +1,12 @@
 "use client";
 
-import type { TourProjectType } from "@/lib/tours/project-types";
+import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import type {
   CreateTourProjectResponse,
   OpenTourProjectsResponse,
   TourProjectWorkspaceResponse,
   UpdateTourProjectResponse,
-} from "@/lib/tours/project-api-contracts";
+} from "@/lib/tours/projects/project-api-contracts";
 import type {
   TourRenderRunAssetResponse,
   TourRenderRunAssetsResponse,
@@ -22,14 +22,14 @@ import type {
   ElevenLabsVoicesResponse,
   HeyGenAvatarLook,
   HeyGenAvatarsResponse,
-} from "@/lib/tours/integration-picker-options";
+} from "@/lib/tours/integrations/integration-picker-options";
 import type { HeyGenAvatarProjectPosition } from "./workspace/avatar-positioning";
 
-export type { OpenTourProject } from "@/lib/tours/project-api-contracts";
+export type { OpenTourProject } from "@/lib/tours/projects/project-api-contracts";
 export type {
   ElevenLabsDigitalTwinVoice,
   HeyGenAvatarLook,
-} from "@/lib/tours/integration-picker-options";
+} from "@/lib/tours/integrations/integration-picker-options";
 
 export type TourProjectDetailsUpdate = {
   name: string;

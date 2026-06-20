@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
   listTourRenderRunAssetsWithUrls: vi.fn(),
 }));
 
-vi.mock("@/lib/tours/access.server", () => ({
+vi.mock("@/lib/tours/access/access.server", () => ({
   requireToursAccess: mocks.requireToursAccess,
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
 }));
