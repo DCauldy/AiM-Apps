@@ -1,6 +1,6 @@
 import "server-only";
 
-import { tasks } from "@trigger.dev/sdk/v3";
+import { runs, tasks } from "@trigger.dev/sdk/v3";
 import type { renderTourProjectTask } from "@/triggers/render-tour-project";
 import {
   type TourRenderRunAssetResponse,
@@ -36,12 +36,16 @@ type RenderRunServiceOptions = {
 
 type CreateTourRenderRunServiceOptions = RenderRunServiceOptions & {
   triggerTask?: typeof tasks.trigger<typeof renderTourProjectTask>;
+  cancelTriggerRun?: typeof runs.cancel;
   skipPreflight?: boolean;
 };
 
 const TRIGGER_ATTACH_TIMEOUT_MS = 3_000;
+const TRIGGER_CANCEL_TIMEOUT_MS = 3_000;
 const RENDER_TASK_ENQUEUE_FAILED_MESSAGE =
   "Could not start the render task. Try again.";
+const RENDER_TASK_SUPERSEDED_MESSAGE =
+  "Cancelled because a newer render was started for this tour project.";
 
 function getDefaultTourRenderOptions(): TourRenderOptions {
   return {
@@ -110,6 +114,11 @@ const TIMELINE_STEP_DETAILS: Record<TourRenderStep, TourRenderTimelineStep> = {
     label: "Failed",
     detail: "Render could not finish",
   },
+  cancelled: {
+    key: "cancelled",
+    label: "Cancelled",
+    detail: "Render was superseded",
+  },
 };
 
 function getRenderTourType(run: TourRenderRun): TourProjectType {
@@ -140,6 +149,68 @@ function getPipelineStepsForTourType(tourType: TourProjectType): TourRenderTimel
 
 function shouldInvalidateReusableAssets(options: TourRenderOptions): boolean {
   return options.reuseExistingAssets === false;
+}
+
+async function cancelTriggerRunSafely(
+  triggerRunId: string | null,
+  cancelTriggerRun: typeof runs.cancel,
+) {
+  if (!triggerRunId) {
+    return;
+  }
+
+  await Promise.race([
+    Promise.resolve()
+      .then(() => cancelTriggerRun(triggerRunId))
+      .catch(() => null),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), TRIGGER_CANCEL_TIMEOUT_MS);
+    }),
+  ]);
+}
+
+async function cancelActiveProjectRenderRuns(input: {
+  repository: TourRenderRepository;
+  projectId: string;
+  userId: string;
+  cancelTriggerRun: typeof runs.cancel;
+}) {
+  const activeRuns = await input.repository.listActiveProjectRenderRuns({
+    projectId: input.projectId,
+    userId: input.userId,
+  });
+
+  await Promise.all(
+    activeRuns.map(async (run) => {
+      const cancelled = await input.repository.markCancelled({
+        runId: run.id,
+        projectId: input.projectId,
+        userId: input.userId,
+        safeMessage: RENDER_TASK_SUPERSEDED_MESSAGE,
+      });
+
+      if (!cancelled) {
+        return;
+      }
+
+      await input.repository.appendEvent({
+        runId: run.id,
+        projectId: input.projectId,
+        step: "cancelled",
+        status: "cancelled",
+        safeMessage: RENDER_TASK_SUPERSEDED_MESSAGE,
+        metadata: {
+          reason: "superseded_by_new_render",
+        },
+      });
+    }),
+  );
+
+  await Promise.all(
+    activeRuns.map((run) =>
+      cancelTriggerRunSafely(run.triggerRunId, input.cancelTriggerRun),
+    ),
+  );
 }
 
 export function toTourRenderRunStatusResponse(run: TourRenderRun): TourRenderRunStatusResponse {
@@ -223,6 +294,13 @@ export async function createTourRenderRun(
   const resolvedRenderOptions = mergeProjectAvatarSettingsIntoRenderOptions({
     options: renderOptions,
     project: renderableProject.project,
+  });
+
+  await cancelActiveProjectRenderRuns({
+    repository,
+    projectId: input.projectId,
+    userId: input.userId,
+    cancelTriggerRun: options.cancelTriggerRun ?? runs.cancel,
   });
 
   const run = await repository.createRenderRun({

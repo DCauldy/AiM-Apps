@@ -103,6 +103,7 @@ export function TourRenderStatusPanel({
   const active = isTourRenderRunActive(run);
   const completed = run.status === "completed";
   const failed = run.status === "failed";
+  const cancelled = run.status === "cancelled";
   const steps =
     run.timelineSteps.length > 0 ? run.timelineSteps : FALLBACK_STEPS;
   const activeStep = completed
@@ -111,6 +112,14 @@ export function TourRenderStatusPanel({
         label: "Done",
         detail: "Your tour video is ready to download.",
       }
+    : cancelled
+      ? {
+          key: "cancelled",
+          label: "Render Cancelled",
+          detail:
+            run.error?.message ??
+            "A newer render was started for this tour project.",
+        }
     : (steps.find((step) => step.key === run.step) ??
       steps.find((step) => step.key === "rendering_scene_clips") ??
       steps[0]);

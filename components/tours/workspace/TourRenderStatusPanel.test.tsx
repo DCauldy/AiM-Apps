@@ -59,6 +59,18 @@ function failedRun(): TourRenderRunStatusResponse {
   };
 }
 
+function cancelledRun(): TourRenderRunStatusResponse {
+  return {
+    ...failedRun(),
+    status: "cancelled",
+    step: "cancelled",
+    label: "Cancelled",
+    error: {
+      message: "Cancelled because a newer render was started.",
+    },
+  };
+}
+
 function renderWithQueryClient(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -103,6 +115,13 @@ test("shows failed render error message", () => {
   renderWithQueryClient(<TourRenderStatusPanel run={failedRun()} />);
 
   assert.ok(screen.getByText("Scene clip rendering failed."));
+});
+
+test("shows cancelled render message", () => {
+  renderWithQueryClient(<TourRenderStatusPanel run={cancelledRun()} />);
+
+  assert.ok(screen.getByRole("heading", { name: "Render Cancelled" }));
+  assert.ok(screen.getByText("Cancelled because a newer render was started."));
 });
 
 test("communicates when historical intermediate assets are no longer downloadable", async () => {

@@ -14,7 +14,8 @@ export type TourRenderStep =
   | "joining_video"
   | "uploading_final"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 export type TourRenderTimelineStep = {
   key: TourRenderStep | string;

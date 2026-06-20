@@ -86,7 +86,8 @@ function workspaceViewModel(
       canEdit: true,
     },
     listingMediaAuthorization: {
-      acknowledgementCopy: "I confirm I am authorized to use the listing media.",
+      acknowledgementCopy:
+        "I confirm I am authorized to use the listing media.",
       hasAcknowledged: true,
       acknowledgedAt: "2026-06-13T12:00:00.000Z",
     },
@@ -109,7 +110,9 @@ function renderWithProviders(ui: React.ReactElement) {
     },
   });
 
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
 }
 
 test("project layout renders the QA render lab from the server-authored page signal", () => {
@@ -119,7 +122,7 @@ test("project layout renders the QA render lab from the server-authored page sig
       isQaRenderLabAvailable
     >
       <main>Project workspace body</main>
-    </TourProjectLayoutClient>
+    </TourProjectLayoutClient>,
   );
 
   assert.ok(screen.getByText("Project workspace body"));
@@ -153,8 +156,11 @@ test("QA render lab estimate ignores skipped scenes from the workspace", async (
       name: "Provider image-to-video quality experiment",
     }),
   );
+  await user.click(screen.getByRole("tab", { name: "Run cost" }));
 
-  assert.ok(screen.getByText(/Estimate uses 2 included scenes at 10s per clip/));
+  assert.ok(
+    screen.getByText(/Estimate uses 2 included scenes at 10s per clip/),
+  );
   assert.ok(screen.getAllByText("$2.52").length >= 1);
   assert.equal(screen.queryByText("$3.78"), null);
 });
@@ -166,7 +172,7 @@ test("project layout keeps normal workspace controls and hides the QA lab when u
       isQaRenderLabAvailable={false}
     >
       <main>Project workspace body</main>
-    </TourProjectLayoutClient>
+    </TourProjectLayoutClient>,
   );
 
   assert.ok(screen.getByRole("button", { name: /Generate video/ }));

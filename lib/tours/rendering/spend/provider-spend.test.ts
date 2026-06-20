@@ -158,12 +158,12 @@ describe("tour provider spend estimator", () => {
     });
 
     expect(estimate.risk).toBe("low");
-    expect(estimate.estimatedTotalUsd).toBe(0.21);
+    expect(estimate.estimatedTotalUsd).toBe(0.07);
     expect(estimate.lineItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "elevenlabs_voiceover",
-          estimatedCostUsd: 0.21,
+          estimatedCostUsd: 0.07,
         }),
       ]),
     );
@@ -185,16 +185,67 @@ describe("tour provider spend estimator", () => {
       },
     });
 
-    expect(estimate.risk).toBe("moderate");
-    expect(estimate.estimatedTotalUsd).toBe(1.25);
+    expect(estimate.risk).toBe("high");
+    expect(estimate.estimatedTotalUsd).toBe(4.09);
     expect(estimate.lineItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "elevenlabs_voiceover",
-          estimatedCostUsd: 0.25,
+          estimatedCostUsd: 0.08,
         }),
         expect.objectContaining({
           id: "heygen_avatar",
+          estimatedCostUsd: 4,
+        }),
+      ]),
+    );
+  });
+
+  test("estimates appended OpenRouter model prices with the right units", () => {
+    const scriptEstimate = estimateTourProviderSpend({
+      includedSceneCount: 1,
+      tourType: "tour_video",
+      options: {
+        scriptPlanningModelId: "openai/gpt-5-mini",
+        reuseExistingAssets: true,
+        reuse: {
+          scriptPlan: false,
+          voiceover: true,
+          avatar: true,
+          sceneClips: true,
+          finalVideo: true,
+        },
+      },
+    });
+    const videoEstimate = estimateTourProviderSpend({
+      includedSceneCount: 2,
+      tourType: "tour_video",
+      options: {
+        renderMode: "provider_image_to_video",
+        sceneClipProviderModelId: "google/veo-3.1-lite",
+        reuseExistingAssets: true,
+        reuse: {
+          scriptPlan: true,
+          voiceover: true,
+          avatar: true,
+          sceneClips: false,
+          finalVideo: true,
+        },
+      },
+    });
+
+    expect(scriptEstimate.lineItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "openrouter_script_planning",
+          estimatedCostUsd: 0.01,
+        }),
+      ]),
+    );
+    expect(videoEstimate.lineItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "openrouter_scene_clips",
           estimatedCostUsd: 1,
         }),
       ]),

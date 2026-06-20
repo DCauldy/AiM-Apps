@@ -158,11 +158,13 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     downloadRenderAssetJson: vi.fn(),
     getRenderRun: vi.fn(),
     listRecentRenderRuns: vi.fn(),
+    listActiveProjectRenderRuns: vi.fn(),
     createRenderRun: vi.fn(),
     attachTriggerRunId: vi.fn(),
     updateProgress: vi.fn(),
     markCompleted: vi.fn(),
     markFailed: vi.fn(),
+    markCancelled: vi.fn(),
     recordHeartbeat: vi.fn(),
     appendEvent: vi.fn(),
     createAsset: vi.fn((input) =>

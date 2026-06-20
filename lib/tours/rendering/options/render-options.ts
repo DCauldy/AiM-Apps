@@ -36,6 +36,11 @@ export type TourRenderAdvancedControlsState = {
   reuse: Record<SupportedReuseFlag, boolean>;
 };
 
+export type TourRenderModelOption = {
+  id: string;
+  label: string;
+};
+
 export type TourRenderPreset =
   | "reuse_everything_possible"
   | "regenerate_scene_clips"
@@ -47,6 +52,25 @@ export type TourRenderPreset =
 
 const DEFAULT_PROVIDER_SCENE_CLIP_MODEL_ID = "kwaivgi/kling-v3.0-std";
 const DEFAULT_SCRIPT_PLANNING_MODEL_ID = "google/gemini-2.5-flash";
+
+export const TOUR_RENDER_SCRIPT_PLANNING_MODEL_OPTIONS = [
+  { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+  { id: "google/gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+  { id: "google/gemma-3-4b-it", label: "Gemma 3 4B" },
+  { id: "openai/gpt-5-mini", label: "GPT-5 Mini" },
+  { id: "openai/gpt-4o", label: "GPT-4o" },
+  { id: "z-ai/glm-4.6v", label: "GLM 4.6V" },
+  { id: "openai/gpt-5", label: "GPT-5" },
+] as const satisfies readonly TourRenderModelOption[];
+
+export const TOUR_RENDER_SCENE_CLIP_MODEL_OPTIONS = [
+  { id: "kwaivgi/kling-v3.0-std", label: "Kling v3.0 Standard" },
+  { id: "kwaivgi/kling-v3.0-pro", label: "Kling v3.0 Pro" },
+  { id: "kwaivgi/kling-video-o1", label: "Kling Video O1" },
+  { id: "x-ai/grok-imagine-video", label: "Grok Imagine Video" },
+  { id: "google/veo-3.1-lite", label: "Veo 3.1 Lite" },
+  { id: "bytedance/seedance-2.0", label: "Seedance 2.0" },
+] as const satisfies readonly TourRenderModelOption[];
 
 const REUSE_ALL_SUPPORTED_ASSETS: Required<
   NonNullable<TourRenderOptions["reuse"]>

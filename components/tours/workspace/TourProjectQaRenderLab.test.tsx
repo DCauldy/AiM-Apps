@@ -190,7 +190,20 @@ test("renders a compact launcher with current estimated cost and dev-only popove
   const panel = screen.getByRole("region", { name: "QA Render Lab" });
   assert.match(panel.className, /border-dotted/);
   assert.match(panel.className, /border-yellow-400/);
+  assert.match(panel.className, /max-h-\[50vh\]/);
+  assert.match(panel.className, /overflow-hidden/);
   assert.ok(screen.getByText("Preview/dev only"));
+  const tabs = screen.getAllByRole("tab");
+  assert.deepEqual(
+    tabs.map((tab) => tab.textContent),
+    ["Prompts", "Render", "Reuse", "Run cost", "Debug packet"],
+  );
+  assert.equal(tabs.at(-2)?.textContent, "Run cost");
+  assert.equal(tabs.at(-1)?.textContent, "Debug packet");
+  assert.ok(screen.getByRole("combobox", { name: "Render preset" }));
+  assert.ok(screen.getByRole("switch", { name: "Script plan reuse" }));
+
+  await user.click(screen.getByRole("tab", { name: "Run cost" }));
   assert.ok(screen.getByText("Provider spend estimate"));
   assert.ok(screen.getAllByText("$0.00").length >= 1);
   assert.ok(screen.getByText("Low provider spend"));
@@ -209,18 +222,26 @@ test("renders a compact launcher with current estimated cost and dev-only popove
       "Local final muxing is not expected because final-video reuse is requested.",
     ),
   );
-  assert.ok(screen.getByRole("combobox", { name: "Render preset" }));
+
+  await user.click(screen.getByRole("tab", { name: "Prompts" }));
+  assert.ok(screen.getByRole("button", { name: "View Script Planner Prompt" }));
+  assert.ok(screen.getByRole("button", { name: "View Image to Video Prompt" }));
+
+  await user.click(screen.getByRole("tab", { name: "Render" }));
   assert.ok(screen.getByRole("combobox", { name: "Render mode" }));
   assert.ok(screen.getByLabelText("Provider scene clip model id"));
   assert.ok(screen.getByLabelText("Script planning model id"));
-  assert.ok(
-    screen.getByRole("button", { name: "View Script Planner Prompt" }),
-  );
-  assert.ok(
-    screen.getByRole("button", { name: "View Image to Video Prompt" }),
-  );
+
+  await user.click(screen.getByRole("tab", { name: "Reuse" }));
   assert.ok(screen.getByRole("switch", { name: "Script plan reuse" }));
-  assert.ok(screen.getByRole("button", { name: /Start render lab run/ }));
+
+  await user.click(screen.getByRole("tab", { name: "Debug packet" }));
+  assert.ok(
+    screen.getByText(
+      "No debug packet is available until a render lab run exists.",
+    ),
+  );
+  assert.ok(screen.getByRole("button", { name: /Generate lab video/ }));
 });
 
 test("shows run details with parent Trigger.dev run id and persisted options", async () => {
@@ -229,14 +250,13 @@ test("shows run details with parent Trigger.dev run id and persisted options", a
   renderQaRenderLab({ currentRun: sanitizedRunFromPersistedInternals() });
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Debug packet" }));
 
   assert.ok(screen.getByText("Run investigation"));
   assert.ok(screen.getByText("project-1"));
   assert.ok(screen.getByText("trigger-run-1"));
   assert.ok(screen.getByText("running"));
-  assert.ok(
-    screen.getByText("rendering_scene_clips (Rendering Scene Clips)"),
-  );
+  assert.ok(screen.getByText("rendering_scene_clips (Rendering Scene Clips)"));
   assert.ok(screen.getByText("$7.56 estimated - High provider spend"));
 
   await user.click(screen.getByText("Submitted/effective options"));
@@ -247,9 +267,11 @@ test("shows run details with parent Trigger.dev run id and persisted options", a
     }),
   );
   assert.match(
-    (screen.getByLabelText(
-      "Copyable render investigation packet",
-    ) as HTMLTextAreaElement).value,
+    (
+      screen.getByLabelText(
+        "Copyable render investigation packet",
+      ) as HTMLTextAreaElement
+    ).value,
     /Parent Trigger\.dev run id: trigger-run-1/,
   );
   const renderedOptions = screen.getByText(
@@ -282,12 +304,15 @@ test("shows missing Trigger.dev run id handling in run details", async () => {
   renderQaRenderLab({ currentRun: renderRun({ triggerRunId: null }) });
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Debug packet" }));
 
   assert.ok(screen.getAllByText("Not available").length >= 1);
   assert.match(
-    (screen.getByLabelText(
-      "Copyable render investigation packet",
-    ) as HTMLTextAreaElement).value,
+    (
+      screen.getByLabelText(
+        "Copyable render investigation packet",
+      ) as HTMLTextAreaElement
+    ).value,
     /Parent Trigger\.dev run id: Not available/,
   );
 });
@@ -310,6 +335,7 @@ test("shows failed run errors and copies the investigation packet", async () => 
   });
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Debug packet" }));
 
   assert.ok(screen.getByText("Scene clip rendering failed."));
   await user.click(screen.getByRole("button", { name: "Copy packet" }));
@@ -336,9 +362,19 @@ test("submits advanced options through the provided dev-tool callback", async ()
   await user.click(
     screen.getByRole("option", { name: "Regenerate final video" }),
   );
-  await user.click(
-    screen.getByRole("button", { name: /Start render lab run/ }),
+  assert.equal(
+    screen
+      .getByRole("switch", { name: "Scene clips reuse" })
+      .getAttribute("aria-checked"),
+    "true",
   );
+  assert.equal(
+    screen
+      .getByRole("switch", { name: "Final video reuse" })
+      .getAttribute("aria-checked"),
+    "false",
+  );
+  await user.click(screen.getByRole("button", { name: /Generate lab video/ }));
 
   assert.equal(onSubmitOptions.mock.calls.length, 1);
   assert.deepEqual(onSubmitOptions.mock.calls[0]?.[0], {
@@ -354,28 +390,44 @@ test("submits advanced options through the provided dev-tool callback", async ()
   });
 });
 
-test("render mode changes and blank model ids are reflected in submitted options", async () => {
+test("render mode changes and selected model ids are reflected in submitted options", async () => {
   const user = userEvent.setup();
   const onSubmitOptions = vi.fn();
 
   renderQaRenderLab({ onSubmitOptions });
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Render" }));
   await user.click(screen.getByRole("combobox", { name: "Render mode" }));
   await user.click(
     screen.getByRole("option", {
       name: "Provider image-to-video (provider_image_to_video)",
     }),
   );
-  await user.type(
-    screen.getByLabelText("Script planning model id"),
-    "  openrouter/planner  ",
+  await user.click(
+    screen.getByRole("combobox", { name: "Script planning model id" }),
   );
   await user.click(
-    screen.getByRole("button", { name: /Start render lab run/ }),
+    screen.getByRole("option", {
+      name: "GPT-5 (openai/gpt-5)",
+    }),
   );
+  await user.click(
+    screen.getByRole("combobox", { name: "Provider scene clip model id" }),
+  );
+  await user.click(
+    screen.getByRole("option", {
+      name: "Seedance 2.0 (bytedance/seedance-2.0)",
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: /Generate lab video/ }));
 
-  assert.ok(screen.getByText("Custom"));
+  assert.ok(screen.getAllByText("Custom").length >= 1);
+  await user.click(screen.getByRole("tab", { name: "Reuse" }));
+  assert.match(
+    screen.getByRole("combobox", { name: "Render preset" }).textContent ?? "",
+    /Custom/,
+  );
   assert.equal(onSubmitOptions.mock.calls.length, 1);
   assert.equal(
     onSubmitOptions.mock.calls[0]?.[0].renderMode,
@@ -383,11 +435,11 @@ test("render mode changes and blank model ids are reflected in submitted options
   );
   assert.equal(
     onSubmitOptions.mock.calls[0]?.[0].scriptPlanningModelId,
-    "openrouter/planner",
+    "openai/gpt-5",
   );
   assert.equal(
-    "sceneClipProviderModelId" in onSubmitOptions.mock.calls[0]?.[0],
-    false,
+    onSubmitOptions.mock.calls[0]?.[0].sceneClipProviderModelId,
+    "bytedance/seedance-2.0",
   );
 });
 
@@ -398,13 +450,16 @@ test("reuse toggles use on for reuse and off for regenerate", async () => {
   renderQaRenderLab({ onSubmitOptions });
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Reuse" }));
   await user.click(screen.getByRole("switch", { name: "Scene clips reuse" }));
   await user.click(screen.getByRole("switch", { name: "Final video reuse" }));
-  await user.click(
-    screen.getByRole("button", { name: /Start render lab run/ }),
+  assert.match(
+    screen.getByRole("combobox", { name: "Render preset" }).textContent ?? "",
+    /Custom/,
   );
+  await user.click(screen.getByRole("button", { name: /Generate lab video/ }));
 
-  assert.ok(screen.getByText("Custom"));
+  assert.ok(screen.getAllByText("Custom").length >= 1);
   assert.deepEqual(onSubmitOptions.mock.calls[0]?.[0].reuse, {
     scriptPlan: true,
     voiceover: true,
@@ -426,6 +481,7 @@ test("updates expanded estimate dollars when provider image-to-video regeneratio
       name: "Provider image-to-video quality experiment",
     }),
   );
+  await user.click(screen.getByRole("tab", { name: "Run cost" }));
 
   assert.ok(screen.getAllByText("$7.56").length >= 1);
   assert.ok(screen.getByText("High provider spend"));
@@ -442,6 +498,7 @@ test("opens and closes a formatted script planner prompt modal", async () => {
   renderQaRenderLab();
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Prompts" }));
   await user.click(
     screen.getByRole("button", { name: "View Script Planner Prompt" }),
   );
@@ -475,6 +532,7 @@ test("shows an unavailable image-to-video prompt state until provider mode is se
   renderQaRenderLab();
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Prompts" }));
   await user.click(
     screen.getByRole("button", { name: "View Image to Video Prompt" }),
   );
@@ -498,6 +556,7 @@ test("opens formatted image-to-video prompt details in provider mode", async () 
       name: "Provider image-to-video quality experiment",
     }),
   );
+  await user.click(screen.getByRole("tab", { name: "Prompts" }));
   await user.click(
     screen.getByRole("button", { name: "View Image to Video Prompt" }),
   );

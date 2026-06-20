@@ -166,11 +166,13 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     downloadRenderAssetJson: vi.fn(),
     getRenderRun: vi.fn(),
     listRecentRenderRuns: vi.fn(),
+    listActiveProjectRenderRuns: vi.fn(),
     createRenderRun: vi.fn(),
     attachTriggerRunId: vi.fn(),
     updateProgress: vi.fn(),
     markCompleted: vi.fn(),
     markFailed: vi.fn(),
+    markCancelled: vi.fn(),
     recordHeartbeat: vi.fn(),
     appendEvent: vi.fn(),
     createAsset: vi.fn().mockResolvedValue(sceneClipAsset),
@@ -719,18 +721,7 @@ describe("renderSceneClipsStage", () => {
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).prompt).toBe(
       buildOpenRouterSceneClipPrompt({
         scene: project.scenes[0]!,
-        sourceImageUrl: "https://signed.example/kitchen.jpg",
         secondarySourceImageUrls: ["https://signed.example/kitchen-detail.jpg"],
-        durationSeconds: 4.4,
-        modelId: "kwaivgi/kling-v3.0-std",
-        settings: {
-          width: 1080,
-          height: 1920,
-          fps: 30,
-          crf: 18,
-          fadeSeconds: 0.25,
-          cropMode: "cover",
-        },
       })
     );
     expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)).prompt).toContain(

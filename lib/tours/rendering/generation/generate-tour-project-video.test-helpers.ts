@@ -203,6 +203,7 @@ export function createRepository(
     getAsset: vi.fn(),
     getRenderRun: vi.fn().mockResolvedValue(baseRun),
     listRecentRenderRuns: vi.fn(),
+    listActiveProjectRenderRuns: vi.fn(),
     createRenderRun: vi.fn(),
     attachTriggerRunId: vi.fn(),
     updateProgress: vi.fn((input) =>
@@ -238,6 +239,7 @@ export function createRepository(
         })
       )
     ),
+    markCancelled: vi.fn(),
     recordHeartbeat: vi.fn(),
     appendEvent: vi.fn().mockResolvedValue(true),
     createAsset: vi.fn((input) => {

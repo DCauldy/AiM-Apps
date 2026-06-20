@@ -94,6 +94,7 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
     getRenderRun: vi.fn(),
     getRenderRunByIdForUser: vi.fn(),
     listRecentRenderRuns: vi.fn(),
+    listActiveProjectRenderRuns: vi.fn().mockResolvedValue([]),
     createRenderRun: vi.fn().mockResolvedValue(baseRun),
     attachTriggerRunId: vi.fn((input) =>
       Promise.resolve(
@@ -110,6 +111,17 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
           status: "failed",
           currentStep: input.step,
           currentStepLabel: input.label,
+          errorMessage: input.safeMessage,
+        })
+      )
+    ),
+    markCancelled: vi.fn((input) =>
+      Promise.resolve(
+        runWith({
+          id: input.runId,
+          status: "cancelled",
+          currentStep: "cancelled",
+          currentStepLabel: "Cancelled",
           errorMessage: input.safeMessage,
         })
       )
@@ -179,6 +191,59 @@ describe("createTourRenderRun", () => {
       userId: "user-1",
       triggerRunId: "trigger-run-1",
     });
+  });
+
+  it("cancels active project render runs before creating the new run", async () => {
+    const activeRun = runWith({
+      id: "run-old",
+      triggerRunId: "trigger-run-old",
+      status: "running",
+      currentStep: "rendering_scene_clips",
+      currentStepLabel: "Rendering Scene Clips",
+    });
+    const repository = createRepository({
+      listActiveProjectRenderRuns: vi.fn().mockResolvedValue([activeRun]),
+    });
+    const triggerTask = vi.fn().mockResolvedValue({ id: "trigger-run-1" });
+    const cancelTriggerRun = vi.fn().mockResolvedValue({ id: "trigger-run-old" });
+
+    await createTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+      },
+      {
+        repository,
+        triggerTask,
+        cancelTriggerRun,
+        skipPreflight: true,
+      }
+    );
+
+    expect(repository.listActiveProjectRenderRuns).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+    });
+    expect(repository.markCancelled).toHaveBeenCalledWith({
+      runId: "run-old",
+      projectId: "project-1",
+      userId: "user-1",
+      safeMessage:
+        "Cancelled because a newer render was started for this tour project.",
+    });
+    expect(repository.appendEvent).toHaveBeenCalledWith({
+      runId: "run-old",
+      projectId: "project-1",
+      step: "cancelled",
+      status: "cancelled",
+      safeMessage:
+        "Cancelled because a newer render was started for this tour project.",
+      metadata: {
+        reason: "superseded_by_new_render",
+      },
+    });
+    expect(cancelTriggerRun).toHaveBeenCalledWith("trigger-run-old");
+    expect(repository.createRenderRun).toHaveBeenCalled();
   });
 
   it("uses TOURS_RENDER_MODE for default persisted and Trigger payload options", async () => {

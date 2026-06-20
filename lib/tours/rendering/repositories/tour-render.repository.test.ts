@@ -141,6 +141,7 @@ function createInsertBuilder(result: { data: unknown; error: unknown } = { data:
   chain.update = vi.fn(() => chain);
   chain.select = vi.fn(() => chain);
   chain.eq = vi.fn(() => chain);
+  chain.in = vi.fn(() => chain);
   chain.single = vi.fn().mockResolvedValue(result);
   chain.maybeSingle = vi.fn().mockResolvedValue(result);
   return chain;
@@ -397,6 +398,65 @@ describe("tour render repository", () => {
       expect(query.eq).toHaveBeenCalledWith("project_id", "project-1");
       expect(query.eq).toHaveBeenCalledWith("user_id", "user-1");
     }
+  });
+
+  test("lists active project render runs and marks a run cancelled", async () => {
+    const activeQuery: Record<string, unknown> = {};
+    activeQuery.select = vi.fn(() => activeQuery);
+    activeQuery.eq = vi.fn(() => activeQuery);
+    activeQuery.in = vi.fn(() => activeQuery);
+    activeQuery.order = vi.fn().mockResolvedValue({
+      data: [
+        runRow({
+          id: "run-active",
+          trigger_run_id: "trigger-run-active",
+          status: "running",
+        }),
+      ],
+      error: null,
+    });
+    const cancelQuery = createInsertBuilder({
+      data: runRow({
+        id: "run-active",
+        status: "cancelled",
+        current_step: "cancelled",
+        current_step_label: "Cancelled",
+        error_message: "Superseded",
+      }),
+      error: null,
+    });
+    const from = vi
+      .fn()
+      .mockReturnValueOnce(activeQuery)
+      .mockReturnValueOnce(cancelQuery);
+    const repository = createTourRenderRepositoryFromSupabase({ from } as never);
+
+    const activeRuns = await repository.listActiveProjectRenderRuns({
+      projectId: "project-1",
+      userId: "user-1",
+    });
+    const cancelled = await repository.markCancelled({
+      runId: "run-active",
+      projectId: "project-1",
+      userId: "user-1",
+      safeMessage: "Superseded",
+    });
+
+    expect(activeRuns).toHaveLength(1);
+    expect(activeRuns[0].id).toBe("run-active");
+    expect(cancelled?.status).toBe("cancelled");
+    expect(activeQuery.eq).toHaveBeenCalledWith("project_id", "project-1");
+    expect(activeQuery.eq).toHaveBeenCalledWith("user_id", "user-1");
+    expect(activeQuery.in).toHaveBeenCalledWith("status", ["queued", "running"]);
+    expect(cancelQuery.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "cancelled",
+        current_step: "cancelled",
+        current_step_label: "Cancelled",
+        error_message: "Superseded",
+      })
+    );
+    expect(cancelQuery.in).toHaveBeenCalledWith("status", ["queued", "running"]);
   });
 
   test("persists events and assets, records run usage, and queries reusable assets", async () => {

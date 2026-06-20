@@ -1,4 +1,8 @@
 import type { TourProjectType } from "../../projects/project-types";
+import {
+  TOUR_RENDER_SCENE_CLIP_MODEL_OPTIONS,
+  TOUR_RENDER_SCRIPT_PLANNING_MODEL_OPTIONS,
+} from "../options/render-options";
 import type {
   TourRenderMode,
   TourRenderOptions,
@@ -46,8 +50,21 @@ type TokenModelPricing = {
   outputUsdPerMillionTokens: number;
 };
 type ReuseFlag = keyof NonNullable<TourRenderOptions["reuse"]>;
+type TourProviderSpendPricing = {
+  conservativeClipSeconds: number;
+  openRouterScriptPlanning: Record<string, TokenModelPricing>;
+  openRouterSceneClips: Record<string, number>;
+  elevenLabsVoiceover: {
+    defaultModelId: string;
+    usdPerCharacter: number;
+    estimatedCharactersPerSecond: number;
+  };
+  heyGenAvatar: {
+    standardUsdPerSecond: number;
+  };
+};
 
-export const TOUR_PROVIDER_SPEND_PRICING = {
+export const TOUR_PROVIDER_SPEND_PRICING: TourProviderSpendPricing = {
   conservativeClipSeconds: 10,
   openRouterScriptPlanning: {
     "google/gemini-2.5-flash": {
@@ -58,30 +75,54 @@ export const TOUR_PROVIDER_SPEND_PRICING = {
       inputUsdPerMillionTokens: 1.5,
       outputUsdPerMillionTokens: 9,
     },
+    "google/gemma-3-4b-it": {
+      inputUsdPerMillionTokens: 0.05,
+      outputUsdPerMillionTokens: 0.1,
+    },
+    "openai/gpt-5-mini": {
+      inputUsdPerMillionTokens: 0.25,
+      outputUsdPerMillionTokens: 2,
+    },
+    "openai/gpt-4o": {
+      inputUsdPerMillionTokens: 2.5,
+      outputUsdPerMillionTokens: 10,
+    },
+    "z-ai/glm-4.6v": {
+      inputUsdPerMillionTokens: 0.3,
+      outputUsdPerMillionTokens: 0.9,
+    },
+    "openai/gpt-5": {
+      inputUsdPerMillionTokens: 1.25,
+      outputUsdPerMillionTokens: 10,
+    },
     default: {
       inputUsdPerMillionTokens: 0.3,
       outputUsdPerMillionTokens: 2.5,
     },
-  } satisfies Record<string, TokenModelPricing>,
+  },
   openRouterSceneClips: {
     "kwaivgi/kling-v3.0-std": 0.126,
     "kwaivgi/kling-v3.0-pro": 0.168,
     "kwaivgi/kling-video-o1": 0.112,
+    "x-ai/grok-imagine-video": 0.05,
+    "google/veo-3.1-lite": 0.05,
     default: 0.126,
-  } satisfies Record<string, number>,
+  },
   elevenLabsVoiceover: {
     defaultModelId: "eleven_multilingual_v2",
-    usdPerCharacter: 0.0003,
+    usdPerCharacter: 0.0001,
     estimatedCharactersPerSecond: 14,
   },
   heyGenAvatar: {
-    standardUsdPerMinute: 1,
+    standardUsdPerSecond: 0.0667,
   },
-} as const;
+};
 
 const DEFAULT_RENDER_MODE: TourRenderMode = "ken_burns_ffmpeg";
-const DEFAULT_SCRIPT_PLANNING_MODEL_ID = "google/gemini-2.5-flash";
-const DEFAULT_SCENE_CLIP_PROVIDER_MODEL_ID = "kwaivgi/kling-v3.0-std";
+const DEFAULT_SCRIPT_PLANNING_MODEL_ID =
+  TOUR_RENDER_SCRIPT_PLANNING_MODEL_OPTIONS[0].id;
+const DEFAULT_SCENE_CLIP_PROVIDER_MODEL_ID =
+  TOUR_RENDER_SCENE_CLIP_MODEL_OPTIONS[0].id;
 
 function shouldRegenerate(
   options: TourRenderOptions,
@@ -232,8 +273,8 @@ export function estimateTourProviderSpend(
         ? "HeyGen avatar generation is not expected because avatar reuse is requested."
         : "HeyGen avatar generation is not expected for this tour type.",
     estimatedCostUsd: regeneratesAvatar
-      ? (totalVideoSeconds / 60) *
-        TOUR_PROVIDER_SPEND_PRICING.heyGenAvatar.standardUsdPerMinute
+      ? totalVideoSeconds *
+        TOUR_PROVIDER_SPEND_PRICING.heyGenAvatar.standardUsdPerSecond
       : 0,
   });
 

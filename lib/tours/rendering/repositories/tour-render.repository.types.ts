@@ -17,6 +17,7 @@ export const TOUR_RENDER_STEPS = [
   "uploading_final",
   "completed",
   "failed",
+  "cancelled",
 ] as const;
 
 export type TourRenderStep = (typeof TOUR_RENDER_STEPS)[number];
@@ -353,6 +354,10 @@ export type TourRenderRepository = {
     userId: string;
     limit?: number;
   }): Promise<TourRenderRun[]>;
+  listActiveProjectRenderRuns(input: {
+    projectId: string;
+    userId: string;
+  }): Promise<TourRenderRun[]>;
   createRenderRun(input: CreateTourRenderRunInput): Promise<TourRenderRun | null>;
   attachTriggerRunId(input: {
     runId: string;
@@ -373,6 +378,12 @@ export type TourRenderRepository = {
     userId: string;
     step: TourRenderStep;
     label: string;
+    safeMessage: string;
+  }): Promise<TourRenderRun | null>;
+  markCancelled(input: {
+    runId: string;
+    projectId: string;
+    userId: string;
     safeMessage: string;
   }): Promise<TourRenderRun | null>;
   recordHeartbeat(input: {

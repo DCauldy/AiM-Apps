@@ -17,10 +17,12 @@ export function createTourRenderRunsRepository(
   | "getRenderRun"
   | "getRenderRunByIdForUser"
   | "listRecentRenderRuns"
+  | "listActiveProjectRenderRuns"
   | "attachTriggerRunId"
   | "updateProgress"
   | "markCompleted"
   | "markFailed"
+  | "markCancelled"
   | "recordHeartbeat"
   | "appendEvent"
 > {
@@ -99,6 +101,22 @@ export function createTourRenderRunsRepository(
       return (data as TourRenderRunRow[]).map(mapRenderRun);
     },
 
+    async listActiveProjectRenderRuns(input) {
+      const { data, error } = await supabase
+        .from("tour_render_runs")
+        .select(RUN_SELECT)
+        .eq("project_id", input.projectId)
+        .eq("user_id", input.userId)
+        .in("status", ["queued", "running"])
+        .order("created_at", { ascending: false });
+
+      if (error || !data) {
+        return [];
+      }
+
+      return (data as TourRenderRunRow[]).map(mapRenderRun);
+    },
+
     async attachTriggerRunId(input) {
       const { data, error } = await supabase
         .from("tour_render_runs")
@@ -109,6 +127,7 @@ export function createTourRenderRunsRepository(
         .eq("id", input.runId)
         .eq("project_id", input.projectId)
         .eq("user_id", input.userId)
+        .in("status", ["queued", "running"])
         .select(RUN_SELECT)
         .maybeSingle<TourRenderRunRow>();
 
@@ -143,6 +162,7 @@ export function createTourRenderRunsRepository(
         .eq("id", input.runId)
         .eq("project_id", input.projectId)
         .eq("user_id", input.userId)
+        .in("status", ["queued", "running"])
         .select(RUN_SELECT)
         .maybeSingle<TourRenderRunRow>();
 
@@ -170,6 +190,34 @@ export function createTourRenderRunsRepository(
         .eq("id", input.runId)
         .eq("project_id", input.projectId)
         .eq("user_id", input.userId)
+        .in("status", ["queued", "running"])
+        .select(RUN_SELECT)
+        .maybeSingle<TourRenderRunRow>();
+
+      if (error || !data) {
+        return null;
+      }
+
+      return mapRenderRun(data);
+    },
+
+    async markCancelled(input) {
+      const now = new Date().toISOString();
+      const { data, error } = await supabase
+        .from("tour_render_runs")
+        .update({
+          status: "cancelled",
+          current_step: "cancelled",
+          current_step_label: "Cancelled",
+          error_message: safeRenderMessage(input.safeMessage),
+          completed_at: now,
+          heartbeat_at: now,
+          updated_at: now,
+        })
+        .eq("id", input.runId)
+        .eq("project_id", input.projectId)
+        .eq("user_id", input.userId)
+        .in("status", ["queued", "running"])
         .select(RUN_SELECT)
         .maybeSingle<TourRenderRunRow>();
 
