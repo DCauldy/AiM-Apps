@@ -10,7 +10,7 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: mocks.createClient,
 }));
 
-import { getTourRenderProjectSettings } from "./tour-render-project-settings";
+import { getTourRenderProjectSettings } from "./project-settings";
 
 function createProjectSettingsBuilder(data: unknown) {
   const chain: Record<string, unknown> = {};

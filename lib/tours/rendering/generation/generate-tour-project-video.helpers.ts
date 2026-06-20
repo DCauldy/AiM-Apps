@@ -1,15 +1,15 @@
-import type { FinalRenderAvatarOverlay } from "../final-render/tour-final-render";
+import type { FinalRenderAvatarOverlay } from "../final-render/final-render";
 import type {
   TourRenderOptions,
   TourRenderPreflightIssue,
   TourRenderPreflightResult,
-} from "../preflight/tour-render-preflight";
+} from "../preflight/preflight";
 import type { RenderableTourProject, TourRenderAsset } from "../repositories/tour-render.repository";
-import { TourSceneClipRenderError } from "../scenes/tour-scene-clips";
+import { TourSceneClipRenderError } from "../scenes/scene-clips";
 import { TourScriptPlanningError, type TourScriptPlan } from "./tour-script-planning";
 import { type SceneDuration, TourTransitionDetectionError } from "../transitions/tour-transitions";
 import { TourVoiceoverError } from "../voiceover/tour-voiceover";
-import { TourFinalRenderError } from "../final-render/tour-final-render";
+import { TourFinalRenderError } from "../final-render/final-render";
 import { TourAvatarError } from "../avatars/tour-avatar";
 import type {
   TourAvatarBatchItem,

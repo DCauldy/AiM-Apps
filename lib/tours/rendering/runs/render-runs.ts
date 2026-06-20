@@ -6,7 +6,7 @@ import {
   type TourRenderRunAssetResponse,
   type TourRenderTimelineStep,
   type TourRenderRunStatusResponse,
-} from "../contracts/tour-render.contract";
+} from "../contracts/render.contract";
 import type { TourProjectType } from "../../project-types";
 import {
   createTourRenderRepository,
@@ -21,8 +21,8 @@ import {
   preflightTourRender,
   type TourRenderOptions,
   type TourRenderPreflightResult,
-} from "../preflight/tour-render-preflight";
-import { sanitizeTourRenderInvestigationOptions } from "../options/tour-render-options";
+} from "../preflight/preflight";
+import { sanitizeTourRenderInvestigationOptions } from "../options/render-options";
 
 type CreateTourRenderRunInput = {
   projectId: string;

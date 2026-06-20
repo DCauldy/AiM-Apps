@@ -10,7 +10,7 @@ import {
   buildTourRenderImageToVideoPromptPreview,
   buildTourRenderScriptPlannerPromptPreview,
   type TourRenderPromptPreviewProject,
-} from "./tour-render-prompt-previews";
+} from "./prompt-previews";
 
 const project: TourRenderPromptPreviewProject = {
   id: "project-1",

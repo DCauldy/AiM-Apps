@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/tour-render.contract";
+import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/render.contract";
 import {
   FRESH_RENDER_OPTIONS,
   buildCreateRenderRunRequestBody,

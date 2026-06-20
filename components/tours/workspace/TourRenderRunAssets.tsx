@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/tour-render.contract";
+import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/render.contract";
 import type { TourRenderAsset } from "@/lib/tours/rendering/repositories/tour-render.repository.types";
 import { Code, Download, File, Image, Music, Video } from "lucide-react";
 import { useState } from "react";

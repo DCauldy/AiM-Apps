@@ -1,6 +1,6 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import type { TourRenderRunAssetsResponse } from "@/lib/tours/rendering/contracts/tour-render.contract";
-import { listTourRenderRunAssetsWithUrls } from "@/lib/tours/rendering/runs/tour-render-runs";
+import type { TourRenderRunAssetsResponse } from "@/lib/tours/rendering/contracts/render.contract";
+import { listTourRenderRunAssetsWithUrls } from "@/lib/tours/rendering/runs/render-runs";
 
 export const dynamic = "force-dynamic";
 

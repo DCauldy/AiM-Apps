@@ -1,4 +1,4 @@
-import { preflightTourRender } from "../preflight/tour-render-preflight";
+import { preflightTourRender } from "../preflight/preflight";
 import { resolveProfileIdForRender } from "@/lib/profiles/resolve-for-render";
 import {
   createTourRenderRepository,
@@ -19,11 +19,11 @@ import {
 import {
   renderSceneClipsStage,
   type SceneClipBatchRunner,
-} from "../scenes/tour-scene-clips";
+} from "../scenes/scene-clips";
 import {
   renderFinalVideoStage,
   type FinalRenderAvatarOverlay,
-} from "../final-render/tour-final-render";
+} from "../final-render/final-render";
 import { prepareHeyGenAvatarStage } from "../avatars/tour-avatar";
 import {
   applyScriptPlannedCameraMotions,

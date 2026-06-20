@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { preflightTourRender, type TourRenderOptions } from "./tour-render-preflight";
+import { preflightTourRender, type TourRenderOptions } from "./preflight";
 import type {
   RenderableTourSceneSourcePhoto,
   TourRenderPreflightProject,

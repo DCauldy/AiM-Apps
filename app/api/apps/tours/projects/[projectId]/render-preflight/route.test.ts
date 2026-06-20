@@ -13,7 +13,7 @@ vi.mock("@/lib/tours/access.server", () => ({
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
 }));
 
-vi.mock("@/lib/tours/rendering/runs/tour-render-runs", () => ({
+vi.mock("@/lib/tours/rendering/runs/render-runs", () => ({
   preflightTourRenderRun: mocks.preflightTourRenderRun,
 }));
 

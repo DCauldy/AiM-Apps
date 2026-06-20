@@ -9,7 +9,7 @@ import { ErrorMessage } from "@/components/tours/workspace/WorkspacePresentation
 import { TourRenderStatusPanel } from "@/components/tours/workspace/TourRenderStatusPanel";
 import { useTourProjectWorkspace } from "@/components/tours/workspace/useTourProjectWorkspace";
 import { useTourRenderRuns } from "@/components/tours/workspace/useTourRenderRuns";
-import { isTourRenderRunActive } from "@/lib/tours/rendering/contracts/tour-render.contract";
+import { isTourRenderRunActive } from "@/lib/tours/rendering/contracts/render.contract";
 
 export function TourProjectRenderingClient({
   projectId,

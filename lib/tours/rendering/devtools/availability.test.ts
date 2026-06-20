@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "vitest";
 
-import { isTourRenderDevToolAvailable } from "./tour-render-dev-tool-availability";
+import { isTourRenderDevToolAvailable } from "./availability";
 
 describe("Tour render dev-tool availability", () => {
   test("allows local development", () => {

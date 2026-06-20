@@ -6,7 +6,7 @@ import {
   getTourRenderOptionsForPreset,
   parseTourRenderOptionsInput,
   sanitizeTourRenderInvestigationOptions,
-} from "./tour-render-options";
+} from "./render-options";
 
 describe("tour render preset options", () => {
   test("maps every V1 preset to deterministic supported options", () => {

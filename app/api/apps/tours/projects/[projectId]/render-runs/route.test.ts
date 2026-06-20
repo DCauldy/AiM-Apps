@@ -42,11 +42,11 @@ vi.mock("@/lib/tours/facts", () => ({
   approveAllTourSceneFactsForProject: mocks.approveAllTourSceneFactsForProject,
 }));
 
-vi.mock("@/lib/tours/rendering/options/tour-render-project-settings", () => ({
+vi.mock("@/lib/tours/rendering/options/project-settings", () => ({
   getTourRenderProjectSettings: mocks.getTourRenderProjectSettings,
 }));
 
-vi.mock("@/lib/tours/rendering/runs/tour-render-runs", () => ({
+vi.mock("@/lib/tours/rendering/runs/render-runs", () => ({
   createTourRenderRun: mocks.createTourRenderRun,
   getTourRenderRunResultUrl: mocks.getTourRenderRunResultUrl,
   listRecentTourRenderRuns: mocks.listRecentTourRenderRuns,

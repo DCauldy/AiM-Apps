@@ -20,9 +20,9 @@ import {
   renderSceneClipBatchItem,
   type SceneClipBatchItem,
   type SceneClipBatchResult,
-} from "@/lib/tours/rendering/scenes/tour-scene-clips";
+} from "@/lib/tours/rendering/scenes/scene-clips";
 import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/repositories/tour-render-retention";
-import { getDefaultTourRenderMode } from "@/lib/tours/rendering/preflight/tour-render-preflight";
+import { getDefaultTourRenderMode } from "@/lib/tours/rendering/preflight/preflight";
 
 export const renderTourSceneClipTask = task({
   id: "render-tour-scene-clip",

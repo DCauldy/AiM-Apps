@@ -1,5 +1,5 @@
 import type { TourRenderAsset } from "../repositories/tour-render.repository.types";
-import type { TourRenderInvestigationOptions } from "../options/tour-render-options";
+import type { TourRenderInvestigationOptions } from "../options/render-options";
 
 export type TourRenderRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 

@@ -1,8 +1,8 @@
-import type { TourRenderRunStatusResponse } from "../contracts/tour-render.contract";
+import type { TourRenderRunStatusResponse } from "../contracts/render.contract";
 import {
   formatTourProviderSpendUsd,
   type TourProviderSpendEstimate,
-} from "../spend/tour-render-provider-spend";
+} from "../spend/provider-spend";
 
 export type TourRenderInvestigationExportInput = {
   projectId: string;

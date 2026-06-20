@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { estimateTourProviderSpend } from "./tour-render-provider-spend";
+import { estimateTourProviderSpend } from "./provider-spend";
 
 describe("tour provider spend estimator", () => {
   test("estimates cheap reuse with dollar details", () => {

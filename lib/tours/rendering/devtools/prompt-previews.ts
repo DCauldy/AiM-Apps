@@ -6,7 +6,7 @@ import {
   type TourScriptPlanningPromptInput,
 } from "../providers/openrouter-script-planning-prompts";
 import { buildOpenRouterSceneClipPrompt } from "../scenes/openrouter-scene-clip-prompts";
-import type { TourRenderOptions } from "../preflight/tour-render-preflight";
+import type { TourRenderOptions } from "../preflight/preflight";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 import type { TourProjectType } from "@/lib/tours/project-types";
 

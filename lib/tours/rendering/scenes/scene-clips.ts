@@ -11,8 +11,8 @@ import type {
   TourRenderRepository,
 } from "../repositories/tour-render.repository";
 import type { SceneDuration } from "../transitions/tour-transitions";
-import { getDefaultTourRenderMode, type TourRenderMode } from "../preflight/tour-render-preflight";
-import { TourSceneClipRenderError } from "./tour-scene-clip-errors";
+import { getDefaultTourRenderMode, type TourRenderMode } from "../preflight/preflight";
+import { TourSceneClipRenderError } from "./scene-clip-errors";
 import {
   buildSceneClipTransitionFingerprint,
   planSceneClipHandles,
@@ -20,7 +20,7 @@ import {
   type SceneClipHandlePlan,
   type SceneClipTransitionFingerprint,
   type TourSceneTransitionSettings,
-} from "../transitions/tour-render-transitions";
+} from "../transitions/render-transitions";
 import {
   assertVideoDurationAtLeast,
   probeVideoDurationSeconds,
@@ -30,8 +30,8 @@ import {
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
 export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v3";
 export const DEFAULT_SCENE_CLIP_PROVIDER_MODEL = "kwaivgi/kling-v3.0-std";
-export { TourSceneClipRenderError } from "./tour-scene-clip-errors";
-export { createOpenRouterImageToVideoProvider } from "./tour-scene-clip-openrouter";
+export { TourSceneClipRenderError } from "./scene-clip-errors";
+export { createOpenRouterImageToVideoProvider } from "./scene-clip-openrouter";
 
 export type SceneClipRenderSettings = {
   width?: number;

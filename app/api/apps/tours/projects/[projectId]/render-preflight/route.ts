@@ -1,5 +1,5 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
-import { preflightTourRenderRun } from "@/lib/tours/rendering/runs/tour-render-runs";
+import { preflightTourRenderRun } from "@/lib/tours/rendering/runs/render-runs";
 
 export const dynamic = "force-dynamic";
 

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/tour-render.contract";
+import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/render.contract";
 import { appendDownloadTitle, TourRenderStatusPanel } from "./TourRenderStatusPanel";
 
 afterEach(() => {

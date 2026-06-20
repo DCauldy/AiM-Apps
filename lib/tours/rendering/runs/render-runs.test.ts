@@ -7,8 +7,8 @@ import {
   getTourRenderRunResultUrl,
   listTourRenderRunAssetsWithUrls,
   toTourRenderRunStatusResponse,
-} from "./tour-render-runs";
-import { getTourRenderOptionsForPreset } from "../options/tour-render-options";
+} from "./render-runs";
+import { getTourRenderOptionsForPreset } from "../options/render-options";
 import type {
   RenderableTourProject,
   RenderableTourSceneSourcePhoto,

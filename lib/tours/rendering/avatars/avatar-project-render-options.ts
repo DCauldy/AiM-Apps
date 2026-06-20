@@ -1,6 +1,6 @@
 import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-project-settings";
 import type { HeyGenAvatarPositioningInput } from "./tour-avatar";
-import type { TourRenderOptions } from "../preflight/tour-render-preflight";
+import type { TourRenderOptions } from "../preflight/preflight";
 
 export function normalizeProjectAvatarPosition(
   position: HeyGenAvatarProjectPosition

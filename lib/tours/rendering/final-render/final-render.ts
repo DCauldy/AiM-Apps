@@ -12,7 +12,7 @@ import {
   resolveTourSceneTransitionSettings,
   type SceneClipHandlePlan,
   type TourSceneTransitionSettings,
-} from "../transitions/tour-render-transitions";
+} from "../transitions/render-transitions";
 import {
   assertVideoDurationAtLeast,
   assertVideoDurationClose,

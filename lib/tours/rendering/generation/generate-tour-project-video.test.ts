@@ -15,9 +15,9 @@ import {
 } from "./generate-tour-project-video.test-helpers";
 import { generateTourProjectVideo } from "./generate-tour-project-video";
 import type { HeyGenAvatarProvider } from "../avatars/tour-avatar";
-import type { FinalVideoRenderer } from "../final-render/tour-final-render";
+import type { FinalVideoRenderer } from "../final-render/final-render";
 import type { RenderableTourProject } from "../repositories/tour-render.repository";
-import type { SceneClipRenderer } from "../scenes/tour-scene-clips";
+import type { SceneClipRenderer } from "../scenes/scene-clips";
 import type { TourAvatarBatchResult, TourMediaBatchRunner } from "./generate-tour-project-video";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
 import type { TransitionDetectionProvider } from "../transitions/tour-transitions";

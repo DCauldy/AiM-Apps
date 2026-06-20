@@ -2,7 +2,7 @@ import type { TourProjectType } from "../../project-types";
 import type {
   TourRenderMode,
   TourRenderOptions,
-} from "../preflight/tour-render-preflight";
+} from "../preflight/preflight";
 
 export type TourProviderSpendRisk = "low" | "moderate" | "high";
 

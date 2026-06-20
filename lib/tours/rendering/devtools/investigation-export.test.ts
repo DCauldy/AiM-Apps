@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { TourRenderRunStatusResponse } from "../contracts/tour-render.contract";
-import { formatTourRenderInvestigationExport } from "./tour-render-investigation-export";
-import { estimateTourProviderSpend } from "../spend/tour-render-provider-spend";
-import type { TourRenderOptions } from "../preflight/tour-render-preflight";
+import type { TourRenderRunStatusResponse } from "../contracts/render.contract";
+import { formatTourRenderInvestigationExport } from "./investigation-export";
+import { estimateTourProviderSpend } from "../spend/provider-spend";
+import type { TourRenderOptions } from "../preflight/preflight";
 
 function run(
   overrides: Partial<TourRenderRunStatusResponse> = {},

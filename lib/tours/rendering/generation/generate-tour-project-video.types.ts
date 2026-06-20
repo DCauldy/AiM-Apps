@@ -5,8 +5,8 @@ import type {
   HeyGenAvatarStageOptions,
   HeyGenAvatarStageResult,
 } from "../avatars/tour-avatar";
-import type { FinalVideoRenderer } from "../final-render/tour-final-render";
-import type { preflightTourRender, TourRenderOptions } from "../preflight/tour-render-preflight";
+import type { FinalVideoRenderer } from "../final-render/final-render";
+import type { preflightTourRender, TourRenderOptions } from "../preflight/preflight";
 import type {
   TourRenderAsset,
   TourRenderRepository,
@@ -18,7 +18,7 @@ import type {
   SceneClipBatchResult,
   SceneClipBatchRunner,
   SceneClipRenderer,
-} from "../scenes/tour-scene-clips";
+} from "../scenes/scene-clips";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
 import type { TransitionDetectionProvider } from "../transitions/tour-transitions";
 import type { VoiceoverProvider } from "../voiceover/tour-voiceover";

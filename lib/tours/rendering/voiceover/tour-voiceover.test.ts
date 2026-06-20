@@ -128,7 +128,7 @@ describe("generateVoiceoverStage", () => {
     await expect(
       generateVoiceoverStage({
         projectId: "project-1",
-        runId: "run-1",
+        runId: "voiceover-run",
         userId: "user-1",
         profileId: "profile-1",
         scriptPlan,
@@ -155,7 +155,7 @@ describe("generateVoiceoverStage", () => {
 
     const result = await generateVoiceoverStage({
       projectId: "project-1",
-      runId: "run-1",
+      runId: "voiceover-run",
       userId: "user-1",
         profileId: "profile-1",
       scriptPlan,
@@ -168,12 +168,12 @@ describe("generateVoiceoverStage", () => {
     expect(result.reused).toBe(true);
     expect(provider.generateVoiceover).not.toHaveBeenCalled();
     expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
-      runId: "run-1",
+      runId: "voiceover-run",
       assetId: "asset-audio",
       usage: "reused",
     });
     expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
-      runId: "run-1",
+      runId: "voiceover-run",
       assetId: "asset-transcript",
       usage: "reused",
     });
@@ -185,7 +185,7 @@ describe("generateVoiceoverStage", () => {
 
     const result = await generateVoiceoverStage({
       projectId: "project-1",
-      runId: "run-1",
+      runId: "voiceover-run",
       userId: "user-1",
         profileId: "profile-1",
       scriptPlan,
@@ -258,7 +258,7 @@ describe("generateVoiceoverStage", () => {
 
     await generateVoiceoverStage({
       projectId: "project-1",
-      runId: "run-1",
+      runId: "voiceover-run",
       userId: "user-1",
         profileId: "profile-1",
       scriptPlan,
@@ -313,7 +313,7 @@ describe("generateVoiceoverStage", () => {
     await expect(
       generateVoiceoverStage({
         projectId: "project-1",
-        runId: "run-1",
+        runId: "voiceover-run",
         userId: "user-1",
         profileId: "profile-1",
         scriptPlan,
@@ -337,7 +337,7 @@ describe("generateVoiceoverStage", () => {
     await expect(
       generateVoiceoverStage({
         projectId: "project-1",
-        runId: "run-1",
+        runId: "voiceover-run",
         userId: "user-1",
         profileId: "profile-1",
         scriptPlan,

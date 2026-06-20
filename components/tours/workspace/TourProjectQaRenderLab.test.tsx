@@ -6,9 +6,9 @@ import userEvent from "@testing-library/user-event";
 
 import { TourProjectQaRenderLab } from "./TourProjectQaRenderLab";
 import type { TourProjectType } from "@/lib/tours/project-types";
-import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/tour-render.contract";
-import { sanitizeTourRenderInvestigationOptions } from "@/lib/tours/rendering/options/tour-render-options";
-import type { TourRenderPromptPreviewProject } from "@/lib/tours/rendering/devtools/tour-render-prompt-previews";
+import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/contracts/render.contract";
+import { sanitizeTourRenderInvestigationOptions } from "@/lib/tours/rendering/options/render-options";
+import type { TourRenderPromptPreviewProject } from "@/lib/tours/rendering/devtools/prompt-previews";
 
 if (!HTMLElement.prototype.hasPointerCapture) {
   HTMLElement.prototype.hasPointerCapture = () => false;

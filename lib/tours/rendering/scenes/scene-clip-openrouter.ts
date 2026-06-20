@@ -1,5 +1,5 @@
-import { TourSceneClipRenderError } from "./tour-scene-clip-errors";
-import type { ImageToVideoProvider } from "./tour-scene-clips";
+import { TourSceneClipRenderError } from "./scene-clip-errors";
+import type { ImageToVideoProvider } from "./scene-clips";
 import { buildOpenRouterSceneClipPrompt } from "./openrouter-scene-clip-prompts";
 import { openRouterApps } from "@/lib/openrouter/apps";
 import { createOpenRouterClient } from "@/lib/openrouter/client";

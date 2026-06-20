@@ -13,10 +13,10 @@ import {
   type ProviderSceneClipNormalizer,
   type SceneClipBatchItem,
   type SceneClipRenderer,
-} from "./tour-scene-clips";
-import { buildOpenRouterSceneClipPrompt } from "./tour-scene-clip-openrouter";
+} from "./scene-clips";
+import { buildOpenRouterSceneClipPrompt } from "./scene-clip-openrouter";
 import type { RenderableTourProject, TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
-import { planSceneClipHandles, resolveTourSceneTransitionSettings } from "../transitions/tour-render-transitions";
+import { planSceneClipHandles, resolveTourSceneTransitionSettings } from "../transitions/render-transitions";
 import type { SceneDuration } from "../transitions/tour-transitions";
 
 const primarySourcePhoto = {
@@ -223,7 +223,7 @@ describe("renderSceneClipsStage", () => {
     const result = await renderSceneClipsStage({
       project,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations,
       onClipCompleted,
@@ -239,7 +239,7 @@ describe("renderSceneClipsStage", () => {
     expect(repository.downloadListingMedia).not.toHaveBeenCalled();
     expect(repository.uploadRenderAssetBytes).not.toHaveBeenCalled();
     expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
-      runId: "run-1",
+      runId: "scene-clips-run",
       assetId: "asset-clip",
       usage: "reused",
     });
@@ -278,7 +278,7 @@ describe("renderSceneClipsStage", () => {
     const result = await renderSceneClipsStage({
       project: multiSceneProject,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations: multiSceneDurations,
       renderer,
@@ -292,17 +292,17 @@ describe("renderSceneClipsStage", () => {
     ]);
     expect(renderer.renderSceneClip).toHaveBeenCalledTimes(2);
     expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
-      runId: "run-1",
+      runId: "scene-clips-run",
       assetId: "asset-scene-2-reused",
       usage: "reused",
     });
     expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
-      runId: "run-1",
+      runId: "scene-clips-run",
       assetId: "asset-scene-1-created",
       usage: "created",
     });
     expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
-      runId: "run-1",
+      runId: "scene-clips-run",
       assetId: "asset-scene-3-created",
       usage: "created",
     });
@@ -337,7 +337,7 @@ describe("renderSceneClipsStage", () => {
     const result = await renderSceneClipsStage({
       project: multiSceneProject,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations: multiSceneDurations,
       batchRunner,
@@ -372,7 +372,7 @@ describe("renderSceneClipsStage", () => {
     const result = await renderSceneClipsStage({
       project,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations,
       renderer,
@@ -445,7 +445,7 @@ describe("renderSceneClipsStage", () => {
     const result = await renderSceneClipsStage({
       project: multiSceneProject,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations: multiSceneDurations,
       renderer,
@@ -477,7 +477,7 @@ describe("renderSceneClipsStage", () => {
     await renderSceneClipsStage({
       project,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations,
       provider,
@@ -580,7 +580,7 @@ describe("renderSceneClipsStage", () => {
     await renderSceneClipsStage({
       project: projectWithSecondaryPhotos,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations,
       provider,
@@ -630,7 +630,7 @@ describe("renderSceneClipsStage", () => {
     await renderSceneClipsStage({
       project,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations,
       provider,
@@ -767,7 +767,7 @@ describe("renderSceneClipsStage", () => {
       renderSceneClipsStage({
         project,
         repository,
-        runId: "run-1",
+        runId: "scene-clips-run",
         userId: "user-1",
         durations,
         renderer,
@@ -793,7 +793,7 @@ describe("renderSceneClipsStage", () => {
       renderSceneClipsStage({
         project,
         repository,
-        runId: "run-1",
+        runId: "scene-clips-run",
         userId: "user-1",
         durations,
         renderer,
@@ -867,7 +867,7 @@ describe("buildSceneClipFingerprint", () => {
     const result = await renderSceneClipsStage({
       project: multiSceneProject,
       repository,
-      runId: "run-1",
+      runId: "scene-clips-run",
       userId: "user-1",
       durations: multiSceneDurations,
       provider,
@@ -940,7 +940,7 @@ describe("buildSceneClipFingerprint", () => {
       renderSceneClipsStage({
         project: multiSceneProject,
         repository,
-        runId: "run-1",
+        runId: "scene-clips-run",
         userId: "user-1",
         durations: multiSceneDurations,
         provider,

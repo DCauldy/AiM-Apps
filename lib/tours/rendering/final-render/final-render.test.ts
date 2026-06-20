@@ -10,10 +10,10 @@ import {
   renderFinalVideoStage,
   type FinalRenderSceneClip,
   type FinalVideoRenderer,
-} from "./tour-final-render";
+} from "./final-render";
 import type { HeyGenAvatarMetadata } from "../avatars/tour-avatar";
 import type { TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
-import { resolveTourSceneTransitionSettings } from "../transitions/tour-render-transitions";
+import { resolveTourSceneTransitionSettings } from "../transitions/render-transitions";
 
 const sceneClipAsset1: TourRenderAsset = {
   id: "asset-clip-1",
