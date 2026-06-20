@@ -118,7 +118,7 @@ export const TOUR_PROVIDER_SPEND_PRICING: TourProviderSpendPricing = {
   },
 };
 
-const DEFAULT_RENDER_MODE: TourRenderMode = "ken_burns_ffmpeg";
+const DEFAULT_RENDER_MODE: TourRenderMode = "provider_image_to_video";
 const DEFAULT_SCRIPT_PLANNING_MODEL_ID =
   TOUR_RENDER_SCRIPT_PLANNING_MODEL_OPTIONS[0].id;
 const DEFAULT_SCENE_CLIP_PROVIDER_MODEL_ID =

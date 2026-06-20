@@ -52,8 +52,8 @@ describe("tour provider spend estimator", () => {
       },
     });
 
-    expect(estimate.risk).toBe("low");
-    expect(estimate.estimatedTotalUsd).toBe(0.02);
+    expect(estimate.risk).toBe("high");
+    expect(estimate.estimatedTotalUsd).toBe(7.58);
     expect(estimate.lineItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -61,8 +61,8 @@ describe("tour provider spend estimator", () => {
           estimatedCostUsd: 0.02,
         }),
         expect.objectContaining({
-          id: "local_ken_burns",
-          estimatedCostUsd: 0,
+          id: "openrouter_scene_clips",
+          estimatedCostUsd: 7.56,
         }),
       ]),
     );

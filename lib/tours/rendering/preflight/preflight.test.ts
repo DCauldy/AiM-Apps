@@ -100,7 +100,7 @@ describe("preflightTourRender", () => {
       summary: {
         projectId: "project-1",
         tourType: "tour_video",
-        renderMode: "ken_burns_ffmpeg",
+        renderMode: "provider_image_to_video",
         includedSceneCount: 1,
         sourcePhotoCount: 1,
         proofedFactCount: 0,
@@ -117,13 +117,13 @@ describe("preflightTourRender", () => {
   });
 
   test("uses TOURS_RENDER_MODE as the default render mode", async () => {
-    process.env.TOURS_RENDER_MODE = "provider_image_to_video";
+    process.env.TOURS_RENDER_MODE = "ken_burns_ffmpeg";
     const repository = createRepository();
 
     await expect(runPreflight(repository)).resolves.toEqual({
       ok: true,
       summary: expect.objectContaining({
-        renderMode: "provider_image_to_video",
+        renderMode: "ken_burns_ffmpeg",
       }),
     });
   });

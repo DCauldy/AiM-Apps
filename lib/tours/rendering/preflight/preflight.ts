@@ -128,7 +128,7 @@ type PreflightTourRenderServiceOptions = {
   resolveProfileId?: typeof resolveProfileIdForRender;
 };
 
-const DEFAULT_RENDER_MODE: TourRenderMode = "ken_burns_ffmpeg";
+const DEFAULT_RENDER_MODE: TourRenderMode = "provider_image_to_video";
 const TOUR_RENDER_MODES = new Set<TourRenderMode>([
   "ken_burns_ffmpeg",
   "provider_image_to_video",

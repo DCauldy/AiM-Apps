@@ -238,7 +238,7 @@ export function getAdvancedControlsStateForPreset(
 ): TourRenderAdvancedControlsState {
   const options = getTourRenderOptionsForPreset(preset);
   return {
-    renderMode: options.renderMode ?? "ken_burns_ffmpeg",
+    renderMode: options.renderMode ?? "provider_image_to_video",
     scriptPlanningModelId: options.scriptPlanningModelId ?? "",
     sceneClipProviderModelId: options.sceneClipProviderModelId ?? "",
     reuse: {
