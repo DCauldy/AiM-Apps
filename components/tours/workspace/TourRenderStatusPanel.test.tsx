@@ -16,6 +16,7 @@ afterEach(() => {
 function completedRun(): TourRenderRunStatusResponse {
   return {
     id: "run-1",
+    projectId: "project-1",
     status: "completed",
     step: "completed",
     label: "Completed",
@@ -36,6 +37,7 @@ function completedRun(): TourRenderRunStatusResponse {
     },
     error: null,
     triggerRunId: "trigger-run-1",
+    options: {},
   };
 }
 

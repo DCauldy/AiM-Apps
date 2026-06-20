@@ -6,6 +6,7 @@ import {
   createTourRenderRun,
   getTourRenderRunResultUrl,
   listTourRenderRunAssetsWithUrls,
+  toTourRenderRunStatusResponse,
 } from "./tour-render-runs";
 import { getTourRenderOptionsForPreset } from "./tour-render-options";
 import type {
@@ -453,6 +454,62 @@ describe("createTourRenderRun", () => {
         reason: "trigger_enqueue_failed",
       },
     });
+  });
+});
+
+describe("toTourRenderRunStatusResponse", () => {
+  it("exposes only sanitized investigation render options", () => {
+    const response = toTourRenderRunStatusResponse(
+      runWith({
+        options: {
+          renderMode: "provider_image_to_video",
+          reuseExistingAssets: true,
+          reuse: {
+            scriptPlan: true,
+            voiceover: true,
+            avatar: true,
+            sceneClips: false,
+            finalVideo: false,
+            transitions: false,
+          },
+          scriptPlanningModelId: "openrouter/planner",
+          sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+          tourType: "tour_video_avatar",
+          heyGenAvatarId: "avatar-secret",
+          heyGenAvatarPositioning: { anchor: "bottom-right" },
+          heyGenAvatarProjectPlacement: {
+            frame: { width: 1080, height: 1920 },
+          },
+          heyGenAvatarGeneration: { engine: "v2" },
+          elevenLabsVoiceId: "voice-secret",
+          elevenLabsVoiceSettings: { stability: 0.5 },
+          sceneClipRenderSettings: { width: 1920, height: 1080 },
+          transitionDetectionModelId: "transition-model",
+          finalMuxSettings: { videoCodec: "libx264" },
+        },
+      }),
+    );
+
+    expect(response.options).toEqual({
+      renderMode: "provider_image_to_video",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: false,
+      },
+      scriptPlanningModelId: "openrouter/planner",
+      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      tourType: "tour_video_avatar",
+    });
+    expect(JSON.stringify(response.options)).not.toContain("avatar-secret");
+    expect(JSON.stringify(response.options)).not.toContain("voice-secret");
+    expect(JSON.stringify(response.options)).not.toContain("finalMuxSettings");
+    expect(JSON.stringify(response.options)).not.toContain(
+      "sceneClipRenderSettings",
+    );
   });
 });
 

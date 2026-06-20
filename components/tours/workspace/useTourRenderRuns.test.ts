@@ -16,6 +16,7 @@ function renderRun(
 ): TourRenderRunStatusResponse {
   return {
     id: "run-1",
+    projectId: "project-1",
     status: "running",
     step: "rendering_scene_clips",
     label: "Rendering scene clips",
@@ -29,6 +30,7 @@ function renderRun(
     result: null,
     error: null,
     triggerRunId: "trigger-run-1",
+    options: {},
     ...overrides,
   };
 }

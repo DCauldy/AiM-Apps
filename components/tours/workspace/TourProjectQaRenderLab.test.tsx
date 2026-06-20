@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import type React from "react";
 import { afterEach, test, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { TourProjectQaRenderLab } from "./TourProjectQaRenderLab";
 import type { TourProjectType } from "@/lib/tours/project-types";
+import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
+import { sanitizeTourRenderInvestigationOptions } from "@/lib/tours/rendering/tour-render-options";
 import type { TourRenderPromptPreviewProject } from "@/lib/tours/rendering/tour-render-prompt-previews";
 
 if (!HTMLElement.prototype.hasPointerCapture) {
@@ -26,6 +28,8 @@ if (!HTMLElement.prototype.scrollIntoView) {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function renderQaRenderLab({
@@ -33,12 +37,14 @@ function renderQaRenderLab({
   includedSceneCount = 6,
   tourType = "tour_video",
   promptPreviewProject = promptProject,
+  currentRun,
   onSubmitOptions,
 }: {
   isAvailable?: boolean;
   includedSceneCount?: number;
   tourType?: TourProjectType;
   promptPreviewProject?: TourRenderPromptPreviewProject | null;
+  currentRun?: TourRenderRunStatusResponse | null;
   onSubmitOptions?: React.ComponentProps<
     typeof TourProjectQaRenderLab
   >["onSubmitOptions"];
@@ -49,6 +55,7 @@ function renderQaRenderLab({
       includedSceneCount={includedSceneCount}
       tourType={tourType}
       promptPreviewProject={promptPreviewProject}
+      currentRun={currentRun}
       onSubmitOptions={onSubmitOptions}
     />,
   );
@@ -90,6 +97,74 @@ const promptProject: TourRenderPromptPreviewProject = {
     },
   ],
 };
+
+const persistedOptionsWithInternals = {
+  renderMode: "provider_image_to_video",
+  sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+  scriptPlanningModelId: "openrouter/planner",
+  tourType: "tour_video_avatar",
+  reuseExistingAssets: true,
+  reuse: {
+    scriptPlan: true,
+    voiceover: true,
+    avatar: true,
+    sceneClips: false,
+    finalVideo: false,
+    transitions: false,
+  },
+  heyGenAvatarId: "avatar-secret",
+  heyGenAvatarPositioning: { anchor: "bottom-right" },
+  heyGenAvatarProjectPlacement: { frame: { width: 1080, height: 1920 } },
+  heyGenAvatarGeneration: { engine: "v2" },
+  elevenLabsVoiceId: "voice-secret",
+  elevenLabsVoiceSettings: { stability: 0.5 },
+  sceneClipRenderSettings: { width: 1920, height: 1080 },
+  transitionDetectionModelId: "transition-model",
+  finalMuxSettings: { videoCodec: "libx264" },
+};
+
+function renderRun(
+  overrides: Partial<TourRenderRunStatusResponse> = {},
+): TourRenderRunStatusResponse {
+  return {
+    id: "run-1",
+    projectId: "project-1",
+    status: "running",
+    step: "rendering_scene_clips",
+    label: "Rendering Scene Clips",
+    timelineSteps: [],
+    progressPercent: 40,
+    sceneClipCounts: {
+      completed: 1,
+      total: 3,
+    },
+    updatedAt: "2026-06-13T12:00:00.000Z",
+    result: null,
+    error: null,
+    triggerRunId: "trigger-run-1",
+    options: {
+      renderMode: "provider_image_to_video",
+      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: true,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: false,
+      },
+    },
+    ...overrides,
+  };
+}
+
+function sanitizedRunFromPersistedInternals() {
+  return renderRun({
+    options: sanitizeTourRenderInvestigationOptions(
+      persistedOptionsWithInternals,
+    ),
+  });
+}
 
 test("does not render when the server-authored availability signal is false", () => {
   renderQaRenderLab({ isAvailable: false });
@@ -146,6 +221,108 @@ test("renders a compact launcher with current estimated cost and dev-only popove
   );
   assert.ok(screen.getByRole("switch", { name: "Script plan reuse" }));
   assert.ok(screen.getByRole("button", { name: /Start render lab run/ }));
+});
+
+test("shows run details with parent Trigger.dev run id and persisted options", async () => {
+  const user = userEvent.setup();
+
+  renderQaRenderLab({ currentRun: sanitizedRunFromPersistedInternals() });
+
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+
+  assert.ok(screen.getByText("Run investigation"));
+  assert.ok(screen.getByText("project-1"));
+  assert.ok(screen.getByText("trigger-run-1"));
+  assert.ok(screen.getByText("running"));
+  assert.ok(
+    screen.getByText("rendering_scene_clips (Rendering Scene Clips)"),
+  );
+  assert.ok(screen.getByText("$7.56 estimated - High provider spend"));
+
+  await user.click(screen.getByText("Submitted/effective options"));
+
+  assert.ok(
+    screen.getByText(/"renderMode": "provider_image_to_video"/, {
+      selector: "pre",
+    }),
+  );
+  assert.match(
+    (screen.getByLabelText(
+      "Copyable render investigation packet",
+    ) as HTMLTextAreaElement).value,
+    /Parent Trigger\.dev run id: trigger-run-1/,
+  );
+  const renderedOptions = screen.getByText(
+    /"renderMode": "provider_image_to_video"/,
+    {
+      selector: "pre",
+    },
+  ).textContent;
+  const exportPacket = (
+    screen.getByLabelText(
+      "Copyable render investigation packet",
+    ) as HTMLTextAreaElement
+  ).value;
+
+  assert.doesNotMatch(renderedOptions ?? "", /avatar-secret|voice-secret/);
+  assert.doesNotMatch(
+    renderedOptions ?? "",
+    /heyGenAvatar|elevenLabs|sceneClipRenderSettings|finalMuxSettings|transitionDetectionModelId/,
+  );
+  assert.doesNotMatch(exportPacket, /avatar-secret|voice-secret/);
+  assert.doesNotMatch(
+    exportPacket,
+    /heyGenAvatar|elevenLabs|sceneClipRenderSettings|finalMuxSettings|transitionDetectionModelId/,
+  );
+});
+
+test("shows missing Trigger.dev run id handling in run details", async () => {
+  const user = userEvent.setup();
+
+  renderQaRenderLab({ currentRun: renderRun({ triggerRunId: null }) });
+
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+
+  assert.ok(screen.getAllByText("Not available").length >= 1);
+  assert.match(
+    (screen.getByLabelText(
+      "Copyable render investigation packet",
+    ) as HTMLTextAreaElement).value,
+    /Parent Trigger\.dev run id: Not available/,
+  );
+});
+
+test("shows failed run errors and copies the investigation packet", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  const user = userEvent.setup();
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+
+  renderQaRenderLab({
+    currentRun: renderRun({
+      status: "failed",
+      step: "failed",
+      label: "Failed",
+      error: { message: "Scene clip rendering failed." },
+    }),
+  });
+
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+
+  assert.ok(screen.getByText("Scene clip rendering failed."));
+  await user.click(screen.getByRole("button", { name: "Copy packet" }));
+
+  await waitFor(() => {
+    assert.equal(writeText.mock.calls.length, 1);
+  });
+  assert.match(writeText.mock.calls[0]?.[0], /Status: failed/);
+  assert.match(
+    writeText.mock.calls[0]?.[0],
+    /Error message: Scene clip rendering failed\./,
+  );
+  assert.ok(screen.getByRole("button", { name: "Copied" }));
 });
 
 test("submits advanced options through the provided dev-tool callback", async () => {

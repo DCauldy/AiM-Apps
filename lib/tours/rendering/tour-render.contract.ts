@@ -1,4 +1,5 @@
 import type { TourRenderAsset } from "./tour-render.repository.types";
+import type { TourRenderInvestigationOptions } from "./tour-render-options";
 
 export type TourRenderRunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
@@ -23,6 +24,7 @@ export type TourRenderTimelineStep = {
 
 export type TourRenderRunStatusResponse = {
   id: string;
+  projectId: string;
   status: TourRenderRunStatus;
   step: TourRenderStep | string;
   label: string;
@@ -42,6 +44,7 @@ export type TourRenderRunStatusResponse = {
     message: string;
   } | null;
   triggerRunId: string | null;
+  options: TourRenderInvestigationOptions;
 };
 
 export type TourRenderRunAssetResponse = TourRenderAsset & {

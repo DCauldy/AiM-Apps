@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, FlaskConical, Play, X } from "lucide-react";
+import { Check, Clipboard, FileText, FlaskConical, Play, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,8 @@ import {
   type TourProviderSpendLineItem,
   type TourProviderSpendRisk,
 } from "@/lib/tours/rendering/tour-render-provider-spend";
+import { formatTourRenderInvestigationExport } from "@/lib/tours/rendering/tour-render-investigation-export";
+import type { TourRenderRunStatusResponse } from "@/lib/tours/rendering/tour-render.contract";
 import {
   TOUR_RENDER_MODE_LABELS,
   TOUR_RENDER_MODES,
@@ -55,6 +57,7 @@ export function TourProjectQaRenderLab({
   tourType,
   isSubmitting = false,
   promptPreviewProject = null,
+  currentRun = null,
   onSubmitOptions,
 }: {
   isAvailable: boolean;
@@ -62,9 +65,13 @@ export function TourProjectQaRenderLab({
   tourType: TourProjectType;
   isSubmitting?: boolean;
   promptPreviewProject?: TourRenderPromptPreviewProject | null;
+  currentRun?: TourRenderRunStatusResponse | null;
   onSubmitOptions?: (options: TourRenderOptions) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
   const [activePromptPreview, setActivePromptPreview] =
     useState<TourRenderPromptPreview | null>(null);
   const [selectedPreset, setSelectedPreset] = useState<TourRenderPreset>(
@@ -80,6 +87,21 @@ export function TourProjectQaRenderLab({
     tourType,
     options: currentOptions,
   });
+  const currentRunSpendEstimate = currentRun
+    ? estimateTourProviderSpend({
+        includedSceneCount,
+        tourType,
+        options: currentRun.options as TourRenderOptions,
+      })
+    : null;
+  const investigationExport =
+    currentRun && currentRunSpendEstimate
+      ? formatTourRenderInvestigationExport({
+          projectId: currentRun.projectId,
+          run: currentRun,
+          providerSpendEstimate: currentRunSpendEstimate,
+        })
+      : null;
   const openScriptPlannerPromptPreview = () => {
     setActivePromptPreview(
       buildTourRenderScriptPlannerPromptPreview({
@@ -122,6 +144,19 @@ export function TourProjectQaRenderLab({
     }));
   };
 
+  const copyInvestigationExport = async () => {
+    if (!investigationExport) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(investigationExport);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  };
+
   if (!isAvailable) {
     return null;
   }
@@ -159,6 +194,15 @@ export function TourProjectQaRenderLab({
             Tour Project QA surface is active for this workspace.
           </p>
           <ProviderSpendSummary estimate={spendEstimate} />
+          {currentRun && currentRunSpendEstimate && investigationExport ? (
+            <RunInvestigationDetails
+              run={currentRun}
+              exportText={investigationExport}
+              estimate={currentRunSpendEstimate}
+              copyState={copyState}
+              onCopy={copyInvestigationExport}
+            />
+          ) : null}
           <div className="mt-4 space-y-3">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between gap-3">
@@ -477,6 +521,105 @@ function ProviderSpendSummary({
           <ProviderSpendLineItem key={item.id} item={item} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function RunInvestigationDetails({
+  run,
+  exportText,
+  estimate,
+  copyState,
+  onCopy,
+}: {
+  run: TourRenderRunStatusResponse;
+  exportText: string;
+  estimate: TourProviderSpendEstimate;
+  copyState: "idle" | "copied" | "failed";
+  onCopy: () => void;
+}) {
+  return (
+    <div className="mt-3 rounded-sm border border-yellow-300 bg-background p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">
+            Run investigation
+          </p>
+          <p className="mt-0.5 break-all text-[11px] text-muted-foreground">
+            Run {run.id}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0"
+          onClick={onCopy}
+        >
+          {copyState === "copied" ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Clipboard className="h-4 w-4" />
+          )}
+          {copyState === "copied" ? "Copied" : "Copy packet"}
+        </Button>
+      </div>
+      <dl className="mt-3 grid grid-cols-1 gap-2 text-[11px]">
+        <div className="grid grid-cols-[7rem_1fr] gap-2">
+          <dt className="font-medium text-muted-foreground">Project id</dt>
+          <dd className="break-all text-foreground">{run.projectId}</dd>
+        </div>
+        <div className="grid grid-cols-[7rem_1fr] gap-2">
+          <dt className="font-medium text-muted-foreground">
+            Trigger.dev run
+          </dt>
+          <dd className="break-all text-foreground">
+            {run.triggerRunId ?? "Not available"}
+          </dd>
+        </div>
+        <div className="grid grid-cols-[7rem_1fr] gap-2">
+          <dt className="font-medium text-muted-foreground">Status</dt>
+          <dd className="text-foreground">{run.status}</dd>
+        </div>
+        <div className="grid grid-cols-[7rem_1fr] gap-2">
+          <dt className="font-medium text-muted-foreground">Current step</dt>
+          <dd className="text-foreground">
+            {run.step}
+            {run.label ? ` (${run.label})` : ""}
+          </dd>
+        </div>
+        {run.error?.message ? (
+          <div className="grid grid-cols-[7rem_1fr] gap-2">
+            <dt className="font-medium text-muted-foreground">Error</dt>
+            <dd className="text-destructive">{run.error.message}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <p className="mt-3 text-[11px] text-muted-foreground">
+        {estimate.summary}
+      </p>
+      <details className="mt-2">
+        <summary className="cursor-pointer text-[11px] font-medium text-foreground">
+          Submitted/effective options
+        </summary>
+        <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-sm border border-border bg-muted/40 p-2 text-[11px] leading-relaxed text-foreground">
+          {JSON.stringify(run.options, null, 2)}
+        </pre>
+      </details>
+      <label className="mt-3 block text-[11px] font-medium text-foreground">
+        Copyable packet
+      </label>
+      <textarea
+        className="mt-1 h-28 w-full resize-none rounded-sm border border-border bg-muted/40 p-2 text-[11px] leading-relaxed text-foreground"
+        readOnly
+        value={exportText}
+        aria-label="Copyable render investigation packet"
+      />
+      {copyState === "failed" ? (
+        <p className="mt-1 text-[11px] text-destructive">
+          Browser blocked clipboard access.
+        </p>
+      ) : null}
     </div>
   );
 }

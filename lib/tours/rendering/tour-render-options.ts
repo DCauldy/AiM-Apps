@@ -2,6 +2,7 @@ import type {
   TourRenderMode,
   TourRenderOptions,
 } from "./tour-render-preflight";
+import { TOUR_PROJECT_TYPES, type TourProjectType } from "../project-types";
 
 type TourRenderOptionValidationResult =
   | { ok: true; options?: TourRenderOptions }
@@ -17,6 +18,16 @@ const SUPPORTED_REUSE_FLAGS = [
 
 type SupportedReuseFlag = (typeof SUPPORTED_REUSE_FLAGS)[number];
 export type { SupportedReuseFlag };
+
+export type TourRenderInvestigationOptions = Pick<
+  TourRenderOptions,
+  | "renderMode"
+  | "reuseExistingAssets"
+  | "reuse"
+  | "scriptPlanningModelId"
+  | "sceneClipProviderModelId"
+  | "tourType"
+>;
 
 export type TourRenderAdvancedControlsState = {
   renderMode: TourRenderMode;
@@ -73,6 +84,7 @@ export const TOUR_RENDER_PRESETS = Object.keys(
 ) as TourRenderPreset[];
 
 const SUPPORTED_REUSE_FLAG_SET = new Set<string>(SUPPORTED_REUSE_FLAGS);
+const TOUR_PROJECT_TYPE_SET = new Set<string>(TOUR_PROJECT_TYPES);
 export const TOUR_RENDER_REUSE_FLAGS = [...SUPPORTED_REUSE_FLAGS];
 export const TOUR_RENDER_REUSE_FLAG_LABELS: Record<SupportedReuseFlag, string> =
   {
@@ -110,6 +122,13 @@ function isSupportedRenderMode(value: unknown): value is TourRenderMode {
   return (
     typeof value === "string" &&
     SUPPORTED_RENDER_MODES.has(value as TourRenderMode)
+  );
+}
+
+function isTourProjectType(value: unknown): value is TourProjectType {
+  return (
+    typeof value === "string" &&
+    TOUR_PROJECT_TYPE_SET.has(value as TourProjectType)
   );
 }
 
@@ -222,6 +241,57 @@ export function buildTourRenderOptionsFromAdvancedControls(
   const sceneClipProviderModelId = controls.sceneClipProviderModelId.trim();
   if (sceneClipProviderModelId) {
     options.sceneClipProviderModelId = sceneClipProviderModelId;
+  }
+
+  return options;
+}
+
+export function sanitizeTourRenderInvestigationOptions(
+  value: Record<string, unknown> | null | undefined,
+): TourRenderInvestigationOptions {
+  const options: TourRenderInvestigationOptions = {};
+
+  if (!isRecord(value)) {
+    return options;
+  }
+
+  if (isSupportedRenderMode(value.renderMode)) {
+    options.renderMode = value.renderMode;
+  }
+
+  if (typeof value.reuseExistingAssets === "boolean") {
+    options.reuseExistingAssets = value.reuseExistingAssets;
+  }
+
+  if (isRecord(value.reuse)) {
+    const reuse: NonNullable<TourRenderInvestigationOptions["reuse"]> = {};
+    for (const flag of SUPPORTED_REUSE_FLAGS) {
+      if (typeof value.reuse[flag] === "boolean") {
+        reuse[flag] = value.reuse[flag];
+      }
+    }
+
+    if (Object.keys(reuse).length > 0) {
+      options.reuse = reuse;
+    }
+  }
+
+  if (typeof value.scriptPlanningModelId === "string") {
+    const scriptPlanningModelId = value.scriptPlanningModelId.trim();
+    if (scriptPlanningModelId) {
+      options.scriptPlanningModelId = scriptPlanningModelId;
+    }
+  }
+
+  if (typeof value.sceneClipProviderModelId === "string") {
+    const sceneClipProviderModelId = value.sceneClipProviderModelId.trim();
+    if (sceneClipProviderModelId) {
+      options.sceneClipProviderModelId = sceneClipProviderModelId;
+    }
+  }
+
+  if (isTourProjectType(value.tourType)) {
+    options.tourType = value.tourType;
   }
 
   return options;

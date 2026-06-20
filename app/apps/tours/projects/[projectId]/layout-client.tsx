@@ -200,6 +200,7 @@ function TourProjectLayoutContent({
             })),
           })),
         }}
+        currentRun={renderRuns.currentRun}
         isSubmitting={renderRuns.isCreatingOptionsRenderRun}
         onSubmitOptions={renderRuns.createOptionsRenderRun}
       />

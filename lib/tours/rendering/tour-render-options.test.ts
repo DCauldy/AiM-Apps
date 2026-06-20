@@ -5,6 +5,7 @@ import {
   buildTourRenderOptionsFromAdvancedControls,
   getTourRenderOptionsForPreset,
   parseTourRenderOptionsInput,
+  sanitizeTourRenderInvestigationOptions,
 } from "./tour-render-options";
 
 describe("tour render preset options", () => {
@@ -174,6 +175,50 @@ describe("advanced tour render controls", () => {
         sceneClips: false,
         finalVideo: false,
       },
+    });
+  });
+});
+
+describe("tour render investigation options", () => {
+  test("keeps only the V1 debug-safe option subset", () => {
+    expect(
+      sanitizeTourRenderInvestigationOptions({
+        renderMode: "provider_image_to_video",
+        reuseExistingAssets: true,
+        reuse: {
+          scriptPlan: true,
+          voiceover: false,
+          avatar: true,
+          sceneClips: false,
+          finalVideo: true,
+          transitions: false,
+        },
+        scriptPlanningModelId: "  openrouter/planner  ",
+        sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+        tourType: "tour_video_avatar",
+        heyGenAvatarId: "avatar-secret",
+        heyGenAvatarPositioning: { anchor: "bottom-right" },
+        heyGenAvatarProjectPlacement: { frame: { width: 1080, height: 1920 } },
+        heyGenAvatarGeneration: { engine: "v2" },
+        elevenLabsVoiceId: "voice-secret",
+        elevenLabsVoiceSettings: { stability: 0.5 },
+        sceneClipRenderSettings: { width: 1920, height: 1080 },
+        transitionDetectionModelId: "transition-model",
+        finalMuxSettings: { videoCodec: "libx264" },
+      }),
+    ).toEqual({
+      renderMode: "provider_image_to_video",
+      reuseExistingAssets: true,
+      reuse: {
+        scriptPlan: true,
+        voiceover: false,
+        avatar: true,
+        sceneClips: false,
+        finalVideo: true,
+      },
+      scriptPlanningModelId: "openrouter/planner",
+      sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      tourType: "tour_video_avatar",
     });
   });
 });

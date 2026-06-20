@@ -22,6 +22,7 @@ import {
   type TourRenderOptions,
   type TourRenderPreflightResult,
 } from "./tour-render-preflight";
+import { sanitizeTourRenderInvestigationOptions } from "./tour-render-options";
 
 type CreateTourRenderRunInput = {
   projectId: string;
@@ -144,6 +145,7 @@ function shouldInvalidateReusableAssets(options: TourRenderOptions): boolean {
 export function toTourRenderRunStatusResponse(run: TourRenderRun): TourRenderRunStatusResponse {
   return {
     id: run.id,
+    projectId: run.projectId,
     status: run.status,
     step: run.currentStep,
     label: run.currentStepLabel,
@@ -157,6 +159,7 @@ export function toTourRenderRunStatusResponse(run: TourRenderRun): TourRenderRun
     result: run.resultAssetId ? { assetId: run.resultAssetId } : null,
     error: run.errorMessage ? { message: run.errorMessage } : null,
     triggerRunId: run.triggerRunId,
+    options: sanitizeTourRenderInvestigationOptions(run.options),
   };
 }
 
