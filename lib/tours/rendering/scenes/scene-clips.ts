@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -26,6 +25,7 @@ import {
   probeVideoDurationSeconds,
   type VideoDurationProbe,
 } from "../final-render/video-duration";
+import { hashJsonFingerprint } from "../fingerprint";
 
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
 export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v3";
@@ -273,7 +273,7 @@ export function buildSceneClipFingerprint(input: {
 }
 
 export function hashSceneClipFingerprint(fingerprint: SceneClipFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export async function renderSceneClipsStage(input: {
@@ -931,24 +931,4 @@ async function runProcess(command: string, args: string[]): Promise<void> {
       reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
     });
   });
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

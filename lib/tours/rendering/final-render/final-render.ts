@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,6 +18,7 @@ import {
   probeVideoDurationSeconds,
   type VideoDurationProbe,
 } from "./video-duration";
+import { hashJsonFingerprint } from "../fingerprint";
 
 export const FINAL_RENDERER_VERSION = "ffmpeg-final-render-v1";
 
@@ -245,7 +245,7 @@ export function buildFinalVideoFingerprint(input: {
 export function hashFinalRenderFingerprint(
   fingerprint: JoinedScenesFingerprint | FinalVideoFingerprint
 ): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export async function renderFinalVideoStage(input: {
@@ -941,24 +941,4 @@ async function runProcess(command: string, args: string[]): Promise<void> {
 
 function escapeConcatPath(filePath: string): string {
   return filePath.replaceAll("'", "'\\''");
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

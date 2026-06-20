@@ -44,7 +44,7 @@ export async function POST(
     return Response.json({ error: "Submit a listing photo." }, { status: 400 });
   }
 
-  const fileValidation = validateListingMediaFile(formData.get("photo"));
+  const fileValidation = await validateListingMediaFile(formData.get("photo"));
   if (!fileValidation.ok) {
     return Response.json({ error: fileValidation.error }, { status: fileValidation.status });
   }
@@ -147,7 +147,7 @@ export async function PATCH(
     return Response.json({ error: "Submit a replacement listing photo." }, { status: 400 });
   }
 
-  const fileValidation = validateListingMediaFile(formData.get("photo"));
+  const fileValidation = await validateListingMediaFile(formData.get("photo"));
   if (!fileValidation.ok) {
     return Response.json({ error: fileValidation.error }, { status: fileValidation.status });
   }

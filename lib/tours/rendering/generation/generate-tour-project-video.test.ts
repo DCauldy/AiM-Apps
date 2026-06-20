@@ -8,6 +8,8 @@ import {
   avatarVideoAsset,
   baseProject,
   createRepository,
+  finalVideoAsset,
+  joinedScenesAsset,
   sceneClipAsset,
   scriptPlanAsset,
   voiceoverAudioAsset,
@@ -18,7 +20,11 @@ import type { HeyGenAvatarProvider } from "../avatars/tour-avatar";
 import type { FinalVideoRenderer } from "../final-render/final-render";
 import type { RenderableTourProject } from "../repositories/tour-render.repository";
 import type { SceneClipRenderer } from "../scenes/scene-clips";
-import type { TourAvatarBatchResult, TourMediaBatchRunner } from "./generate-tour-project-video";
+import type {
+  TourAvatarBatchResult,
+  TourFinalRenderRunner,
+  TourMediaBatchRunner,
+} from "./generate-tour-project-video";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
 import type { TransitionDetectionProvider } from "../transitions/tour-transitions";
 import type { VoiceoverProvider } from "../voiceover/tour-voiceover";
@@ -182,6 +188,83 @@ describe("generateTourProjectVideo", () => {
         step: "completed",
         message: "Tour render completed.",
       })
+    );
+  });
+
+  it("delegates final mux work to a final render runner when provided", async () => {
+    const repository = createRepository();
+    const scriptPlanningProvider: TourScriptPlanningProvider = {
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Welcome to the kitchen.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            scriptText: "Welcome to the kitchen.",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    };
+    const preflight = vi.fn().mockResolvedValue({
+      ok: true,
+      summary: {
+        projectId: "project-1",
+        tourType: "tour_video",
+        renderMode: "ken_burns_ffmpeg",
+        includedSceneCount: 1,
+        sourcePhotoCount: 1,
+        proofedFactCount: 1,
+        requiredProviderKeys: [],
+      },
+    });
+    const sceneClipRenderer: SceneClipRenderer = {
+      renderSceneClip: vi.fn(async (input) => {
+        await writeFile(input.outputVideoPath, Buffer.from("mp4-bytes"));
+        return {};
+      }),
+    };
+    const finalRenderRunner: TourFinalRenderRunner = vi.fn().mockResolvedValue({
+      joinedScenesAsset,
+      finalVideoAsset,
+      joinedScenesFingerprint: {} as never,
+      joinedScenesFingerprintHash: "joined-scenes-fingerprint",
+      finalVideoFingerprint: {} as never,
+      finalVideoFingerprintHash: "final-video-fingerprint",
+      reusedFinalVideo: false,
+      reusedJoinedScenes: false,
+    });
+
+    const result = await generateTourProjectVideo(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        renderRunId: "run-1",
+        options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: false },
+      },
+      {
+        repository,
+        preflight,
+        scriptPlanningProvider,
+        sceneClipRenderer,
+        finalRenderRunner,
+        resolveProfileId: vi.fn().mockResolvedValue("profile-1"),
+      }
+    );
+
+    expect(result?.status).toBe("completed");
+    expect(finalRenderRunner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-1",
+        userId: "user-1",
+        runId: "run-1",
+        voiceoverAsset: null,
+        avatarOverlay: null,
+        options: expect.objectContaining({ reuseExistingAssets: false }),
+      })
+    );
+    expect(repository.markCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ resultAssetId: finalVideoAsset.id })
     );
   });
 

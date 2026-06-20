@@ -5,7 +5,13 @@ import type {
   HeyGenAvatarStageOptions,
   HeyGenAvatarStageResult,
 } from "../avatars/tour-avatar";
-import type { FinalVideoRenderer } from "../final-render/final-render";
+import type {
+  FinalRenderAvatarOverlay,
+  FinalRenderSceneClip,
+  FinalRenderStageOptions,
+  FinalRenderStageResult,
+  FinalVideoRenderer,
+} from "../final-render/final-render";
 import type { preflightTourRender, TourRenderOptions } from "../preflight/preflight";
 import type {
   TourRenderAsset,
@@ -50,6 +56,7 @@ export type GenerateTourProjectVideoOptions = {
   sceneClipRenderer?: SceneClipRenderer;
   sceneClipBatchRunner?: SceneClipBatchRunner;
   mediaBatchRunner?: TourMediaBatchRunner;
+  finalRenderRunner?: TourFinalRenderRunner;
   finalVideoRenderer?: FinalVideoRenderer;
   imageToVideoProvider?: ImageToVideoProvider;
   avatarProvider?: HeyGenAvatarProvider;
@@ -78,3 +85,19 @@ export type TourMediaBatchRunner = (input: {
   sceneClips: SceneClipBatchResult[];
   avatar: TourAvatarBatchResult | null;
 }>;
+
+export type TourFinalRenderBatchItem = {
+  projectId: string;
+  userId: string;
+  runId: string;
+  clips: FinalRenderSceneClip[];
+  voiceoverAsset: TourRenderAsset | null;
+  avatarOverlay: FinalRenderAvatarOverlay | null;
+  options: FinalRenderStageOptions;
+};
+
+export type TourFinalRenderBatchResult = FinalRenderStageResult;
+
+export type TourFinalRenderRunner = (
+  input: TourFinalRenderBatchItem
+) => Promise<TourFinalRenderBatchResult>;

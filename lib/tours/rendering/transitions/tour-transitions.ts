@@ -1,9 +1,9 @@
-import { createHash } from "node:crypto";
 import type { RenderableTourProject, RenderableTourScene, TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
 import type { VoiceoverTranscript } from "../voiceover/tour-voiceover";
 import { openRouterApps } from "@/lib/openrouter/apps";
 import { createOpenRouterClient } from "@/lib/openrouter/client";
 import { isOpenRouterError } from "@/lib/openrouter/errors";
+import { hashJsonFingerprint } from "../fingerprint";
 
 export const DEFAULT_TOUR_TRANSITION_DETECTION_MODEL = "google/gemini-2.5-flash";
 export const TOUR_TRANSITION_DETECTION_PROMPT_VERSION = "tour-transition-detection-v1";
@@ -260,11 +260,11 @@ export function buildSceneDurationFingerprint(input: {
 }
 
 export function hashSceneTransitionFingerprint(fingerprint: SceneTransitionFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export function hashSceneDurationFingerprint(fingerprint: SceneDurationFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export function normalizeSceneTransitions(input: {
@@ -813,24 +813,4 @@ function roundDuration(durationSeconds: number, incrementSeconds: number): numbe
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

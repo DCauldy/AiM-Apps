@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
 import type {
   RenderableTourProject,
   RenderableTourScene,
   TourRenderAsset,
   TourRenderRepository,
 } from "../repositories/tour-render.repository";
+import { hashJsonFingerprint } from "../fingerprint";
 import {
   RESOLVED_TOUR_SCENE_CAMERA_MOTIONS,
   type ResolvedTourSceneCameraMotion,
@@ -213,7 +213,7 @@ export function buildTourScriptPlanFingerprint(input: {
 }
 
 export function hashTourScriptPlanFingerprint(fingerprint: TourScriptPlanFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export function normalizeTourScriptPlan(input: {
@@ -513,24 +513,4 @@ function clampDuration(
     minDurationSeconds,
     Math.min(maxDurationSeconds, Math.round(duration * 2) / 2)
   );
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

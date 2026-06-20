@@ -398,6 +398,7 @@ describe("tour render repository", () => {
       expect(query.eq).toHaveBeenCalledWith("project_id", "project-1");
       expect(query.eq).toHaveBeenCalledWith("user_id", "user-1");
     }
+    expect(markFailedQuery.in).toHaveBeenCalledWith("status", ["queued", "running"]);
   });
 
   test("lists active project render runs and marks a run cancelled", async () => {

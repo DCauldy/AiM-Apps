@@ -33,7 +33,7 @@ export async function POST(
   }
 
   const title = String(formData.get("title") ?? "").trim();
-  const fileValidation = validateListingMediaFile(formData.get("photo"));
+  const fileValidation = await validateListingMediaFile(formData.get("photo"));
 
   if (!title) {
     return Response.json({ error: "Enter a TourScene title." }, { status: 400 });

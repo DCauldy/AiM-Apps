@@ -54,6 +54,9 @@ export type {
   GenerateTourProjectVideoInput,
   TourAvatarBatchItem,
   TourAvatarBatchResult,
+  TourFinalRenderBatchItem,
+  TourFinalRenderBatchResult,
+  TourFinalRenderRunner,
   TourMediaBatchRunner,
   TourRenderProgressUpdate,
 } from "./generate-tour-project-video.types";
@@ -568,11 +571,10 @@ export async function generateTourProjectVideo(
       },
     });
 
-    const finalRenderResult = await renderFinalVideoStage({
+    const finalRenderInput = {
       projectId: input.projectId,
       userId: input.userId,
       runId: input.renderRunId,
-      repository,
       clips: sceneClipResult.clips.map((clip) => ({
         sceneId: clip.sceneId,
         durationSeconds: clip.durationSeconds,
@@ -583,13 +585,20 @@ export async function generateTourProjectVideo(
       })),
       voiceoverAsset: voiceoverAudioAsset,
       avatarOverlay,
-      renderer: options.finalVideoRenderer,
       options: {
         muxSettings: input.options?.finalMuxSettings,
         reuseExistingAssets: shouldReuseAsset(input.options, "finalVideo"),
         sceneTransitions: input.options?.sceneTransitions,
       },
-    });
+    };
+
+    const finalRenderResult = options.finalRenderRunner
+      ? await options.finalRenderRunner(finalRenderInput)
+      : await renderFinalVideoStage({
+          ...finalRenderInput,
+          repository,
+          renderer: options.finalVideoRenderer,
+        });
 
     await recordProgress(repository, input, {
       step: "uploading_final",
