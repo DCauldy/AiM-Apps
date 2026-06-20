@@ -35,7 +35,7 @@ OpenRouter is not solved as a user key. Script planning, transition detection, a
 
 Render task and run defaults:
 
-- Default render mode is `ken_burns_ffmpeg`.
+- Default render mode is `provider_image_to_video`.
 - `createTourRenderRun` defaults `reuseExistingAssets` to `true`.
 - The workspace's "Generate fresh" button hardcodes `reuseExistingAssets: false` and disables reuse for script plan, voiceover, avatar, scene clips, and final video.
 - The Trigger.dev task constructs providers directly from worker environment defaults.
@@ -70,7 +70,7 @@ Transition detection:
 
 Scene clips:
 
-- Default render mode is `ken_burns_ffmpeg`.
+- Default render mode is `provider_image_to_video`.
 - Provider image-to-video uses OpenRouter when `renderMode` is `provider_image_to_video`.
 - API key is `OPENROUTER_API_KEY` from the Trigger.dev environment.
 - Default provider image-to-video model is `kwaivgi/kling-v3.0-std`.

@@ -197,9 +197,7 @@ describe("renderSceneClipsStage", () => {
     delete process.env.TOURS_RENDER_MODE;
   });
 
-  it("uses TOURS_RENDER_MODE when stage options omit renderMode", () => {
-    process.env.TOURS_RENDER_MODE = "provider_image_to_video";
-
+  it("defaults to provider image-to-video when stage options omit renderMode", () => {
     expect(resolveSceneClipStageOptions()).toEqual(
       expect.objectContaining({
         renderMode: "provider_image_to_video",
@@ -207,6 +205,9 @@ describe("renderSceneClipsStage", () => {
         includeSecondarySourceImages: true,
       })
     );
+
+    process.env.TOURS_RENDER_MODE = "ken_burns_ffmpeg";
+    expect(resolveSceneClipStageOptions().renderMode).toBe("ken_burns_ffmpeg");
     expect(resolveSceneClipStageOptions({ renderMode: "ken_burns_ffmpeg" }).renderMode).toBe(
       "ken_burns_ffmpeg"
     );
@@ -284,7 +285,11 @@ describe("renderSceneClipsStage", () => {
       userId: "user-1",
       durations: multiSceneDurations,
       renderer,
-      options: { reuseExistingAssets: true, concurrencyLimit: 2 },
+      options: {
+        renderMode: "ken_burns_ffmpeg",
+        reuseExistingAssets: true,
+        concurrencyLimit: 2,
+      },
     });
 
     expect(result.clips.map((clip) => ({ sceneId: clip.sceneId, reused: clip.reused }))).toEqual([
@@ -451,7 +456,11 @@ describe("renderSceneClipsStage", () => {
       userId: "user-1",
       durations: multiSceneDurations,
       renderer,
-      options: { reuseExistingAssets: false, concurrencyLimit: 2 },
+      options: {
+        renderMode: "ken_burns_ffmpeg",
+        reuseExistingAssets: false,
+        concurrencyLimit: 2,
+      },
     });
 
     expect(maxActiveRenderCount).toBeLessThanOrEqual(2);
@@ -762,7 +771,7 @@ describe("renderSceneClipsStage", () => {
         userId: "user-1",
         durations,
         renderer,
-        options: { reuseExistingAssets: false },
+        options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: false },
       })
     ).rejects.toMatchObject({
       code: "SCENE_CLIP_UPLOAD_FAILED",
@@ -788,7 +797,7 @@ describe("renderSceneClipsStage", () => {
         userId: "user-1",
         durations,
         renderer,
-        options: { reuseExistingAssets: false },
+        options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: false },
       })
     ).rejects.toMatchObject({
       code: "SCENE_CLIP_RENDER_FAILED",

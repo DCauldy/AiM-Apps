@@ -137,7 +137,7 @@ export function buildTourRenderImageToVideoPromptPreview(input: {
     );
   }
 
-  const renderMode = input.options.renderMode ?? "ken_burns_ffmpeg";
+  const renderMode = input.options.renderMode ?? "provider_image_to_video";
   if (renderMode !== "provider_image_to_video") {
     return unavailable(
       "Image To Video Prompt",

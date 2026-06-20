@@ -167,7 +167,7 @@ describe("createTourRenderRun", () => {
       userId: "user-1",
       sceneClipTotalCount: 1,
       options: {
-        renderMode: "ken_burns_ffmpeg",
+        renderMode: "provider_image_to_video",
         reuseExistingAssets: true,
         tourType: "tour_video",
       },
@@ -309,7 +309,7 @@ describe("createTourRenderRun", () => {
     );
 
     const expectedOptions = {
-      renderMode: "ken_burns_ffmpeg",
+      renderMode: "provider_image_to_video",
       reuseExistingAssets: true,
       heyGenAvatarId: "avatar-look-1",
       heyGenAvatarProjectPlacement: placement,
