@@ -110,6 +110,7 @@ export function CreateTourProjectForm({
   const [heyGenAvatarId, setHeyGenAvatarId] = useState("");
   const [heyGenAvatarPlacement, setHeyGenAvatarPlacement] =
     useState<HeyGenAvatarProjectPosition | null>(null);
+  const [hasAttemptedCreate, setHasAttemptedCreate] = useState(false);
   const projectConfiguration = getTourProjectConfiguration(tourType);
   const { isVoiceSelectionMissing, isAvatarSelectionMissing } = getRequiredSettingsState({
     tourType,
@@ -133,16 +134,17 @@ export function CreateTourProjectForm({
         Start property
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-3xl sm:max-h-[90vh]">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Start a property</DialogTitle>
             <DialogClose onClose={() => setOpen(false)} />
           </DialogHeader>
-          <DialogBody>
+          <DialogBody className="min-h-0">
             <form
               id="create-tour-project-form"
               onSubmit={(event) => {
                 event.preventDefault();
+                setHasAttemptedCreate(true);
                 if (isVoiceSelectionMissing || isAvatarSelectionMissing) {
                   return;
                 }
@@ -208,7 +210,7 @@ export function CreateTourProjectForm({
                       const enabled = option.isEnabled({ canUseElevenLabs, canUseHeyGen });
                       const selected = tourType === option.value;
                       const cardClassName = cn(
-                        "min-h-[148px] rounded-md border bg-card p-4 text-left transition",
+                        "min-h-[96px] rounded-md border bg-card p-4 text-left transition md:min-h-[148px]",
                         selected
                           ? "border-primary ring-2 ring-primary/35"
                           : "border-border",
@@ -273,6 +275,7 @@ export function CreateTourProjectForm({
                             checked={selected}
                             onChange={() => {
                               setTourType(option.value);
+                              setHasAttemptedCreate(false);
                               const nextConfiguration = getTourProjectConfiguration(option.value);
                               if (!nextConfiguration.supportsVoiceSelection) {
                                 setElevenLabsVoiceId("");
@@ -302,7 +305,7 @@ export function CreateTourProjectForm({
                       onChange={setElevenLabsVoiceId}
                     />
                   </div>
-                  {isVoiceSelectionMissing ? (
+                  {hasAttemptedCreate && isVoiceSelectionMissing ? (
                     <p className="mt-1 text-xs text-destructive">
                       Select a digital twin voice before creating this project.
                     </p>
@@ -324,7 +327,7 @@ export function CreateTourProjectForm({
                       }}
                     />
                   </div>
-                  {isAvatarSelectionMissing ? (
+                  {hasAttemptedCreate && isAvatarSelectionMissing ? (
                     <p className="mt-1 text-xs text-destructive">
                       Select a HeyGen avatar before creating this project.
                     </p>
@@ -343,14 +346,14 @@ export function CreateTourProjectForm({
               )}
             </form>
           </DialogBody>
-          <DialogFooter>
+          <DialogFooter className="shrink-0">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button
               type="submit"
               form="create-tour-project-form"
-              disabled={mutation.isPending || isVoiceSelectionMissing || isAvatarSelectionMissing}
+              disabled={mutation.isPending}
             >
               <Plus className="h-4 w-4" />
               {mutation.isPending ? "Creating..." : "Create project"}

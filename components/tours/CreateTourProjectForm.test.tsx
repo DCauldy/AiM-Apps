@@ -84,6 +84,8 @@ test("shows the HeyGen avatar field only for avatar tours", async () => {
 
   await user.click(screen.getByText("Avatar Tour"));
   expect(screen.getByText("HeyGen avatar look")).toBeInTheDocument();
+  expect(screen.queryByText("Select a digital twin voice before creating this project.")).toBeNull();
+  expect(screen.queryByText("Select a HeyGen avatar before creating this project.")).toBeNull();
 });
 
 test("selects a look, submits its id, and supplies the default placement", async () => {
@@ -128,10 +130,13 @@ test("blocks create submit when avatar tour has no selected avatar", async () =>
   renderWithQueryClient(<CreateTourProjectForm canUseElevenLabs canUseHeyGen />);
 
   await user.click(screen.getByRole("button", { name: /start property/i }));
+  await user.type(screen.getByLabelText(/project name/i), "Lake House Tour");
+  await user.type(screen.getByLabelText(/property address/i), "123 Lake Road");
   await user.click(screen.getByText("Avatar Tour"));
   await user.click(screen.getByRole("button", { name: "Select test voice" }));
+  await user.click(screen.getByRole("button", { name: /create project/i }));
 
-  expect(screen.getByRole("button", { name: /create project/i })).toBeDisabled();
+  expect(screen.getByText("Select a HeyGen avatar before creating this project.")).toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalledWith(
     "/api/apps/tours/projects",
     expect.objectContaining({ method: "POST" })
@@ -152,8 +157,9 @@ test("canceling avatar positioning does not overwrite the committed draft", asyn
   await user.click(screen.getByRole("button", { name: /choose heygen avatar/i }));
   await user.click(await screen.findByRole("button", { name: /main digital twin/i }));
   await user.click(screen.getAllByRole("button", { name: /cancel/i })[0]);
+  await user.click(screen.getByRole("button", { name: /create project/i }));
 
-  expect(screen.getByRole("button", { name: /create project/i })).toBeDisabled();
+  expect(screen.getByText("Select a HeyGen avatar before creating this project.")).toBeInTheDocument();
   expect(fetchMock).not.toHaveBeenCalledWith(
     "/api/apps/tours/projects",
     expect.objectContaining({ method: "POST" })
