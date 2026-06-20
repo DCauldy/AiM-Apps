@@ -33,6 +33,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { TourProjectType } from "@/lib/tours/project-types";
+import { getRequiredSettingsState } from "@/lib/tours/project-configuration";
 import { ElevenLabsVoiceSelector } from "./ElevenLabsVoiceSelector";
 import { HeyGenAvatarSelector } from "./HeyGenAvatarSelector";
 import type { HeyGenAvatarProjectPosition } from "./avatar-positioning";
@@ -411,6 +413,7 @@ export function SceneActionsMenu({
 export function ProjectDetailsDialog({
   open,
   details,
+  tourType,
   showVoiceId = false,
   showAvatarSettings = false,
   error,
@@ -421,6 +424,7 @@ export function ProjectDetailsDialog({
 }: {
   open: boolean;
   details: ProjectDetailsForm;
+  tourType?: TourProjectType;
   showVoiceId?: boolean;
   showAvatarSettings?: boolean;
   error: Error | null;
@@ -429,9 +433,17 @@ export function ProjectDetailsDialog({
   onChange: (details: ProjectDetailsForm) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
-  const isVoiceSelectionRequired = showVoiceId && !details.elevenLabsVoiceId.trim();
-  const isAvatarSelectionRequired =
-    showAvatarSettings && (!details.heyGenAvatarId.trim() || !details.heyGenAvatarPlacement);
+  const effectiveTourType =
+    tourType ??
+    (showAvatarSettings ? "tour_video_avatar" : showVoiceId ? "tour_video_voice_over" : "tour_video");
+  const { isVoiceSelectionMissing, isAvatarSelectionMissing } = getRequiredSettingsState({
+    tourType: effectiveTourType,
+    elevenLabsVoiceId: details.elevenLabsVoiceId,
+    heyGenAvatarId: details.heyGenAvatarId,
+    heyGenAvatarPlacement: details.heyGenAvatarPlacement,
+  });
+  const isVoiceSelectionRequired = showVoiceId && isVoiceSelectionMissing;
+  const isAvatarSelectionRequired = showAvatarSettings && isAvatarSelectionMissing;
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (isVoiceSelectionRequired || isAvatarSelectionRequired) {
       event.preventDefault();

@@ -1,6 +1,10 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
 import { approveAllTourSceneFactsForProject } from "@/lib/tours/facts";
-import { formatTourVideoDownloadFilename } from "@/lib/tours/rendering/tour-render.contract";
+import {
+  formatTourVideoDownloadFilename,
+  type TourRenderRunResponse,
+  type TourRenderRunsResponse,
+} from "@/lib/tours/rendering/tour-render.contract";
 import {
   createTourRenderRun,
   getTourRenderRunResultUrl,
@@ -44,9 +48,11 @@ export async function GET(
     })
   );
 
-  return Response.json({
+  const payload = {
     runs: runsWithResultUrls,
-  });
+  } satisfies TourRenderRunsResponse;
+
+  return Response.json(payload);
 }
 
 type CreateRenderRunRequestBody = {
@@ -142,10 +148,9 @@ export async function POST(
     );
   }
 
-  return Response.json(
-    {
-      run: toTourRenderRunStatusResponse(run),
-    },
-    { status: 201 }
-  );
+  const payload = {
+    run: toTourRenderRunStatusResponse(run),
+  } satisfies TourRenderRunResponse;
+
+  return Response.json(payload, { status: 201 });
 }

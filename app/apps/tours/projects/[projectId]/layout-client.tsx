@@ -17,6 +17,7 @@ import {
   useTourProjectWorkspace,
 } from "@/components/tours/workspace/useTourProjectWorkspace";
 import { TOUR_PROJECT_TYPE_LABELS, type TourProjectType } from "@/lib/tours/project-types";
+import { getTourProjectConfiguration } from "@/lib/tours/project-configuration";
 import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 
 const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
@@ -54,10 +55,7 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
   } = useTourProjectWorkspace();
   const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
   const renderRuns = useTourRenderRuns(viewModel.project.id);
-  const supportsVoiceId =
-    viewModel.project.tourType === "tour_video_voice_over" ||
-    viewModel.project.tourType === "tour_video_avatar";
-  const supportsAvatarSettings = viewModel.project.tourType === "tour_video_avatar";
+  const projectConfiguration = getTourProjectConfiguration(viewModel.project.tourType);
   const isProjectRendering =
     renderRuns.currentRun?.status === "queued" || renderRuns.currentRun?.status === "running";
   const latestDownloadUrl = renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
@@ -129,8 +127,9 @@ function TourProjectLayoutContent({ children }: { children: React.ReactNode }) {
       <ProjectDetailsDialog
         open={isProjectDetailsOpen}
         details={projectDetails}
-        showVoiceId={supportsVoiceId}
-        showAvatarSettings={supportsAvatarSettings}
+        tourType={viewModel.project.tourType}
+        showVoiceId={projectConfiguration.supportsVoiceSelection}
+        showAvatarSettings={projectConfiguration.supportsAvatarSettings}
         error={updateProjectMutation.error}
         isSaving={updateProjectMutation.isPending}
         onOpenChange={setIsProjectDetailsOpen}

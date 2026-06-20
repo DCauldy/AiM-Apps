@@ -1,4 +1,5 @@
 import { requireToursAccess, toursAccessErrorResponse } from "@/lib/tours/access.server";
+import type { TourRenderRunAssetsResponse } from "@/lib/tours/rendering/tour-render.contract";
 import { listTourRenderRunAssetsWithUrls } from "@/lib/tours/rendering/tour-render-runs";
 
 export const dynamic = "force-dynamic";
@@ -22,5 +23,7 @@ export async function GET(
     return Response.json({ error: "Render run was not found." }, { status: 404 });
   }
 
-  return Response.json({ assets });
+  const payload = { assets } satisfies TourRenderRunAssetsResponse;
+
+  return Response.json(payload);
 }

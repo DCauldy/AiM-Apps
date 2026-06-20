@@ -49,6 +49,18 @@ export type TourRenderRunAssetResponse = TourRenderAsset & {
   url: string;
 };
 
+export type TourRenderRunsResponse = {
+  runs: TourRenderRunStatusResponse[];
+};
+
+export type TourRenderRunResponse = {
+  run: TourRenderRunStatusResponse;
+};
+
+export type TourRenderRunAssetsResponse = {
+  assets: TourRenderRunAssetResponse[];
+};
+
 export function isTourRenderRunActive(run: Pick<TourRenderRunStatusResponse, "status">): boolean {
   return run.status === "queued" || run.status === "running";
 }

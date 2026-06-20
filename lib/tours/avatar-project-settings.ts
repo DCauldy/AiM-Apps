@@ -1,5 +1,9 @@
 import { z } from "zod";
 import type { TourProjectType } from "./project-types";
+import {
+  getRequiredSettingsValidationError,
+  getTourProjectSettingsColumnsForSave,
+} from "./project-configuration";
 
 export type HeyGenAvatarProjectPosition = {
   frame: { width: 1080; height: 1920 };
@@ -72,27 +76,7 @@ export function getAvatarSettingsValidationError(input: {
   heyGenAvatarId: string | null;
   heyGenAvatarPlacement: HeyGenAvatarProjectPosition | null;
 }): string | null {
-  if (input.tourType === "tour_video_voice_over" && !input.elevenLabsVoiceId) {
-    return "Select an ElevenLabs digital twin voice before saving this project.";
-  }
-
-  if (input.tourType !== "tour_video_avatar") {
-    return null;
-  }
-
-  if (!input.elevenLabsVoiceId) {
-    return "Select an ElevenLabs digital twin voice before saving this avatar project.";
-  }
-
-  if (!input.heyGenAvatarId) {
-    return "Select a HeyGen avatar before saving this avatar project.";
-  }
-
-  if (!input.heyGenAvatarPlacement) {
-    return "Position the HeyGen avatar before saving this avatar project.";
-  }
-
-  return null;
+  return getRequiredSettingsValidationError(input);
 }
 
 export function getAvatarSettingsColumnsForSave(input: {
@@ -100,15 +84,15 @@ export function getAvatarSettingsColumnsForSave(input: {
   heyGenAvatarId: string | null;
   heyGenAvatarPlacement: HeyGenAvatarProjectPosition | null;
 }): TourProjectAvatarSettingsColumns {
-  if (input.tourType !== "tour_video_avatar") {
-    return {
-      heygen_avatar_id: null,
-      heygen_avatar_placement: null,
-    };
-  }
+  const columns = getTourProjectSettingsColumnsForSave({
+    tourType: input.tourType,
+    elevenLabsVoiceId: null,
+    heyGenAvatarId: input.heyGenAvatarId,
+    heyGenAvatarPlacement: input.heyGenAvatarPlacement,
+  });
 
   return {
-    heygen_avatar_id: input.heyGenAvatarId,
-    heygen_avatar_placement: input.heyGenAvatarPlacement,
+    heygen_avatar_id: columns.heygen_avatar_id,
+    heygen_avatar_placement: columns.heygen_avatar_placement,
   };
 }

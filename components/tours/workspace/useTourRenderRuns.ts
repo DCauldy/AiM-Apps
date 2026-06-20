@@ -7,78 +7,17 @@ import {
   isTourRenderRunActive,
   type TourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/tour-render.contract";
+import {
+  createRenderRun,
+  fetchRecentRenderRuns,
+  fetchRenderRunStatus,
+  FRESH_RENDER_OPTIONS,
+  buildCreateRenderRunRequestBody,
+  tourQueryKeys,
+  type CreateRenderRunInput,
+} from "@/components/tours/tours-api-client";
 
-type RenderRunsResponse = {
-  runs: TourRenderRunStatusResponse[];
-};
-
-type RenderRunResponse = {
-  run: TourRenderRunStatusResponse;
-};
-
-type CreateRenderRunInput = {
-  fresh?: boolean;
-};
-
-export const FRESH_RENDER_OPTIONS = {
-  reuseExistingAssets: false,
-  reuse: {
-    scriptPlan: false,
-    voiceover: false,
-    avatar: false,
-    sceneClips: false,
-    finalVideo: false,
-  },
-} as const;
-
-export function buildCreateRenderRunRequestBody(input: CreateRenderRunInput = {}) {
-  return input.fresh ? { options: FRESH_RENDER_OPTIONS } : {};
-}
-
-async function readJsonResponse<T>(response: Response, fallbackError: string): Promise<T> {
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? fallbackError);
-  }
-  return payload as T;
-}
-
-async function fetchRecentRenderRuns(projectId: string): Promise<TourRenderRunStatusResponse[]> {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs`);
-  const payload = await readJsonResponse<RenderRunsResponse>(
-    response,
-    "Could not load render status."
-  );
-  return payload.runs;
-}
-
-async function fetchRenderRunStatus(
-  projectId: string,
-  runId: string
-): Promise<TourRenderRunStatusResponse> {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs/${runId}/status`);
-  const payload = await readJsonResponse<RenderRunResponse>(
-    response,
-    "Could not load render status."
-  );
-  return payload.run;
-}
-
-async function createRenderRun(
-  projectId: string,
-  input: CreateRenderRunInput = {}
-): Promise<TourRenderRunStatusResponse> {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/render-runs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildCreateRenderRunRequestBody(input)),
-  });
-  const payload = await readJsonResponse<RenderRunResponse>(
-    response,
-    "Could not start rendering."
-  );
-  return payload.run;
-}
+export { FRESH_RENDER_OPTIONS, buildCreateRenderRunRequestBody };
 
 function pickDisplayRun(runs: TourRenderRunStatusResponse[]): TourRenderRunStatusResponse | null {
   return runs.find(isTourRenderRunActive) ?? runs[0] ?? null;
@@ -95,10 +34,7 @@ export function pickLatestDownloadableRenderRun(
 export function useTourRenderRuns(projectId: string) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const recentRunsQueryKey = useMemo(
-    () => ["tours", "render-runs", projectId] as const,
-    [projectId]
-  );
+  const recentRunsQueryKey = useMemo(() => tourQueryKeys.renderRuns(projectId), [projectId]);
 
   const recentRunsQuery = useQuery({
     queryKey: recentRunsQueryKey,
@@ -111,7 +47,7 @@ export function useTourRenderRuns(projectId: string) {
   const activeRunId = displayRun && isTourRenderRunActive(displayRun) ? displayRun.id : null;
 
   const activeRunQuery = useQuery({
-    queryKey: ["tours", "render-runs", projectId, activeRunId, "status"],
+    queryKey: tourQueryKeys.renderRunStatus(projectId, activeRunId),
     queryFn: () => fetchRenderRunStatus(projectId, activeRunId as string),
     enabled: Boolean(activeRunId),
     refetchInterval: (query) => {

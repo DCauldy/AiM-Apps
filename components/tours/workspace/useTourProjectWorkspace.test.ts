@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-import { updateTourProjectDetails } from "./useTourProjectWorkspace";
+import { updateTourProjectDetails } from "@/components/tours/tours-api-client";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),

@@ -1,12 +1,6 @@
-export type ElevenLabsDigitalTwinVoice = {
-  id: string;
-  name: string;
-  category: "cloned" | "professional";
-  description: string | null;
-  previewUrl: string | null;
-  labels: Record<string, string>;
-  fineTuningState: string | null;
-};
+import type { ElevenLabsDigitalTwinVoice } from "../integration-picker-options";
+
+export type { ElevenLabsDigitalTwinVoice } from "../integration-picker-options";
 
 type ElevenLabsVoiceSearchResponse = {
   voices?: unknown[];

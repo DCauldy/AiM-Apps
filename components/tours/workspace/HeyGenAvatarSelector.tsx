@@ -10,24 +10,12 @@ import {
   type AvatarPreviewRect,
   type HeyGenAvatarProjectPosition,
 } from "@/components/tours/workspace/avatar-positioning";
+import {
+  fetchHeyGenAvatarLooks,
+  tourQueryKeys,
+  type HeyGenAvatarLook,
+} from "@/components/tours/tours-api-client";
 import { cn } from "@/lib/utils";
-
-export type HeyGenAvatarLook = {
-  id: string;
-  name: string;
-  avatarType: string;
-  groupId: string | null;
-  gender: string | null;
-  previewImageUrl: string | null;
-  previewVideoUrl: string | null;
-  tags: string[];
-  supportedApiEngines: string[];
-  status: string | null;
-};
-
-type HeyGenAvatarsResponse = {
-  avatars: HeyGenAvatarLook[];
-};
 
 type AvatarSelectorMode = "details" | "choose-avatar" | "position-avatar";
 
@@ -42,15 +30,6 @@ const DEFAULT_PREVIEW_RECT: AvatarPreviewRect = {
   width: 240,
   height: 135,
 };
-
-async function fetchHeyGenAvatarLooks() {
-  const response = await fetch("/api/apps/tours/avatars");
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not load HeyGen avatars.");
-  }
-  return payload as HeyGenAvatarsResponse;
-}
 
 export function HeyGenAvatarSelector({
   value,
@@ -67,7 +46,7 @@ export function HeyGenAvatarSelector({
   const [draftAvatarId, setDraftAvatarId] = useState("");
   const [draftRect, setDraftRect] = useState<AvatarPreviewRect>(DEFAULT_PREVIEW_RECT);
   const avatarsQuery = useQuery({
-    queryKey: ["tours", "heygen", "digital-twin-avatar-looks"],
+    queryKey: tourQueryKeys.heyGenAvatarLooks(),
     queryFn: fetchHeyGenAvatarLooks,
     staleTime: 5 * 60 * 1000,
   });

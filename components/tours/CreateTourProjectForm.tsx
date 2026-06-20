@@ -29,18 +29,18 @@ import {
   TOUR_PROJECT_TYPE_LABELS,
   type TourProjectType,
 } from "@/lib/tours/project-types";
+import {
+  getRequiredSettingsState,
+  getTourProjectConfiguration,
+  getTourProjectSettingsPayloadForCreate,
+} from "@/lib/tours/project-configuration";
 import { isTourTypeAvailable } from "@/lib/tours/tour-type-availability";
+import {
+  createTourProject,
+  tourQueryKeys,
+  type CreateTourProjectInput,
+} from "@/components/tours/tours-api-client";
 import { cn } from "@/lib/utils";
-
-type CreateTourProjectInput = {
-  name: string;
-  propertyAddress: string;
-  listingUrl: string;
-  tourType: TourProjectType;
-  elevenLabsVoiceId?: string | null;
-  heyGenAvatarId?: string | null;
-  heyGenAvatarPlacement?: HeyGenAvatarProjectPosition | null;
-};
 
 const tourTypeOptions: Array<{
   value: TourProjectType;
@@ -95,19 +95,6 @@ type TourTypeAvailability = {
   canUseHeyGen: boolean;
 };
 
-async function createTourProject(input: CreateTourProjectInput) {
-  const response = await fetch("/api/apps/tours/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not create the tour project.");
-  }
-  return payload as { projectId: string };
-}
-
 export function CreateTourProjectForm({
   canUseElevenLabs,
   canUseHeyGen,
@@ -123,16 +110,18 @@ export function CreateTourProjectForm({
   const [heyGenAvatarId, setHeyGenAvatarId] = useState("");
   const [heyGenAvatarPlacement, setHeyGenAvatarPlacement] =
     useState<HeyGenAvatarProjectPosition | null>(null);
-  const requiresVoiceSelection =
-    tourType === "tour_video_voice_over" || tourType === "tour_video_avatar";
-  const requiresAvatarSelection = tourType === "tour_video_avatar";
-  const isVoiceSelectionMissing = requiresVoiceSelection && !elevenLabsVoiceId.trim();
-  const isAvatarSelectionMissing = requiresAvatarSelection && !heyGenAvatarId.trim();
+  const projectConfiguration = getTourProjectConfiguration(tourType);
+  const { isVoiceSelectionMissing, isAvatarSelectionMissing } = getRequiredSettingsState({
+    tourType,
+    elevenLabsVoiceId,
+    heyGenAvatarId,
+    heyGenAvatarPlacement,
+  });
 
   const mutation = useMutation({
     mutationFn: createTourProject,
     onSuccess: ({ projectId }) => {
-      queryClient.invalidateQueries({ queryKey: ["tours", "projects", "open"] });
+      queryClient.invalidateQueries({ queryKey: tourQueryKeys.openProjects() });
       router.push(`/apps/tours/projects/${projectId}`);
     },
   });
@@ -162,9 +151,12 @@ export function CreateTourProjectForm({
                   propertyAddress,
                   listingUrl,
                   tourType,
-                  elevenLabsVoiceId: requiresVoiceSelection ? elevenLabsVoiceId : undefined,
-                  heyGenAvatarId: requiresAvatarSelection ? heyGenAvatarId : undefined,
-                  heyGenAvatarPlacement: requiresAvatarSelection ? heyGenAvatarPlacement : undefined,
+                  ...getTourProjectSettingsPayloadForCreate({
+                    tourType,
+                    elevenLabsVoiceId,
+                    heyGenAvatarId,
+                    heyGenAvatarPlacement,
+                  }),
                 });
               }}
             >
@@ -281,10 +273,11 @@ export function CreateTourProjectForm({
                             checked={selected}
                             onChange={() => {
                               setTourType(option.value);
-                              if (option.value === "tour_video") {
+                              const nextConfiguration = getTourProjectConfiguration(option.value);
+                              if (!nextConfiguration.supportsVoiceSelection) {
                                 setElevenLabsVoiceId("");
                               }
-                              if (option.value !== "tour_video_avatar") {
+                              if (!nextConfiguration.supportsAvatarSettings) {
                                 setHeyGenAvatarId("");
                                 setHeyGenAvatarPlacement(null);
                               }
@@ -299,7 +292,7 @@ export function CreateTourProjectForm({
                 </TooltipProvider>
               </fieldset>
 
-              {requiresVoiceSelection ? (
+              {projectConfiguration.supportsVoiceSelection ? (
                 <div className="mt-5 text-sm font-medium text-foreground">
                   <span>ElevenLabs digital twin voice</span>
                   <div className="mt-2">
@@ -317,7 +310,7 @@ export function CreateTourProjectForm({
                 </div>
               ) : null}
 
-              {requiresAvatarSelection ? (
+              {projectConfiguration.supportsAvatarSettings ? (
                 <div className="mt-5 text-sm font-medium text-foreground">
                   <span>HeyGen avatar look</span>
                   <div className="mt-2">

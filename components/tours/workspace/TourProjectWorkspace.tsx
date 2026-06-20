@@ -34,39 +34,12 @@ import { useMutation } from "@tanstack/react-query";
 import { useOptimisticSortableList, type OptimisticSortableId } from "@/hooks/useOptimisticSortableList";
 import type { TourScene } from "@/lib/tours/workspace";
 import { getTourSceneCameraMotionLabel } from "@/lib/tours/scenes.core";
+import {
+  createSceneFromListingPhotoWithError,
+  reorderTourScenesWithError,
+} from "@/components/tours/tours-api-client";
 import { useTourProjectWorkspace } from "./useTourProjectWorkspace";
 import { ErrorMessage, SceneUploadDialog } from "./WorkspacePresentation";
-
-type CreateSceneResponse = {
-  scene?: {
-    id?: string;
-  };
-};
-
-async function createSceneFromListingPhoto(projectId: string, formData: FormData) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes`, {
-    method: "POST",
-    body: formData,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not create the scene.");
-  }
-  return payload as CreateSceneResponse;
-}
-
-async function reorderTourScenes(projectId: string, orderedSceneIds: string[]) {
-  const response = await fetch(`/api/apps/tours/projects/${projectId}/scenes/reorder`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ orderedSceneIds }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error ?? "Could not save the scene order.");
-  }
-  return payload;
-}
 
 export function TourProjectWorkspace() {
   const { viewModel, acknowledgementMutation, invalidateWorkspace } = useTourProjectWorkspace();
@@ -79,7 +52,11 @@ export function TourProjectWorkspace() {
   const scenes = viewModel.tourScenes;
   const persistSceneOrder = useCallback(
     async (orderedSceneIds: string[]) => {
-      await reorderTourScenes(viewModel.project.id, orderedSceneIds);
+      await reorderTourScenesWithError(
+        viewModel.project.id,
+        orderedSceneIds,
+        "Could not save the scene order."
+      );
       invalidateWorkspace();
     },
     [invalidateWorkspace, viewModel.project.id]
@@ -239,7 +216,8 @@ function useCreateSceneForm({
   const [scenePhoto, setScenePhoto] = useState<File | null>(null);
   const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<string | null>(null);
   const createSceneMutation = useMutation({
-    mutationFn: (formData: FormData) => createSceneFromListingPhoto(projectId, formData),
+    mutationFn: (formData: FormData) =>
+      createSceneFromListingPhotoWithError(projectId, formData, "Could not create the scene."),
     onSuccess: (payload) => {
       const sceneId = typeof payload.scene?.id === "string" ? payload.scene.id : null;
       setSceneTitle("");

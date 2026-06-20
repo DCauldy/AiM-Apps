@@ -6,13 +6,13 @@ import type {
   TourProjectWorkspaceViewModel,
   TourScene,
 } from "@/lib/tours/workspace";
-import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
-import { useTourSceneMutations } from "./useTourSceneMutations";
 import {
   createSceneFact,
   deleteSceneFact,
   updateSceneFact,
-} from "./useTourProjectWorkspace";
+} from "@/components/tours/tours-api-client";
+import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
+import { useTourSceneMutations } from "./useTourSceneMutations";
 
 export function useTourProjectScenesWorkspace({
   viewModel,
