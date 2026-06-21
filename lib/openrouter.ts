@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenRouterAiSdkProvider } from "./openrouter/ai-sdk";
-import { OPENROUTER_REFERER } from "./openrouter/apps";
+import { appReferer } from "./openrouter/apps";
 
 export * from "./openrouter/index";
 
@@ -30,11 +30,18 @@ const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
  * the friendly title. A fetch interceptor is the belt-and-suspenders fix.
  */
 function createAppProvider(appName: string) {
+  // Per-app subdomain referer so each app shows as its own OpenRouter "App"
+  // (OpenRouter buckets by referer host). Derived from the display name, e.g.
+  // "Blog Engine" -> blog-engine.aimarketingacademy.com.
+  const slug = appName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
   return createOpenRouterAiSdkProvider({
     apiKey: process.env.OPENROUTER_API_KEY,
     app: {
       title: `AiM ${appName}`,
-      referer: OPENROUTER_REFERER,
+      referer: appReferer(slug),
     },
   });
 }
@@ -176,7 +183,7 @@ export function getHyperlocalOnboardingModel() {
 
 let listingStudioProvider: ReturnType<typeof createOpenAI> | null = null;
 function getListingStudioProvider() {
-  if (!listingStudioProvider) listingStudioProvider = createAppProvider("Listing Studio");
+  if (!listingStudioProvider) listingStudioProvider = createAppProvider("CMAs");
   return listingStudioProvider;
 }
 
