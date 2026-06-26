@@ -14,19 +14,18 @@ import { Button } from "@/components/ui/button";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
 import { HyperlocalUpgradeModal } from "@/components/hyperlocal/HyperlocalUpgradeModal";
 import { CRM_PLATFORM_LABELS, EMAIL_PROVIDER_LABELS } from "@/types/hyperlocal";
+import type { HlCampaign } from "@/types/hyperlocal";
 import type {
-  HlCampaign,
-  HlCrmConnection,
-  HlEmailConnection,
-  PlatformSenderProfile,
-  PlatformBrandingProfile,
-} from "@/types/hyperlocal";
+  AppCrmConnection,
+  AppEmailConnection,
+} from "@/types/platform-connections";
 
 interface OptionsResponse {
-  crmConnections: Pick<HlCrmConnection, "id" | "platform" | "label">[];
-  emailConnections: Pick<HlEmailConnection, "id" | "provider" | "email_address" | "display_name" | "is_default">[];
-  senderProfiles: Pick<PlatformSenderProfile, "id" | "full_name" | "is_default">[];
-  brandingProfiles: Pick<PlatformBrandingProfile, "id" | "name" | "is_default">[];
+  // CRM + email connections live on the platform connection layer now.
+  // Each item is the platform identity joined with the Hyperlocal-app
+  // state row — the displayable fields hang off `.connection`.
+  crmConnections: AppCrmConnection<"hyperlocal">[];
+  emailConnections: AppEmailConnection<"hyperlocal">[];
 }
 
 export function RunLauncherDialog({
@@ -42,8 +41,6 @@ export function RunLauncherDialog({
   const [opts, setOpts] = useState<OptionsResponse | null>(null);
   const [crmId, setCrmId] = useState("");
   const [emailId, setEmailId] = useState("");
-  const [senderId, setSenderId] = useState("");
-  const [brandingId, setBrandingId] = useState("");
   const [launching, setLaunching] = useState(false);
   // When the server-side pack-cap gate fires (403, code "pack_limit_reached"),
   // capture the usage payload so the upgrade modal can show period reset etc.
@@ -54,37 +51,35 @@ export function RunLauncherDialog({
   } | null>(null);
 
   useEffect(() => {
+    // Sender + branding identity come from the user's active platform
+    // profile (resolved server-side at launch), so the dialog only needs
+    // a CRM connection and a sending account. Each fetch falls back to an
+    // empty list on any non-OK/parse failure so the dialog never hangs on
+    // the loading spinner.
+    const safeFetch = (url: string): Promise<{ connections?: unknown[] }> =>
+      fetch(url)
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({}));
     void (async () => {
-      const [crm, email, sender, branding] = await Promise.all([
-        fetch("/api/apps/hyperlocal/crm-connections").then((r) => r.json()),
-        fetch("/api/apps/hyperlocal/email-connections")
-          .then((r) => (r.ok ? r.json() : { connections: [] }))
-          .catch(() => ({ connections: [] })),
-        fetch("/api/apps/hyperlocal/sender-profiles").then((r) => r.json()),
-        fetch("/api/apps/hyperlocal/branding-profiles").then((r) => r.json()),
+      const [crm, email] = await Promise.all([
+        safeFetch("/api/apps/hyperlocal/crm-connections"),
+        safeFetch("/api/apps/hyperlocal/email-connections"),
       ]);
       const payload: OptionsResponse = {
-        crmConnections: (crm.connections ?? []).filter(
-          (c: HlCrmConnection) => c.is_active
-        ),
-        emailConnections: email.connections ?? [],
-        senderProfiles: sender.profiles ?? [],
-        brandingProfiles: branding.profiles ?? [],
+        crmConnections: (
+          (crm.connections ?? []) as AppCrmConnection<"hyperlocal">[]
+        ).filter((c) => c.connection.is_active),
+        emailConnections: (
+          (email.connections ?? []) as AppEmailConnection<"hyperlocal">[]
+        ).filter((e) => e.connection.is_active),
       };
       setOpts(payload);
-      if (payload.crmConnections[0]) setCrmId(payload.crmConnections[0].id);
-      const defaultEmail =
-        payload.emailConnections.find((e) => e.is_default) ??
-        payload.emailConnections[0];
-      if (defaultEmail) setEmailId(defaultEmail.id);
-      const defaultSender =
-        payload.senderProfiles.find((s) => s.is_default) ??
-        payload.senderProfiles[0];
-      if (defaultSender) setSenderId(defaultSender.id);
-      const defaultBrand =
-        payload.brandingProfiles.find((b) => b.is_default) ??
-        payload.brandingProfiles[0];
-      if (defaultBrand) setBrandingId(defaultBrand.id);
+      if (payload.crmConnections[0]) {
+        setCrmId(payload.crmConnections[0].connection.id);
+      }
+      if (payload.emailConnections[0]) {
+        setEmailId(payload.emailConnections[0].connection.id);
+      }
     })();
   }, []);
 
@@ -101,8 +96,6 @@ export function RunLauncherDialog({
         body: JSON.stringify({
           campaign_id: campaign.id,
           crm_connection_id: crmId,
-          sender_profile_id: senderId || null,
-          branding_profile_id: brandingId || null,
           email_connection_id: emailId || null,
         }),
       });
@@ -159,50 +152,22 @@ export function RunLauncherDialog({
                   label="CRM"
                   value={crmId}
                   onChange={setCrmId}
-                  options={opts.crmConnections.map((c) => ({
-                    value: c.id,
-                    label: c.label || CRM_PLATFORM_LABELS[c.platform],
+                  options={opts.crmConnections.map(({ connection }) => ({
+                    value: connection.id,
+                    label:
+                      connection.label ||
+                      CRM_PLATFORM_LABELS[connection.platform],
                   }))}
                 />
               )}
 
               <SelectRow
-                label="Sender"
-                value={senderId}
-                onChange={setSenderId}
-                options={opts.senderProfiles.map((s) => ({
-                  value: s.id,
-                  label: s.full_name + (s.is_default ? " (default)" : ""),
-                }))}
-                placeholder={
-                  opts.senderProfiles.length === 0
-                    ? "No sender profiles yet"
-                    : undefined
-                }
-              />
-
-              <SelectRow
-                label="Brand"
-                value={brandingId}
-                onChange={setBrandingId}
-                options={opts.brandingProfiles.map((b) => ({
-                  value: b.id,
-                  label: b.name + (b.is_default ? " (default)" : ""),
-                }))}
-                placeholder={
-                  opts.brandingProfiles.length === 0
-                    ? "No branding profiles yet"
-                    : undefined
-                }
-              />
-
-              <SelectRow
                 label="Send from"
                 value={emailId}
                 onChange={setEmailId}
-                options={opts.emailConnections.map((e) => ({
-                  value: e.id,
-                  label: `${e.display_name || e.email_address} (${EMAIL_PROVIDER_LABELS[e.provider]})`,
+                options={opts.emailConnections.map(({ connection }) => ({
+                  value: connection.id,
+                  label: `${connection.display_name || connection.email_address} (${EMAIL_PROVIDER_LABELS[connection.provider]})`,
                 }))}
                 placeholder={
                   opts.emailConnections.length === 0

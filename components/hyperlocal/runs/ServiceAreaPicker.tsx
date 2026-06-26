@@ -105,6 +105,19 @@ export function ServiceAreaPicker({
 
   const overCap = selected.size > HARD_CAP;
 
+  // Map adapter: build segment list for the map + click handler that
+  // mirrors the checkbox toggle
+  const mapSegments = useMemo(
+    () =>
+      segments.map((s) => ({
+        zip: s.geo_key,
+        geo_label: s.geo_label,
+        contact_count: s.contact_count,
+        below_min_size: s.below_min_size,
+      })),
+    [segments]
+  );
+
   const submit = async () => {
     if (selected.size === 0) {
       toast.error("Pick at least one ZIP");
@@ -147,19 +160,6 @@ export function ServiceAreaPicker({
       </div>
     );
   }
-
-  // Map adapter: build segment list for the map + click handler that
-  // mirrors the checkbox toggle
-  const mapSegments = useMemo(
-    () =>
-      segments.map((s) => ({
-        zip: s.geo_key,
-        geo_label: s.geo_label,
-        contact_count: s.contact_count,
-        below_min_size: s.below_min_size,
-      })),
-    [segments]
-  );
 
   return (
     <div className="rounded-lg border border-border bg-card overflow-hidden">

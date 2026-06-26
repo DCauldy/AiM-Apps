@@ -268,8 +268,8 @@ export function AppSwitcher() {
               <LayoutGrid className="h-3.5 w-3.5" />
             </span>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">Apps Dashboard</p>
-              <p className="text-xs text-muted-foreground">View all apps</p>
+              <p className="text-sm font-medium">Automation Dashboard</p>
+              <p className="text-xs text-muted-foreground">View all Automations</p>
             </div>
           </DropdownMenuItem>
 

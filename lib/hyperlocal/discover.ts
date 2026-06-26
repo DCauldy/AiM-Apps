@@ -2,6 +2,11 @@ import "server-only";
 
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import { getConnector } from "@/lib/hyperlocal/crm";
+import {
+  getPlatformCrmConnection,
+  getAppCrmConnection,
+  setAppCrmSyncState,
+} from "@/lib/platform/connections";
 import { filterDeliverable } from "@/lib/hyperlocal/email/validation";
 import { identifyGeographies } from "@/lib/hyperlocal/geographies";
 import {
@@ -10,12 +15,7 @@ import {
 } from "@/lib/hyperlocal/mls/data-requirements";
 import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
 import { UNLIMITED } from "@/lib/hyperlocal-packs";
-import type {
-  HlCampaign,
-  HlCrmConnection,
-  NormalizedContact,
-} from "@/types/hyperlocal";
-import type { PlatformCrmConnection } from "@/types/platform-connections";
+import type { HlCampaign, NormalizedContact } from "@/types/hyperlocal";
 
 // ============================================================
 // runHlDiscover — fetch CRM contacts, bucket by geography, persist
@@ -61,45 +61,44 @@ export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult>
     throw new Error("Run has no crm_connection_id");
   }
 
-  const [{ data: campaignRow }, { data: connRow }] = await Promise.all([
+  // CRM auth lives on the shared platform_crm_connections row; the
+  // Hyperlocal search-area filter + sync metadata live on the per-app
+  // app_crm_connection_state row (Wave 9 connection layer).
+  const [{ data: campaignRow }, crmConnection, appCrm] = await Promise.all([
     supabase
       .from("hl_campaigns")
       .select("*")
       .eq("id", runRow.campaign_id)
       .single(),
-    supabase
-      .from("hl_crm_connections")
-      .select("*")
-      .eq("id", runRow.crm_connection_id)
-      .single(),
+    getPlatformCrmConnection(
+      supabase,
+      runRow.user_id,
+      runRow.crm_connection_id,
+    ),
+    getAppCrmConnection(
+      supabase,
+      runRow.user_id,
+      "hyperlocal",
+      runRow.crm_connection_id,
+    ),
   ]);
   if (!campaignRow) throw new Error("Campaign not found");
-  if (!connRow) throw new Error("CRM connection not found");
+  if (!crmConnection) throw new Error("CRM connection not found");
 
   const campaign = campaignRow as HlCampaign;
-  const crmConnection = connRow as HlCrmConnection;
 
   // ---- 2. Fetch + filter + bucket + persist ----
-  // HL still reads from hl_crm_connections (pre-Wave 9 shape) while
-  // the connector layer now expects PlatformCrmConnection. The two
-  // are structurally compatible at runtime — same platform name +
-  // encrypted api key — so cast through unknown to bridge until the
-  // wider hl_crm_connections → platform_crm_connections migration
-  // lands. (The old Inngest fn had `step: any` masking this.)
   const connector = getConnector(crmConnection.platform);
-  const fetched = await connector.fetchContacts(
-    crmConnection as unknown as PlatformCrmConnection,
-    { limit: 25_000 },
-  );
+  const fetched = await connector.fetchContacts(crmConnection, {
+    limit: 25_000,
+    filter: appCrm?.state.filter_config,
+  });
 
-  // Touch CRM connection metadata
-  await supabase
-    .from("hl_crm_connections")
-    .update({
-      last_synced_at: new Date().toISOString(),
-      last_error: null,
-    })
-    .eq("id", crmConnection.id);
+  // Touch the Hyperlocal app-state sync metadata.
+  await setAppCrmSyncState(supabase, "hyperlocal", crmConnection.id, {
+    last_synced_at: new Date().toISOString(),
+    last_error: null,
+  });
 
   // Free in-house list hygiene — syntax + typo + MX. Drops dead
   // emails before they enter segmentation so the customer's Resend

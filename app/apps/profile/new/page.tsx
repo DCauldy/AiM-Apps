@@ -38,5 +38,12 @@ export default async function NewProfilePage({
     return <ProfileEditor />;
   }
 
-  return <ProfileOnboardingChat />;
+  // Dark-grey page; the chat card itself carries the teal-blue brand
+  // gradient (see ProfileOnboardingChat) so the chatbot keeps the AiM
+  // dashboard look without tinting the whole page.
+  return (
+    <div className="apps-theme min-h-screen bg-[#15171c]">
+      <ProfileOnboardingChat />
+    </div>
+  );
 }

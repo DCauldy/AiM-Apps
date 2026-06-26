@@ -7,6 +7,7 @@ import { TextStreamChatTransport } from "ai";
 import { Bot, Loader2, Send, Sparkles, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Circuitry } from "@/components/decor/Circuitry";
 import { ProfileSummaryCard, type ProfileDraft } from "./ProfileSummaryCard";
 
 // ============================================================
@@ -69,7 +70,7 @@ const SEED_MESSAGE: UIMessage = {
   parts: [
     {
       type: "text" as const,
-      text: "Hey — welcome to AiM Automations. I'll ask you a few quick questions and we'll have your profile set up in under a minute.\n\nFirst things first: **what's your full name?**",
+      text: "Beep boop! 🤖 - Hey, welcome to AiM Automations. I'll ask you a few quick questions and we'll have your profile set up in under a minute.\n\nFirst things first: **what's your full name?**",
     },
   ],
 };
@@ -136,11 +137,12 @@ export function ProfileOnboardingChat() {
           <Sparkles className="h-5 w-5 text-white" />
         </div>
         <h1 className="text-2xl font-bold text-foreground">
-          Set up your profile
+          Let&apos;s build your profile
         </h1>
-        <p className="text-sm text-muted-foreground">
-          A 60-second chat — tell us a few things and every app personalizes
-          around you.{" "}
+        <p className="text-sm text-muted-foreground max-w-md mx-auto">
+          Your profile is the engine behind every AiM Automation — it tailors
+          your blogs, campaigns, and outreach to your brand, market, and voice.
+          Answer a few quick questions and you&apos;re ready to launch.{" "}
           <Link
             href="/apps/profile/new?form=1"
             className="underline underline-offset-2 hover:text-foreground transition-colors"
@@ -150,11 +152,34 @@ export function ProfileOnboardingChat() {
         </p>
       </div>
 
-      {/* Chat surface — glassmorphic card */}
-      <div className="glass-card rounded-2xl overflow-hidden flex flex-col h-[600px]">
+      {/* Chat surface — glassmorphic card carrying the AiM teal-blue brand
+          gradient so the chatbot keeps the dashboard look even on a plain
+          dark-grey page. The translucent white sheen (first layer) is the
+          same one .glass-card normally applies; we stack it over the brand
+          gradient image here. */}
+      <div
+        className="relative glass-card rounded-2xl overflow-hidden flex flex-col h-[600px]"
+        style={{
+          backgroundImage:
+            "linear-gradient(180deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%), url('/aim-chat-bg.avif')",
+          backgroundSize: "cover, cover",
+          backgroundPosition: "center, center",
+        }}
+      >
+        {/* Decorative circuitry inside the chatbox — same pattern + pulse as
+            the AiM dashboard chatbot. Sits behind the conversation (content
+            below is z-10). */}
+        <Circuitry
+          color="white"
+          opacity={0.06}
+          scale={0.7}
+          position={{ bottom: "-80px", right: "-40px" }}
+          transformOrigin="bottom right"
+          pulse={{ opacity: 0.18, duration: "6s" }}
+        />
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 py-6 space-y-4"
+          className="relative z-10 flex-1 overflow-y-auto px-4 py-6 space-y-4"
         >
           {messages.map((message) => {
             const text = getMessageText(message);
@@ -232,7 +257,7 @@ export function ProfileOnboardingChat() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-white/10 p-3 bg-white/[0.02]">
+        <div className="relative z-10 border-t border-white/10 p-3 bg-white/[0.02]">
           <div className="flex gap-2">
             <textarea
               ref={inputRef}
@@ -253,12 +278,9 @@ export function ProfileOnboardingChat() {
               onClick={handleSend}
               disabled={isLoading || !input.trim()}
               className={cn(
-                "flex items-center justify-center w-10 h-10 rounded-lg shrink-0 transition-opacity text-white",
-                "disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-95",
+                "flex items-center justify-center w-10 h-10 rounded-lg shrink-0 transition-opacity bg-white text-[#1C4C8A] shadow-sm",
+                "disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90",
               )}
-              style={{
-                background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)",
-              }}
             >
               {isLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

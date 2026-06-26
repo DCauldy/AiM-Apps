@@ -565,7 +565,7 @@ export function AppsShowcase({ flags, subscriptionTier, usageStats }: AppsShowca
                           background: `linear-gradient(135deg, ${selectedApp.gradient[0]}, ${selectedApp.gradient[1]})`,
                         }}
                       >
-                        Open App <ArrowRight className="h-4 w-4" />
+                        Launch Automation <ArrowRight className="h-4 w-4" />
                       </button>
                       {selectedApp.hasUpgrade && (
                         <button

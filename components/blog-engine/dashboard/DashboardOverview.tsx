@@ -132,7 +132,7 @@ export function DashboardOverview({
         <div className="flex items-center gap-2 mb-3">
           <Globe className="h-4 w-4 text-primary" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            CMS Connection
+            Blog Site
           </span>
         </div>
         <div className="flex items-center gap-2">

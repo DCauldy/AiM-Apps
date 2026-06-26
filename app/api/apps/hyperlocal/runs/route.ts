@@ -2,6 +2,7 @@ import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { triggerDiscover } from "@/lib/hyperlocal/run-pipeline";
 import { getHyperlocalUsage } from "@/lib/hyperlocal/usage";
 import { UNLIMITED } from "@/lib/hyperlocal-packs";
+import { getAppCrmConnection } from "@/lib/platform/connections";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -93,26 +94,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Validate ownership of all referenced rows
+  // Validate ownership of all referenced rows. CRM connections live on the
+  // platform connection layer now (platform_crm_connections + per-app state),
+  // so we validate through getAppCrmConnection — it confirms the connection
+  // belongs to the user AND is wired into the Hyperlocal app.
   const service = createServiceRoleClient();
-  const checks = await Promise.all([
+  const [campaign, crmConnection] = await Promise.all([
     service
       .from("hl_campaigns")
       .select("id")
       .eq("id", campaign_id)
       .eq("user_id", user.id)
       .maybeSingle(),
-    service
-      .from("hl_crm_connections")
-      .select("id")
-      .eq("id", crm_connection_id)
-      .eq("user_id", user.id)
-      .maybeSingle(),
+    getAppCrmConnection(service, user.id, "hyperlocal", crm_connection_id),
   ]);
-  if (!checks[0].data) {
+  if (!campaign.data) {
     return Response.json({ error: "Campaign not found" }, { status: 404 });
   }
-  if (!checks[1].data) {
+  if (!crmConnection) {
     return Response.json({ error: "CRM connection not found" }, { status: 404 });
   }
 

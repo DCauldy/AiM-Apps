@@ -8,8 +8,15 @@ import { Sparkles, LayoutGrid, UserCircle2, MessageSquareHeart, X } from "lucide
 import { Button } from "@/components/ui/button";
 
 interface WelcomeModalProps {
-  /** Server-rendered: true when user has no active profile AND has not dismissed. */
+  /** Server-rendered: true when the modal should be open on first paint. */
   initialOpen: boolean;
+  /**
+   * When true the modal is a hard gate — no close button, backdrop clicks
+   * don't dismiss, and the only way forward is the "Set up my profile" CTA.
+   * Used on /apps when the user has no active profile (apps are unusable
+   * until one exists).
+   */
+  mandatory?: boolean;
 }
 
 const BULLETS = [
@@ -30,7 +37,7 @@ const BULLETS = [
   },
 ];
 
-export function WelcomeModal({ initialOpen }: WelcomeModalProps) {
+export function WelcomeModal({ initialOpen, mandatory = false }: WelcomeModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(initialOpen);
   const [busy, setBusy] = useState(false);
@@ -47,7 +54,9 @@ export function WelcomeModal({ initialOpen }: WelcomeModalProps) {
 
   // Close X also persists dismiss to DB — single-button design intent
   // is "set up profile or come back later," not "remind me tomorrow."
+  // No-op when mandatory: the profile gate can't be dismissed.
   const handleDismiss = async () => {
+    if (mandatory) return;
     setBusy(true);
     try {
       await fetch("/api/welcome/dismiss", { method: "POST" });
@@ -66,18 +75,20 @@ export function WelcomeModal({ initialOpen }: WelcomeModalProps) {
     <div className="dark product-app-theme font-body fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto p-4 text-foreground sm:items-center sm:p-0">
       <div
         className="fixed inset-0 bg-black/75 backdrop-blur-md"
-        onClick={handleDismiss}
+        onClick={mandatory ? undefined : handleDismiss}
       />
       <div className="relative z-[101] w-full max-w-lg glass-modal text-white rounded-2xl overflow-hidden flex flex-col pointer-events-auto animate-in fade-in zoom-in-95 duration-300">
-        <button
-          type="button"
-          onClick={handleDismiss}
-          disabled={busy}
-          aria-label="Close"
-          className="absolute top-4 right-4 z-10 text-white/60 hover:text-white transition-colors disabled:opacity-40"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        {!mandatory && (
+          <button
+            type="button"
+            onClick={handleDismiss}
+            disabled={busy}
+            aria-label="Close"
+            className="absolute top-4 right-4 z-10 text-white/60 hover:text-white transition-colors disabled:opacity-40"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
 
         {/* Header band — teal→blue brand gradient with sparkle icon */}
         <div
@@ -100,7 +111,10 @@ export function WelcomeModal({ initialOpen }: WelcomeModalProps) {
           </h2>
           <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
             You just joined a platform built to put AI to work in your real
-            estate marketing. Here's how to get the most out of it.
+            estate marketing.{" "}
+            {mandatory
+              ? "Set up your profile to unlock the apps — it takes about a minute."
+              : "Here's how to get the most out of it."}
           </p>
         </div>
 
@@ -126,7 +140,7 @@ export function WelcomeModal({ initialOpen }: WelcomeModalProps) {
           <Button
             onClick={handleCta}
             disabled={busy}
-            className="w-full h-11 text-sm font-semibold text-white rounded-xl border-0 hover:opacity-95 transition-opacity"
+            className="w-full h-11 text-sm font-semibold text-white dark:text-white rounded-xl border-0 hover:opacity-95 transition-opacity"
             style={{
               background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)",
             }}

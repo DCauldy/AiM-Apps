@@ -23,19 +23,18 @@ export default async function AppsPage() {
   const subscriptionTier =
     (user?.app_metadata?.subscription_tier as string) ?? "standalone";
 
-  // Show welcome modal when the user has no active platform profile AND
-  // hasn't already dismissed the intro. Once dismissed it stays gone
-  // across devices (DB-backed). Setting up a profile also clears the
-  // trigger naturally (active_profile_id becomes non-null).
-  let showWelcome = false;
+  // Profile gate. A user can't meaningfully use any app until they have an
+  // active platform profile (it powers personalization everywhere), so when
+  // none exists we show a mandatory, non-dismissable setup modal. Setting up
+  // a profile clears the gate naturally (active_profile_id becomes non-null).
+  let needsProfile = false;
   if (user) {
     const { data: profileRow } = await supabase
       .from("profiles")
-      .select("active_profile_id, welcome_dismissed_at")
+      .select("active_profile_id")
       .eq("id", user.id)
       .maybeSingle();
-    showWelcome =
-      !profileRow?.active_profile_id && !profileRow?.welcome_dismissed_at;
+    needsProfile = !profileRow?.active_profile_id;
   }
 
   const usageStats: UsageStats = {
@@ -166,7 +165,7 @@ export default async function AppsPage() {
           usageStats={usageStats}
         />
       </div>
-      <WelcomeModal initialOpen={showWelcome} />
+      <WelcomeModal initialOpen={needsProfile} mandatory={needsProfile} />
     </div>
   );
 }
