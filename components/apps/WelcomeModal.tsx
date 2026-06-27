@@ -113,7 +113,7 @@ export function WelcomeModal({ initialOpen, mandatory = false }: WelcomeModalPro
             You just joined a platform built to put AI to work in your real
             estate marketing.{" "}
             {mandatory
-              ? "Set up your profile to unlock the apps — it takes about a minute."
+              ? "Set up your profile to unlock the apps — it takes a couple of minutes."
               : "Here's how to get the most out of it."}
           </p>
         </div>

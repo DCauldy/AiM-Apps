@@ -70,7 +70,7 @@ const SEED_MESSAGE: UIMessage = {
   parts: [
     {
       type: "text" as const,
-      text: "Beep boop! 🤖 - Hey, welcome to AiM Automations. I'll ask you a few quick questions and we'll have your profile set up in under a minute.\n\nFirst things first: **what's your full name?**",
+      text: "Beep boop! 🤖 - Hey, welcome to AiM Automations. I'll ask you a few quick questions and we'll have your profile set up in just a couple of minutes.\n\nFirst things first: **what's your full name?**",
     },
   ],
 };
