@@ -862,6 +862,36 @@ pre code {
   100% { mask-position: 0% 0; -webkit-mask-position: 0% 0; }
 }
 
+/* ── AI sparkle twinkle ──
+   Gentle pulse + scale + rotate with a teal glow so the sparkle icon
+   reads as "magical AI" rather than a static glyph. Used on the /apps
+   welcome modal heading. */
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.8;
+    transform: scale(1) rotate(0deg);
+    filter: drop-shadow(0 0 2px rgba(49, 219, 165, 0.45));
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18) rotate(12deg);
+    filter: drop-shadow(0 0 7px rgba(49, 219, 165, 0.95));
+  }
+}
+
+.animate-twinkle {
+  transform-origin: center;
+  animation: twinkle 2.4s ease-in-out infinite;
+}
+
+/* Respect users who prefer reduced motion — hold the glow, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-twinkle {
+    animation: none;
+    filter: drop-shadow(0 0 4px rgba(49, 219, 165, 0.7));
+  }
+}
+
 /* ── /apps landing page chat-style background ──
    Mirrors the AiM Academy dashboard chat: dark green-blue gradient
    AVIF as the base layer, white text, room for two circuitry decorations

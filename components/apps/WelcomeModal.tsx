@@ -90,7 +90,8 @@ export function WelcomeModal({ initialOpen, mandatory = false }: WelcomeModalPro
           </button>
         )}
 
-        {/* Header band — teal→blue brand gradient with sparkle icon */}
+        {/* Header band — teal→blue brand gradient with a twinkling AI
+            sparkle sitting inline next to "Welcome". */}
         <div
           className="px-6 pt-7 pb-6"
           style={{
@@ -98,15 +99,11 @@ export function WelcomeModal({ initialOpen, mandatory = false }: WelcomeModalPro
               "linear-gradient(135deg, rgba(28,76,138,0.18) 0%, rgba(49,219,165,0.14) 100%)",
           }}
         >
-          <div
-            className="w-11 h-11 rounded-xl flex items-center justify-center mb-3 shadow-lg"
-            style={{
-              background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)",
-            }}
-          >
-            <Sparkles className="h-5 w-5 text-white" />
-          </div>
-          <h2 className="text-2xl font-bold text-white leading-tight">
+          <h2 className="text-2xl font-bold text-white leading-tight flex items-center gap-2.5">
+            <Sparkles
+              className="h-6 w-6 shrink-0 text-[#31DBA5] animate-twinkle"
+              aria-hidden="true"
+            />
             Welcome to AiM Automations 🎉
           </h2>
           <p className="mt-1.5 text-sm text-white/70 leading-relaxed">
