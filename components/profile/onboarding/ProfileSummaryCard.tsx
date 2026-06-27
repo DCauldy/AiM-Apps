@@ -14,6 +14,16 @@ export interface ProfileDraft {
   state: string;
   metro_area: string;
   bio: string | null;
+  // Optional fields populated by AI Magic mode (website analysis). Control
+  // Freak mode leaves these undefined, so the card just hides them.
+  title?: string | null;
+  phone?: string | null;
+  website_url?: string | null;
+  primary_color?: string | null;
+  secondary_color?: string | null;
+  accent_color?: string | null;
+  logo_url?: string | null;
+  headshot_url?: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -51,6 +61,24 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
       // reads cleanly in the active-profile chip. Users can rename in
       // the full editor later.
       const display_name = `${draft.full_name} — ${draft.brokerage}`;
+      // Only send keys that are actually set — undefined optional fields
+      // (Control Freak mode) simply fall through to the schema defaults.
+      const optional = Object.fromEntries(
+        (
+          [
+            "title",
+            "phone",
+            "website_url",
+            "primary_color",
+            "secondary_color",
+            "accent_color",
+            "logo_url",
+            "headshot_url",
+          ] as const
+        )
+          .filter((k) => draft[k] != null)
+          .map((k) => [k, draft[k]]),
+      );
       const res = await fetch("/api/profiles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -62,6 +90,7 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
           state: draft.state,
           metro_area: draft.metro_area,
           bio: draft.bio,
+          ...optional,
         }),
       });
       const data = await res.json();
@@ -86,6 +115,12 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
   };
 
   const role = ROLE_LABELS[draft.professional_type] ?? draft.professional_type;
+  const brandColors = [
+    draft.primary_color,
+    draft.secondary_color,
+    draft.accent_color,
+  ].filter((c): c is string => !!c);
+  const hasBrand = !!draft.logo_url || !!draft.headshot_url || brandColors.length > 0;
 
   return (
     <div className="glass-card rounded-xl p-5 space-y-4 max-w-md">
@@ -102,8 +137,37 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
         <Row label="Brokerage" value={draft.brokerage} />
         <Row label="State" value={draft.state} />
         <Row label="Metro" value={draft.metro_area} />
+        {draft.phone ? <Row label="Phone" value={draft.phone} /> : null}
         <Row label="Bio" value={draft.bio ?? "—"} multiline />
       </dl>
+
+      {hasBrand ? (
+        <div className="pt-1 border-t border-white/10 space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Brand
+          </p>
+          <div className="flex items-center gap-4 flex-wrap">
+            {draft.logo_url ? (
+              <BrandImage src={draft.logo_url} label="Logo" rounded="rounded-md" />
+            ) : null}
+            {draft.headshot_url ? (
+              <BrandImage src={draft.headshot_url} label="Headshot" rounded="rounded-full" />
+            ) : null}
+            {brandColors.length > 0 ? (
+              <div className="flex items-center gap-1.5">
+                {brandColors.map((c) => (
+                  <span
+                    key={c}
+                    title={c}
+                    className="w-6 h-6 rounded-md border border-white/20 shadow-sm"
+                    style={{ background: c }}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex gap-2 pt-1">
         <Button
@@ -136,6 +200,32 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
           <Pencil className="h-4 w-4" />
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Small framed preview of a brand image (logo / headshot) pulled from the
+ *  user's site. Uses a plain <img> since these are arbitrary external URLs. */
+function BrandImage({
+  src,
+  label,
+  rounded,
+}: {
+  src: string;
+  label: string;
+  rounded: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={label}
+        className={`h-12 w-12 object-contain bg-white/90 border border-white/20 ${rounded}`}
+      />
+      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
     </div>
   );
 }

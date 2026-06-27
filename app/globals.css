@@ -884,6 +884,13 @@ pre code {
   animation: twinkle 2.4s ease-in-out infinite;
 }
 
+/* Shimmer sweep for the "analyzing your website" narration — reads as the
+   AI actively working. Paired with bg-clip-text on a moving gradient. */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* Respect users who prefer reduced motion — hold the glow, drop the movement. */
 @media (prefers-reduced-motion: reduce) {
   .animate-twinkle {

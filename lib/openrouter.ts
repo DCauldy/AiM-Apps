@@ -50,10 +50,16 @@ function createAppProvider(appName: string) {
 let blogEngineProvider: ReturnType<typeof createOpenAI> | null = null;
 let promptStudioProvider: ReturnType<typeof createOpenAI> | null = null;
 let radarProvider: ReturnType<typeof createOpenAI> | null = null;
+let profileSetupProvider: ReturnType<typeof createOpenAI> | null = null;
 
 function getBlogEngineProvider() {
   if (!blogEngineProvider) blogEngineProvider = createAppProvider("Blog Engine");
   return blogEngineProvider;
+}
+
+function getProfileSetupProvider() {
+  if (!profileSetupProvider) profileSetupProvider = createAppProvider("Profile Setup");
+  return profileSetupProvider;
 }
 
 function getPromptStudioProvider() {
@@ -139,6 +145,21 @@ export function getOnboardingModel() {
 export function getRefinementModel() {
   if (!useOpenRouter) return getDirectAnthropic()("claude-sonnet-4-20250514");
   return getBlogEngineProvider().chat("anthropic/claude-sonnet-4");
+}
+
+// ---------------------------------------------------------------------------
+// Profile "AI Magic" onboarding — deep website → profile extraction.
+// Uses a strong Claude (Opus-class) model because it has to read messy,
+// multi-page site copy and infer brand identity + visuals in one shot.
+// We drive it with plain-text + strict-JSON parsing (NOT generateObject's
+// tool mode) to dodge the flaky OpenRouter→Anthropic tool-call translation.
+// Override the slug with PROFILE_MAGIC_MODEL if you want to tune it.
+// ---------------------------------------------------------------------------
+
+export function getProfileMagicModel() {
+  const slug = process.env.PROFILE_MAGIC_MODEL ?? "anthropic/claude-opus-4.1";
+  if (!useOpenRouter) return getDirectAnthropic()("claude-opus-4-1-20250805");
+  return getProfileSetupProvider().chat(slug);
 }
 
 // ---------------------------------------------------------------------------

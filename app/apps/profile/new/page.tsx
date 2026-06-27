@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { canCreateProfile } from "@/lib/profiles/server";
 import { ProfileEditor } from "@/components/profile/ProfileEditor";
-import { ProfileOnboardingChat } from "@/components/profile/onboarding/ProfileOnboardingChat";
+import { ProfileOnboardingLauncher } from "@/components/profile/onboarding/ProfileOnboardingLauncher";
 
 export const dynamic = "force-dynamic";
 
@@ -38,12 +38,12 @@ export default async function NewProfilePage({
     return <ProfileEditor />;
   }
 
-  // Dark-grey page; the chat card itself carries the teal-blue brand
-  // gradient (see ProfileOnboardingChat) so the chatbot keeps the AiM
-  // dashboard look without tinting the whole page.
+  // Dark-grey page; each onboarding view carries the teal-blue brand
+  // gradient on its own card so the chatbot keeps the AiM dashboard look
+  // without tinting the whole page.
   return (
     <div className="apps-theme min-h-screen bg-[#15171c]">
-      <ProfileOnboardingChat />
+      <ProfileOnboardingLauncher />
     </div>
   );
 }

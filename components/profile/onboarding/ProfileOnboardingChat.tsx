@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { TextStreamChatTransport } from "ai";
 import { Bot, Loader2, Send, Sparkles, User } from "lucide-react";
@@ -142,13 +141,7 @@ export function ProfileOnboardingChat() {
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
           Your profile is the engine behind every AiM Automation — it tailors
           your blogs, campaigns, and outreach to your brand, market, and voice.
-          Answer a few quick questions and you&apos;re ready to launch.{" "}
-          <Link
-            href="/apps/profile/new?form=1"
-            className="underline underline-offset-2 hover:text-foreground transition-colors"
-          >
-            Prefer a form?
-          </Link>
+          Answer a few quick questions and you&apos;re ready to launch.
         </p>
       </div>
 
