@@ -21,14 +21,14 @@ interface WelcomeModalProps {
 
 const BULLETS = [
   {
-    Icon: LayoutGrid,
-    title: "Pick an app to get started",
-    body: "Every AiM Automations tool — Blog Engine, Radar, Hyperlocal, CMA, Tours — lives on this dashboard.",
-  },
-  {
     Icon: UserCircle2,
     title: "Set up your profile first",
     body: "Your profile powers personalization across every app: brand colors, market, sender info, brokerage.",
+  },
+  {
+    Icon: LayoutGrid,
+    title: "Pick an app to get started",
+    body: "Every AiM Automations tool — Blog Engine, Radar, Hyperlocal, CMA, Tours — lives on this dashboard.",
   },
   {
     Icon: MessageSquareHeart,
