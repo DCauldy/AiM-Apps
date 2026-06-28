@@ -119,7 +119,7 @@ function useArchiveTourProjectMutation(projectId: string) {
     mutationFn: () => archiveTourProject(projectId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: tourQueryKeys.openProjects() });
-      router.push("/apps/tours/dashboard");
+      router.push("/apps/tours");
     },
   });
 }

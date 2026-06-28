@@ -77,7 +77,7 @@ export function WelcomeScreen() {
       stats={STATS}
       features={FEATURES}
       ctaLabel="Set Up Tours"
-      ctaHref="/apps/tours/dashboard"
+      ctaHref="/apps/tours"
       ctaHelpText="Create your first project in under a minute."
       accentClassName="text-primary"
       accentBgClassName="bg-primary/10"
