@@ -22,7 +22,7 @@ type HyperlocalUsageStatus = {
 // preserved as "Stats". Falls back to the classic nav when the flag is off.
 const NAV_ITEMS = FEATURES.HYPERLOCAL_MAP_HOME
   ? [
-      { label: "Sphere", href: "/apps/hyperlocal/map" },
+      { label: "Launch", href: "/apps/hyperlocal/map" },
       { label: "Campaigns", href: "/apps/hyperlocal/campaigns" },
       { label: "Stats", href: "/apps/hyperlocal/dashboard" },
       { label: "Settings", href: "/apps/hyperlocal/settings" },
