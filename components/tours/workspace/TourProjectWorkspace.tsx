@@ -20,7 +20,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowRight,
-  EllipsisVertical,
   GripVertical,
   ImagePlus,
   Plus,
@@ -40,7 +39,10 @@ import {
   useState,
 } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useOptimisticSortableList, type OptimisticSortableId } from "@/hooks/useOptimisticSortableList";
+import {
+  useOptimisticSortableList,
+  type OptimisticSortableId,
+} from "@/hooks/useOptimisticSortableList";
 import type { TourScene } from "@/lib/tours/workspace";
 import { getTourSceneCameraMotionLabel } from "@/lib/tours/scenes.core";
 import {
@@ -57,19 +59,22 @@ import {
   SceneUploadDialog,
 } from "./WorkspacePresentation";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ImageOverlayDragHandleButton } from "./ImageOverlayControls";
+import { SplitActionMenuButton } from "./SplitActionMenuButton";
 
 export function TourProjectWorkspace() {
-  const { viewModel, acknowledgementMutation, invalidateWorkspace } = useTourProjectWorkspace();
+  const { viewModel, acknowledgementMutation, invalidateWorkspace } =
+    useTourProjectWorkspace();
   const [isCreateSceneOpen, setIsCreateSceneOpen] = useState(false);
-  const [sceneToReplacePhoto, setSceneToReplacePhoto] = useState<TourScene | null>(null);
+  const [sceneToReplacePhoto, setSceneToReplacePhoto] =
+    useState<TourScene | null>(null);
   const [replacementPhoto, setReplacementPhoto] = useState<File | null>(null);
-  const [replacementPhotoPreviewUrl, setReplacementPhotoPreviewUrl] = useState<string | null>(null);
+  const [replacementPhotoPreviewUrl, setReplacementPhotoPreviewUrl] = useState<
+    string | null
+  >(null);
   const [sceneToDelete, setSceneToDelete] = useState<TourScene | null>(null);
   const createSceneForm = useCreateSceneForm({
     projectId: viewModel.project.id,
@@ -82,11 +87,11 @@ export function TourProjectWorkspace() {
       await reorderTourScenes(
         viewModel.project.id,
         orderedSceneIds,
-        "Could not save the scene order."
+        "Could not save the scene order.",
       );
       invalidateWorkspace();
     },
-    [invalidateWorkspace, viewModel.project.id]
+    [invalidateWorkspace, viewModel.project.id],
   );
   const sortableScenes = useOptimisticSortableList({
     items: scenes,
@@ -94,7 +99,7 @@ export function TourProjectWorkspace() {
     getSyncKey: useCallback(
       (scene: TourScene) =>
         `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}`,
-      []
+      [],
     ),
     onPersistOrder: persistSceneOrder,
   });
@@ -102,8 +107,18 @@ export function TourProjectWorkspace() {
     reorderById: sortableScenes.reorderById,
   });
   const replacePhotoMutation = useMutation({
-    mutationFn: ({ sceneId, formData }: { sceneId: string; formData: FormData }) =>
-      replaceAuthoritativeSceneListingPhoto(viewModel.project.id, sceneId, formData),
+    mutationFn: ({
+      sceneId,
+      formData,
+    }: {
+      sceneId: string;
+      formData: FormData;
+    }) =>
+      replaceAuthoritativeSceneListingPhoto(
+        viewModel.project.id,
+        sceneId,
+        formData,
+      ),
     onSuccess: () => {
       setReplacementPhoto(null);
       setSceneToReplacePhoto(null);
@@ -111,10 +126,11 @@ export function TourProjectWorkspace() {
     },
   });
   const deleteSceneMutation = useMutation({
-    mutationFn: (sceneId: string) => deleteTourScene(viewModel.project.id, sceneId),
+    mutationFn: (sceneId: string) =>
+      deleteTourScene(viewModel.project.id, sceneId),
     onSuccess: (_payload, deletedSceneId) => {
       sortableScenes.setItems(
-        sortableScenes.items.filter((scene) => scene.id !== deletedSceneId)
+        sortableScenes.items.filter((scene) => scene.id !== deletedSceneId),
       );
       setSceneToDelete(null);
       invalidateWorkspace();
@@ -173,7 +189,9 @@ export function TourProjectWorkspace() {
     return (
       <>
         <div className="mt-5 rounded-md border border-dashed border-border bg-muted/20 p-8 text-center">
-          <h2 className="text-sm font-semibold text-foreground">No scenes yet</h2>
+          <h2 className="text-sm font-semibold text-foreground">
+            No scenes yet
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Add the first scene with a title and listing photo.
           </p>
@@ -296,7 +314,9 @@ function ListingMediaAuthorizationPanel({
       <div className="flex gap-3">
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Authorize listing media</h2>
+          <h2 className="text-sm font-semibold text-foreground">
+            Authorize listing media
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Scene media tools unlock after this acknowledgement.
           </p>
@@ -331,12 +351,19 @@ function useCreateSceneForm({
   const router = useRouter();
   const [sceneTitle, setSceneTitle] = useState("");
   const [scenePhoto, setScenePhoto] = useState<File | null>(null);
-  const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<string | null>(null);
+  const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<
+    string | null
+  >(null);
   const createSceneMutation = useMutation({
     mutationFn: (formData: FormData) =>
-      createSceneFromListingPhoto(projectId, formData, "Could not create the scene."),
+      createSceneFromListingPhoto(
+        projectId,
+        formData,
+        "Could not create the scene.",
+      ),
     onSuccess: (payload) => {
-      const sceneId = typeof payload.scene?.id === "string" ? payload.scene.id : null;
+      const sceneId =
+        typeof payload.scene?.id === "string" ? payload.scene.id : null;
       setSceneTitle("");
       setScenePhoto(null);
       invalidateWorkspace();
@@ -369,7 +396,7 @@ function useCreateSceneForm({
       }
       createSceneMutation.mutate(formData);
     },
-    [createSceneMutation, scenePhoto, sceneTitle]
+    [createSceneMutation, scenePhoto, sceneTitle],
   );
 
   return {
@@ -386,14 +413,17 @@ function useCreateSceneForm({
 function useSceneCardDragEnd({
   reorderById,
 }: {
-  reorderById: (activeId: OptimisticSortableId, overId: OptimisticSortableId | null | undefined) => void;
+  reorderById: (
+    activeId: OptimisticSortableId,
+    overId: OptimisticSortableId | null | undefined,
+  ) => void;
 }) {
   return useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       reorderById(active.id, over?.id);
     },
-    [reorderById]
+    [reorderById],
   );
 }
 
@@ -422,12 +452,20 @@ function SortableSceneGrid({
 }) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 180, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
       <SortableContext items={itemIds} strategy={rectSortingStrategy}>
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {scenes.map((scene, index) => (
@@ -549,7 +587,7 @@ const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
     onRemoveScene,
     dragHandleProps,
   },
-  ref
+  ref,
 ) {
   return (
     <article
@@ -578,14 +616,14 @@ const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
           )}
         </Link>
         {dragHandleProps ? (
-          <button
+          <ImageOverlayDragHandleButton
             type="button"
             aria-label={`Reorder ${scene.title}`}
-            className="absolute left-3 top-3 flex h-9 w-9 cursor-grab items-center justify-center rounded-md bg-background/85 text-muted-foreground backdrop-blur transition-colors hover:bg-background hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+            className="absolute left-3 top-3 cursor-grab active:cursor-grabbing"
             {...dragHandleProps}
           >
             <GripVertical className="h-4 w-4" />
-          </button>
+          </ImageOverlayDragHandleButton>
         ) : null}
       </div>
       <div className="flex items-start justify-between gap-3 p-4">
@@ -597,65 +635,51 @@ const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
             {getTourSceneCameraMotionLabel(scene.cameraMotion)}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
+        <div className="flex shrink-0 items-center">
+          <SplitActionMenuButton
             asChild
             type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0"
+            menuAriaLabel={`Open scene actions for ${scene.title}`}
+            menuDisabled={isReplacingPhoto || isDeletingScene}
+            menuContentClassName="w-52"
+            menuContent={
+              <SceneCardActionsMenuItems
+                onReplacePhoto={onReplacePhoto}
+                onRemoveScene={onRemoveScene}
+              />
+            }
           >
             <Link href={`/apps/tours/projects/${projectId}/${scene.id}`}>
               Open scene
-              <ArrowRight className="h-4 w-4" />
             </Link>
-          </Button>
-          <SceneCardActionsMenu
-            sceneTitle={scene.title}
-            disabled={isReplacingPhoto || isDeletingScene}
-            onReplacePhoto={onReplacePhoto}
-            onRemoveScene={onRemoveScene}
-          />
+          </SplitActionMenuButton>
         </div>
       </div>
     </article>
   );
 });
 
-function SceneCardActionsMenu({
-  sceneTitle,
-  disabled,
+function SceneCardActionsMenuItems({
   onReplacePhoto,
   onRemoveScene,
 }: {
-  sceneTitle: string;
-  disabled: boolean;
   onReplacePhoto: () => void;
   onRemoveScene: () => void;
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-        aria-label={`Open scene actions for ${sceneTitle}`}
-        disabled={disabled}
+    <>
+      <DropdownMenuItem onClick={onReplacePhoto}>
+        <ImagePlus className="mr-2 h-4 w-4" />
+        Replace primary photo
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        className="text-destructive hover:text-destructive"
+        onClick={onRemoveScene}
       >
-        <EllipsisVertical className="h-4 w-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuItem onClick={onReplacePhoto}>
-          <ImagePlus className="mr-2 h-4 w-4" />
-          Replace primary photo
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="text-destructive hover:text-destructive"
-          onClick={onRemoveScene}
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Remove scene
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <Trash2 className="mr-2 h-4 w-4" />
+        Remove scene
+      </DropdownMenuItem>
+    </>
   );
 }

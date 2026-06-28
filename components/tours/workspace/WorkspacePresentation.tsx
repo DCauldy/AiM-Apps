@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -37,6 +36,10 @@ import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import { getRequiredSettingsState } from "@/lib/tours/projects/project-configuration";
 import { ElevenLabsVoiceSelector } from "./ElevenLabsVoiceSelector";
 import { HeyGenAvatarSelector } from "./HeyGenAvatarSelector";
+import {
+  ImageOverlayIconButton,
+  ImageOverlayMenuContent,
+} from "./ImageOverlayControls";
 import type { HeyGenAvatarProjectPosition } from "./avatar-positioning";
 import { appendDownloadTitle } from "./TourRenderStatusPanel";
 
@@ -270,7 +273,7 @@ export function SceneImageRail({
   );
 }
 
-export function ProjectActionsMenu({
+export function ProjectActionsMenuItems({
   latestDownloadUrl,
   renderingHref,
   downloadTitle,
@@ -292,56 +295,53 @@ export function ProjectActionsMenu({
   const hasRenderActions = Boolean(onGenerateReuseAssets || latestDownloadUrl);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Open project actions"
-      >
-        <EllipsisVertical className="h-4 w-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuItem onClick={onEdit}>
-          <Pencil className="mr-2 h-4 w-4" />
-          Edit details
+    <>
+      <DropdownMenuItem onClick={onEdit}>
+        <Pencil className="mr-2 h-4 w-4" />
+        Edit details
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      {onGenerateReuseAssets ? (
+        <DropdownMenuItem
+          disabled={!canGenerateReuseAssets || isGeneratingReuseAssets}
+          onClick={onGenerateReuseAssets}
+        >
+          <RefreshCw className="mr-2 h-4 w-4" />
+          {isGeneratingReuseAssets
+            ? "Starting render..."
+            : "Generate and reuse assets"}
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {onGenerateReuseAssets ? (
-          <DropdownMenuItem
-            disabled={!canGenerateReuseAssets || isGeneratingReuseAssets}
-            onClick={onGenerateReuseAssets}
+      ) : null}
+      {latestDownloadUrl ? (
+        <DropdownMenuItem asChild>
+          <a
+            href={appendDownloadTitle(latestDownloadUrl, downloadTitle)}
+            target="_blank"
+            rel="noreferrer"
+            download
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            {isGeneratingReuseAssets ? "Starting render..." : "Generate and reuse assets"}
-          </DropdownMenuItem>
-        ) : null}
-        {latestDownloadUrl ? (
-          <DropdownMenuItem asChild>
-            <a
-              href={appendDownloadTitle(latestDownloadUrl, downloadTitle)}
-              target="_blank"
-              rel="noreferrer"
-              download
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download render
-            </a>
-          </DropdownMenuItem>
-        ) : null}
-        {latestDownloadUrl ? (
-          <DropdownMenuItem asChild>
-            <Link href={renderingHref}>
-              <Images className="mr-2 h-4 w-4" />
-              View render assets
-            </Link>
-          </DropdownMenuItem>
-        ) : null}
-        {hasRenderActions ? <DropdownMenuSeparator /> : null}
-        <DropdownMenuItem className="text-destructive hover:text-destructive" onClick={onDelete}>
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete
+            <Download className="mr-2 h-4 w-4" />
+            Download render
+          </a>
         </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      ) : null}
+      {latestDownloadUrl ? (
+        <DropdownMenuItem asChild>
+          <Link href={renderingHref}>
+            <Images className="mr-2 h-4 w-4" />
+            View render assets
+          </Link>
+        </DropdownMenuItem>
+      ) : null}
+      {hasRenderActions ? <DropdownMenuSeparator /> : null}
+      <DropdownMenuItem
+        className="text-destructive hover:text-destructive"
+        onClick={onDelete}
+      >
+        <Trash2 className="mr-2 h-4 w-4" />
+        Delete
+      </DropdownMenuItem>
+    </>
   );
 }
 
@@ -370,31 +370,29 @@ export function SceneActionsMenu({
   return (
     <div className="absolute right-3 top-3 z-30">
       <DropdownMenu>
-        <DropdownMenuTrigger
-          className="flex h-9 w-9 items-center justify-center rounded-md bg-background/80 text-muted-foreground backdrop-blur transition-colors hover:bg-background hover:text-foreground"
+        <ImageOverlayIconButton
+          as={DropdownMenuTrigger}
           aria-label={`Open photo actions for ${scene.title}`}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <EllipsisVertical className="h-4 w-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        </ImageOverlayIconButton>
+        <ImageOverlayMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={onReplacePhoto}>
             <ImagePlus className="mr-2 h-4 w-4" />
             Replace primary photo
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-destructive hover:text-destructive"
-            disabled={!canRemovePhoto || isRemovingPhoto}
-            title={
-              canRemovePhoto
-                ? `Removes the selected ${selectedPhotoLabel}.`
-                : "A scene needs at least one photo."
-            }
-            onClick={onRemovePhoto}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {isRemovingPhoto ? "Removing..." : `Remove ${selectedPhotoLabel}`}
-          </DropdownMenuItem>
+          {canRemovePhoto ? (
+            <DropdownMenuItem
+              className="text-destructive hover:text-destructive"
+              disabled={isRemovingPhoto}
+              title={`Removes the selected ${selectedPhotoLabel}.`}
+              onClick={onRemovePhoto}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isRemovingPhoto ? "Removing..." : `Remove ${selectedPhotoLabel}`}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive hover:text-destructive"
@@ -404,7 +402,7 @@ export function SceneActionsMenu({
             <Trash2 className="mr-2 h-4 w-4" />
             {isRemovingScene ? "Removing..." : "Remove scene"}
           </DropdownMenuItem>
-        </DropdownMenuContent>
+        </ImageOverlayMenuContent>
       </DropdownMenu>
     </div>
   );

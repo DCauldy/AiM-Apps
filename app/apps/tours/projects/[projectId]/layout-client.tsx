@@ -4,13 +4,13 @@ import { Mic2, UserRound, Video } from "lucide-react";
 import Link from "next/link";
 import { PageFrame } from "@/components/app-shell/PagePrimitives";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   ConfirmDialog,
   ErrorMessage,
-  ProjectActionsMenu,
+  ProjectActionsMenuItems,
   ProjectDetailsDialog,
 } from "@/components/tours/workspace/WorkspacePresentation";
+import { SplitActionMenuButton } from "@/components/tours/workspace/SplitActionMenuButton";
 import { TourProjectQaRenderLab } from "@/components/tours/workspace/TourProjectQaRenderLab";
 import { useTourRenderRuns } from "@/components/tours/workspace/useTourRenderRuns";
 import {
@@ -84,7 +84,7 @@ function TourProjectLayoutContent({
 
   return (
     <PageFrame className="max-w-none px-4 py-4 sm:px-6 lg:px-8">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-3">
             <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
@@ -102,40 +102,33 @@ function TourProjectLayoutContent({
             {viewModel.listing.address}
           </p>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
-          {isProjectRendering ? (
-            <Button asChild variant="secondary" size="sm">
-              <Link href={renderingHref}>
-                <Video className="h-4 w-4" />
-                View progress
-              </Link>
-            </Button>
-          ) : (
-            <TourProjectRenderActions
-              sceneCount={viewModel.tourScenes.length}
-              renderRuns={renderRuns}
-            />
-          )}
-          <div className="ml-auto lg:ml-0">
-            <ProjectActionsMenu
-              latestDownloadUrl={latestDownloadUrl}
-              renderingHref={renderingHref}
-              downloadTitle={viewModel.project.name}
-              canGenerateReuseAssets={
-                viewModel.tourScenes.length > 0 &&
-                !renderRuns.isCreatingAnyRenderRun &&
-                !isProjectRendering
-              }
-              isGeneratingReuseAssets={renderRuns.isCreatingRenderRun}
-              onGenerateReuseAssets={() => {
-                if (!isProjectRendering) {
-                  renderRuns.createRenderRun();
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <TourProjectRenderActions
+            sceneCount={viewModel.tourScenes.length}
+            renderRuns={renderRuns}
+            isProjectRendering={isProjectRendering}
+            renderingHref={renderingHref}
+            projectActions={
+              <ProjectActionsMenuItems
+                latestDownloadUrl={latestDownloadUrl}
+                renderingHref={renderingHref}
+                downloadTitle={viewModel.project.name}
+                canGenerateReuseAssets={
+                  viewModel.tourScenes.length > 0 &&
+                  !renderRuns.isCreatingAnyRenderRun &&
+                  !isProjectRendering
                 }
-              }}
-              onEdit={() => setIsProjectDetailsOpen(true)}
-              onDelete={() => setIsProjectDeleteOpen(true)}
-            />
-          </div>
+                isGeneratingReuseAssets={renderRuns.isCreatingRenderRun}
+                onGenerateReuseAssets={() => {
+                  if (!isProjectRendering) {
+                    renderRuns.createRenderRun();
+                  }
+                }}
+                onEdit={() => setIsProjectDetailsOpen(true)}
+                onDelete={() => setIsProjectDeleteOpen(true)}
+              />
+            }
+          />
         </div>
       </header>
 
@@ -213,36 +206,47 @@ function TourProjectLayoutContent({
 function TourProjectRenderActions({
   sceneCount,
   renderRuns,
+  isProjectRendering,
+  renderingHref,
+  projectActions,
 }: {
   sceneCount: number;
   renderRuns: ReturnType<typeof useTourRenderRuns>;
+  isProjectRendering: boolean;
+  renderingHref: string;
+  projectActions: React.ReactNode;
 }) {
-  const isProjectRendering =
-    renderRuns.currentRun?.status === "queued" ||
-    renderRuns.currentRun?.status === "running";
+  if (isProjectRendering) {
+    return (
+      <SplitActionMenuButton
+        asChild
+        menuAriaLabel="Open project actions"
+        menuContentClassName="w-56"
+        menuContent={projectActions}
+      >
+        <Link href={renderingHref}>
+          <Video className="h-4 w-4" />
+          View progress
+        </Link>
+      </SplitActionMenuButton>
+    );
+  }
 
   return (
-    <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={
-          sceneCount === 0 ||
-          renderRuns.isCreatingAnyRenderRun ||
-          isProjectRendering
-        }
-        onClick={() => {
-          if (!isProjectRendering) {
-            renderRuns.createFreshRenderRun();
-          }
-        }}
-      >
-        <Video className="h-4 w-4" />
-        {renderRuns.isCreatingFreshRenderRun
-          ? "Starting video..."
-          : "Generate video"}
-      </Button>
-    </>
+    <SplitActionMenuButton
+      type="button"
+      disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun}
+      menuAriaLabel="Open project actions"
+      menuContentClassName="w-56"
+      menuContent={projectActions}
+      onClick={() => {
+        renderRuns.createFreshRenderRun();
+      }}
+    >
+      <Video className="h-4 w-4" />
+      {renderRuns.isCreatingFreshRenderRun
+        ? "Starting video..."
+        : "Generate video"}
+    </SplitActionMenuButton>
   );
 }
