@@ -1,3 +1,9 @@
+import {
+  DEFAULT_SCENE_TRANSITION_EFFECT,
+  isSceneTransitionEffect,
+  type SceneTransitionEffect,
+} from "@/lib/tours/rendering/transitions/scene-transition-effects";
+
 export const TOUR_SCENE_CAMERA_MOTIONS = [
   "auto",
   "slow_push",
@@ -88,6 +94,7 @@ export type TourSceneModel = {
   sortOrder: number;
   included: boolean;
   cameraMotion: TourSceneCameraMotion;
+  transitionEffect: SceneTransitionEffect;
   createdAt: string;
   updatedAt: string;
   authoritativePhoto: TourSceneSourcePhoto;
@@ -101,6 +108,7 @@ export type TourSceneRow = {
   sort_order: number;
   included: boolean;
   camera_motion: TourSceneCameraMotion;
+  transition_effect?: SceneTransitionEffect | null;
   created_at: string;
   updated_at: string;
 };
@@ -194,10 +202,18 @@ export type TourScenesRepository = {
     scene: TourSceneRow;
     sourcePhotos: TourSceneSourcePhotoRow[];
   } | null>;
+  updateSceneTransitionEffect?(projectId: string, sceneId: string, transitionEffect: SceneTransitionEffect): Promise<{
+    scene: TourSceneRow;
+    sourcePhotos: TourSceneSourcePhotoRow[];
+  } | null>;
 };
 
 export function getInitialTourSceneCameraMotion(_sortOrder: number): TourSceneCameraMotion {
   return "auto";
+}
+
+export function getInitialSceneTransitionEffect(_sortOrder: number): SceneTransitionEffect {
+  return DEFAULT_SCENE_TRANSITION_EFFECT;
 }
 
 export function isTourSceneCameraMotion(value: unknown): value is TourSceneCameraMotion {
@@ -267,6 +283,9 @@ export function mapTourScene(
     sortOrder: scene.sort_order,
     included: scene.included,
     cameraMotion: scene.camera_motion,
+    transitionEffect: isSceneTransitionEffect(scene.transition_effect)
+      ? scene.transition_effect
+      : DEFAULT_SCENE_TRANSITION_EFFECT,
     createdAt: scene.created_at,
     updatedAt: scene.updated_at,
     authoritativePhoto,
@@ -434,6 +453,51 @@ export async function updateTourSceneCameraMotionForProject(
   const updated = await repository.updateSceneCameraMotion(projectId, sceneId, cameraMotion);
   if (!updated) {
     return { ok: false, error: "Could not update TourScene camera motion." };
+  }
+
+  const scene = mapTourScene(updated.scene, updated.sourcePhotos);
+  if (!scene) {
+    return { ok: false, error: "TourScene requires an authoritative listing photo." };
+  }
+
+  return { ok: true, scene };
+}
+
+export type UpdateSceneTransitionEffectResult =
+  | { ok: true; scene: TourSceneModel }
+  | { ok: false; error: string };
+
+export async function updateSceneTransitionEffectForProject(
+  projectId: string,
+  sceneId: string,
+  transitionEffect: SceneTransitionEffect,
+  repository: TourScenesRepository
+): Promise<UpdateSceneTransitionEffectResult> {
+  if (!sceneId) {
+    return { ok: false, error: "Choose a TourScene to update." };
+  }
+
+  if (!isSceneTransitionEffect(transitionEffect)) {
+    return { ok: false, error: "Choose a valid scene transition." };
+  }
+
+  const sceneRows = await repository.listSceneRowsByIds([sceneId]);
+  const existingScene = sceneRows[0];
+  if (!existingScene) {
+    return { ok: false, error: "TourScene was not found." };
+  }
+
+  if (existingScene.project_id !== projectId) {
+    return { ok: false, error: "TourScenes can only be updated within the same Tour Project." };
+  }
+
+  if (!repository.updateSceneTransitionEffect) {
+    return { ok: false, error: "Could not update TourScene transition." };
+  }
+
+  const updated = await repository.updateSceneTransitionEffect(projectId, sceneId, transitionEffect);
+  if (!updated) {
+    return { ok: false, error: "Could not update TourScene transition." };
   }
 
   const scene = mapTourScene(updated.scene, updated.sourcePhotos);

@@ -51,6 +51,11 @@ import type {
   TourRenderMode,
   TourRenderOptions,
 } from "@/lib/tours/rendering/preflight/preflight";
+import {
+  SCENE_TRANSITION_EFFECT_OPTIONS,
+  getSceneTransitionEffectLabel,
+  isSceneTransitionEffect,
+} from "@/lib/tours/rendering/transitions/scene-transition-effects";
 import type { TourProjectType } from "@/lib/tours/projects/project-types";
 
 const BACKEND_DEFAULT_MODEL_VALUE = "__backend_default";
@@ -419,6 +424,46 @@ export function TourProjectQaRenderLab({
                             </SelectItem>
                           ),
                         )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label
+                      className="text-xs font-medium"
+                      htmlFor="tour-scene-transition-effect"
+                    >
+                      Scene transition
+                    </label>
+                    <Select
+                      value={controls.sceneTransitionEffect}
+                      onValueChange={(value) => {
+                        if (!isSceneTransitionEffect(value)) {
+                          return;
+                        }
+                        updateControls((current) => ({
+                          ...current,
+                          sceneTransitionEffect: value,
+                        }));
+                      }}
+                    >
+                      <SelectTrigger
+                        id="tour-scene-transition-effect"
+                        aria-label="Scene transition"
+                        className="h-9 bg-neutral-950/80"
+                      >
+                        <SelectValue>
+                          {getSceneTransitionEffectLabel(
+                            controls.sceneTransitionEffect,
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label} ({option.value})
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>

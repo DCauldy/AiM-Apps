@@ -98,7 +98,7 @@ export function TourProjectWorkspace() {
     getId: useCallback((scene: TourScene) => scene.id, []),
     getSyncKey: useCallback(
       (scene: TourScene) =>
-        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}`,
+        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.transitionEffect}\u001e${scene.authoritativePhoto.previewUrl ?? ""}`,
       [],
     ),
     onPersistOrder: persistSceneOrder,

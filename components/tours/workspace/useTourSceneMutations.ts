@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
+import type { SceneTransitionEffect } from "@/lib/tours/rendering/transitions/scene-transition-effects";
 import type { TourScene } from "@/lib/tours/workspace";
 import { useOptimisticSortableList } from "@/hooks/useOptimisticSortableList";
 import {
@@ -16,6 +17,7 @@ import {
   toggleSceneInclusion,
   tourQueryKeys,
   updateSceneCameraMotion,
+  updateSceneTransitionEffect,
 } from "@/components/tours/tours-api-client";
 
 export function useTourSceneMutations({
@@ -80,7 +82,7 @@ export function useTourSceneMutations({
     getId: useCallback((scene: TourScene) => scene.id, []),
     getSyncKey: useCallback(
       (scene: TourScene) =>
-        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.authoritativePhoto.previewUrl ?? ""}\u001e${scene.sourcePhotos.map((photo) => `${photo.id}:${photo.previewUrl ?? ""}`).join("\u001d")}\u001e${scene.facts.map((fact) => `${fact.id}:${fact.text}:${fact.sortOrder}`).join("\u001d")}`,
+        `${scene.title}\u001e${scene.sortOrder}\u001e${scene.included}\u001e${scene.cameraMotion}\u001e${scene.transitionEffect}\u001e${scene.authoritativePhoto.previewUrl ?? ""}\u001e${scene.sourcePhotos.map((photo) => `${photo.id}:${photo.previewUrl ?? ""}`).join("\u001d")}\u001e${scene.facts.map((fact) => `${fact.id}:${fact.text}:${fact.sortOrder}`).join("\u001d")}`,
       []
     ),
     isLocked: reorderScenesMutation.isPending,
@@ -94,6 +96,16 @@ export function useTourSceneMutations({
   const updateSceneCameraMotionMutation = useMutation({
     mutationFn: ({ sceneId, cameraMotion }: { sceneId: string; cameraMotion: TourSceneCameraMotion }) =>
       updateSceneCameraMotion(projectId, sceneId, cameraMotion),
+    onSuccess: invalidateWorkspace,
+  });
+  const updateSceneTransitionEffectMutation = useMutation({
+    mutationFn: ({
+      sceneId,
+      transitionEffect,
+    }: {
+      sceneId: string;
+      transitionEffect: SceneTransitionEffect;
+    }) => updateSceneTransitionEffect(projectId, sceneId, transitionEffect),
     onSuccess: invalidateWorkspace,
   });
   const deleteSceneMutation = useMutation({
@@ -140,6 +152,25 @@ export function useTourSceneMutations({
     [tourScenes, updateSceneCameraMotionMutation]
   );
 
+  const updateTransitionEffect = useCallback(
+    async (sceneId: string, transitionEffect: SceneTransitionEffect) => {
+      const previousScene = tourScenes.items.find((scene) => scene.id === sceneId);
+      tourScenes.updateItem(sceneId, (scene) => ({
+        ...scene,
+        transitionEffect,
+      }));
+
+      try {
+        await updateSceneTransitionEffectMutation.mutateAsync({ sceneId, transitionEffect });
+      } catch {
+        if (previousScene) {
+          tourScenes.updateItem(sceneId, () => previousScene);
+        }
+      }
+    },
+    [tourScenes, updateSceneTransitionEffectMutation]
+  );
+
   return {
     tourScenes,
     createScene: createSceneMutation.mutate,
@@ -149,6 +180,7 @@ export function useTourSceneMutations({
     reorderById: tourScenes.reorderById,
     toggleInclusion,
     updateCameraMotion,
+    updateTransitionEffect,
     deleteScene: deleteSceneMutation.mutateAsync,
     mutations: {
       createScene: createSceneMutation,
@@ -158,6 +190,7 @@ export function useTourSceneMutations({
       reorderScenes: reorderScenesMutation,
       toggleSceneInclusion: toggleSceneInclusionMutation,
       updateSceneCameraMotion: updateSceneCameraMotionMutation,
+      updateSceneTransitionEffect: updateSceneTransitionEffectMutation,
       deleteScene: deleteSceneMutation,
     },
   };

@@ -7,6 +7,7 @@ import { listTourSceneFactsForProject } from "@/lib/tours/facts/facts";
 import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import { getTourScenesForProject, type TourSceneCameraMotion } from "@/lib/tours/scenes";
 import { getTourSceneReadinessStatus } from "@/lib/tours/scenes.core";
+import type { SceneTransitionEffect } from "@/lib/tours/rendering/transitions/scene-transition-effects";
 
 export type TourSceneFact = {
   id: string;
@@ -24,6 +25,7 @@ export type TourScene = {
   sortOrder: number;
   included: boolean;
   cameraMotion: TourSceneCameraMotion;
+  transitionEffect?: SceneTransitionEffect;
   authoritativePhoto: {
     id: string;
     fileName: string;
@@ -165,6 +167,7 @@ export async function getTourProjectWorkspaceViewModel(
       sortOrder: scene.sortOrder,
       included: scene.included,
       cameraMotion: scene.cameraMotion,
+      transitionEffect: scene.transitionEffect,
       authoritativePhoto,
       sourcePhotos: signedSourcePhotos,
       facts: factsBySceneId.get(scene.id) ?? [],

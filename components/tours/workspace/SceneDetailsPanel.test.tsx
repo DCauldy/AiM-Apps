@@ -56,6 +56,7 @@ function scene(overrides: Partial<TourScene> = {}): TourScene {
     sortOrder: 0,
     included: true,
     cameraMotion: "slow_push",
+    transitionEffect: "swipe-on-top",
     authoritativePhoto,
     sourcePhotos: [authoritativePhoto],
     facts: [],
@@ -81,6 +82,8 @@ test("renders active scene heading without duplicating image state", () => {
   assert.ok(screen.getByText("Scene 3"));
   assert.ok(screen.getByLabelText("Camera motion"));
   assert.ok(screen.getByText("Slow push"));
+  assert.ok(screen.getByLabelText("Scene transition"));
+  assert.ok(screen.getByText("Swipe on top"));
   assert.equal(screen.queryByText("Scene/image description"), null);
   assert.equal(screen.queryByText("Primary source image: primary-source.jpg"), null);
   assert.equal(screen.queryByText("Viewing display image: display-angle.jpg"), null);
@@ -106,6 +109,24 @@ test("updates camera motion from the dropdown", async () => {
   await user.click(screen.getByRole("option", { name: "Hero reveal" }));
 
   assert.deepEqual(updates, ["hero_reveal"]);
+});
+
+test("surfaces scene transition options in the dropdown", async () => {
+  const user = userEvent.setup();
+
+  render(
+    <SceneDetailsPanel
+      activeScene={scene()}
+      displayPhoto={null}
+      sceneIndex={0}
+      onAddScene={() => {}}
+      onTransitionEffectChange={() => {}}
+    />
+  );
+
+  await user.click(screen.getByLabelText("Scene transition"));
+
+  assert.ok(screen.getByRole("option", { name: "Swipe on top" }));
 });
 
 test("does not render skipped scene status copy in the compact details panel", () => {

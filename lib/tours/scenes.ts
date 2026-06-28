@@ -7,10 +7,12 @@ import {
   reorderTourScenesForProject,
   toggleTourSceneInclusionForProject,
   updateTourSceneCameraMotionForProject,
+  updateSceneTransitionEffectForProject,
   type CreateTourSceneResult,
   type ReorderTourScenesResult,
   type ToggleTourSceneInclusionResult,
   type UpdateTourSceneCameraMotionResult,
+  type UpdateSceneTransitionEffectResult,
   type NewTourSceneSourcePhoto,
   type TourSceneCameraMotion,
   type TourSceneModel,
@@ -18,8 +20,10 @@ import {
   type TourSceneSourcePhotoRow,
   type TourScenesRepository,
 } from "./scenes.core";
+import type { SceneTransitionEffect } from "@/lib/tours/rendering/transitions/scene-transition-effects";
 
 const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion, created_at, updated_at";
+const SCENE_WITH_TRANSITION_SELECT = `${SCENE_SELECT}, transition_effect`;
 const SOURCE_PHOTO_SELECT =
   "id, project_id, scene_id, storage_path, file_name, content_type, byte_size, width, height, priority, created_at";
 
@@ -30,6 +34,7 @@ type CreateSceneWithSourcePhotoRpcRow = {
   scene_sort_order: number;
   scene_included: boolean;
   scene_camera_motion: TourSceneCameraMotion;
+  scene_transition_effect?: SceneTransitionEffect | null;
   scene_created_at: string;
   scene_updated_at: string;
   source_photo_id: string;
@@ -89,6 +94,7 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
         sort_order: data.scene_sort_order,
         included: data.scene_included,
         camera_motion: data.scene_camera_motion,
+        transition_effect: data.scene_transition_effect,
         created_at: data.scene_created_at,
         updated_at: data.scene_updated_at,
       };
@@ -111,15 +117,23 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
     async listSceneRowsWithSourcePhotos(projectId) {
       const { data: scenes, error: scenesError } = await supabase
         .from("tour_scenes")
-        .select(SCENE_SELECT)
+        .select(SCENE_WITH_TRANSITION_SELECT)
         .eq("project_id", projectId)
         .order("sort_order", { ascending: true });
 
-      if (scenesError || !scenes || scenes.length === 0) {
+      const resolvedScenes = scenesError
+        ? await supabase
+            .from("tour_scenes")
+            .select(SCENE_SELECT)
+            .eq("project_id", projectId)
+            .order("sort_order", { ascending: true })
+        : { data: scenes, error: scenesError };
+
+      if (resolvedScenes.error || !resolvedScenes.data || resolvedScenes.data.length === 0) {
         return [];
       }
 
-      const sceneIds = scenes.map((scene) => scene.id);
+      const sceneIds = resolvedScenes.data.map((scene) => scene.id);
       const { data: sourcePhotos, error: sourcePhotosError } = await supabase
         .from("tour_scene_source_photos")
         .select(SOURCE_PHOTO_SELECT)
@@ -130,7 +144,7 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
         return [];
       }
 
-      return scenes.map((scene) => ({
+      return resolvedScenes.data.map((scene) => ({
         scene,
         sourcePhotos: (sourcePhotos ?? []).filter((photo) => photo.scene_id === scene.id),
       }));
@@ -138,11 +152,21 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
     async listSceneRowsForProject(projectId) {
       const { data, error } = await supabase
         .from("tour_scenes")
-        .select(SCENE_SELECT)
+        .select(SCENE_WITH_TRANSITION_SELECT)
         .eq("project_id", projectId)
         .order("sort_order", { ascending: true });
 
-      if (error || !data) {
+      if (error) {
+        const fallback = await supabase
+          .from("tour_scenes")
+          .select(SCENE_SELECT)
+          .eq("project_id", projectId)
+          .order("sort_order", { ascending: true });
+
+        return fallback.error || !fallback.data ? [] : fallback.data;
+      }
+
+      if (!data) {
         return [];
       }
 
@@ -155,10 +179,19 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
 
       const { data, error } = await supabase
         .from("tour_scenes")
-        .select(SCENE_SELECT)
+        .select(SCENE_WITH_TRANSITION_SELECT)
         .in("id", sceneIds);
 
-      if (error || !data) {
+      if (error) {
+        const fallback = await supabase
+          .from("tour_scenes")
+          .select(SCENE_SELECT)
+          .in("id", sceneIds);
+
+        return fallback.error || !fallback.data ? [] : fallback.data;
+      }
+
+      if (!data) {
         return [];
       }
 
@@ -201,6 +234,31 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
       const { data: scene, error: sceneError } = await supabase
         .from("tour_scenes")
         .update({ camera_motion: cameraMotion, updated_at: new Date().toISOString() })
+        .eq("project_id", projectId)
+        .eq("id", sceneId)
+        .select(SCENE_SELECT)
+        .maybeSingle<TourSceneRow>();
+
+      if (sceneError || !scene) {
+        return null;
+      }
+
+      const { data: sourcePhotos, error: sourcePhotosError } = await supabase
+        .from("tour_scene_source_photos")
+        .select(SOURCE_PHOTO_SELECT)
+        .eq("scene_id", sceneId)
+        .order("priority", { ascending: true });
+
+      if (sourcePhotosError) {
+        return null;
+      }
+
+      return { scene, sourcePhotos: sourcePhotos ?? [] };
+    },
+    async updateSceneTransitionEffect(projectId, sceneId, transitionEffect) {
+      const { data: scene, error: sceneError } = await supabase
+        .from("tour_scenes")
+        .update({ transition_effect: transitionEffect, updated_at: new Date().toISOString() })
         .eq("project_id", projectId)
         .eq("id", sceneId)
         .select(SCENE_SELECT)
@@ -272,6 +330,20 @@ export async function updateTourSceneCameraMotion(input: {
     input.projectId,
     input.sceneId,
     input.cameraMotion,
+    repository
+  );
+}
+
+export async function updateSceneTransitionEffect(input: {
+  projectId: string;
+  sceneId: string;
+  transitionEffect: SceneTransitionEffect;
+}): Promise<UpdateSceneTransitionEffectResult> {
+  const repository = await createSupabaseTourScenesRepository();
+  return updateSceneTransitionEffectForProject(
+    input.projectId,
+    input.sceneId,
+    input.transitionEffect,
     repository
   );
 }

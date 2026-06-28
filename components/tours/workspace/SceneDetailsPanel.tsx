@@ -8,6 +8,13 @@ import {
   isTourSceneCameraMotion,
   type TourSceneCameraMotion,
 } from "@/lib/tours/scenes.core";
+import {
+  DEFAULT_SCENE_TRANSITION_EFFECT,
+  SCENE_TRANSITION_EFFECT_OPTIONS,
+  getSceneTransitionEffectLabel,
+  isSceneTransitionEffect,
+  type SceneTransitionEffect,
+} from "@/lib/tours/rendering/transitions/scene-transition-effects";
 import type { TourScene, TourSceneFact } from "@/lib/tours/workspace";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,11 +51,14 @@ export function SceneDetailsPanel({
   isUpdatingFact = false,
   isDeletingFact = false,
   isUpdatingCameraMotion = false,
+  isUpdatingTransitionEffect = false,
   factError = null,
   factActionError = null,
   cameraMotionError = null,
+  transitionEffectError = null,
   onAddScene,
   onCameraMotionChange,
+  onTransitionEffectChange,
   onCreateFact,
   onUpdateFact,
   onDeleteFact,
@@ -60,11 +70,14 @@ export function SceneDetailsPanel({
   isUpdatingFact?: boolean;
   isDeletingFact?: boolean;
   isUpdatingCameraMotion?: boolean;
+  isUpdatingTransitionEffect?: boolean;
   factError?: Error | null;
   factActionError?: Error | null;
   cameraMotionError?: Error | null;
+  transitionEffectError?: Error | null;
   onAddScene: () => void;
   onCameraMotionChange?: (cameraMotion: TourSceneCameraMotion) => Promise<void> | void;
+  onTransitionEffectChange?: (transitionEffect: SceneTransitionEffect) => Promise<void> | void;
   onCreateFact?: (text: string) => Promise<void> | void;
   onUpdateFact?: (factId: string, text: string) => Promise<void> | void;
   onDeleteFact?: (factId: string) => Promise<void> | void;
@@ -137,9 +150,19 @@ export function SceneDetailsPanel({
                 disabled={isUpdatingCameraMotion}
                 onChange={onCameraMotionChange}
               />
+              <SceneTransitionEffectSelect
+                value={activeScene.transitionEffect}
+                disabled={isUpdatingTransitionEffect}
+                onChange={onTransitionEffectChange}
+              />
               {cameraMotionError ? (
                 <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   {cameraMotionError.message}
+                </p>
+              ) : null}
+              {transitionEffectError ? (
+                <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {transitionEffectError.message}
                 </p>
               ) : null}
             </div>
@@ -260,6 +283,48 @@ function SceneCameraMotionSelect({
         </SelectTrigger>
         <SelectContent>
           {TOUR_SCENE_CAMERA_MOTION_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function SceneTransitionEffectSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  value?: string;
+  disabled: boolean;
+  onChange?: (transitionEffect: SceneTransitionEffect) => Promise<void> | void;
+}) {
+  const selectedValue = isSceneTransitionEffect(value)
+    ? value
+    : DEFAULT_SCENE_TRANSITION_EFFECT;
+
+  return (
+    <div>
+      <label htmlFor="scene-transition-effect" className="mb-1 block text-xs font-medium text-muted-foreground">
+        Scene transition
+      </label>
+      <Select
+        value={selectedValue}
+        disabled={disabled || !onChange}
+        onValueChange={(nextValue) => {
+          if (isSceneTransitionEffect(nextValue)) {
+            void onChange?.(nextValue);
+          }
+        }}
+      >
+        <SelectTrigger id="scene-transition-effect" className="h-9">
+          <SelectValue>{getSceneTransitionEffectLabel(selectedValue)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

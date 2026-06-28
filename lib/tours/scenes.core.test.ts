@@ -92,6 +92,7 @@ test("creates an included TourScene with ordering, safe camera motion, and autho
       listSceneRowsForProject: async () => [],
       updateSceneInclusion: async () => null,
       updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
     }
   );
 
@@ -148,6 +149,7 @@ test("lists TourScenes in saved order", async () => {
     persistSceneOrder: async () => false,
     updateSceneInclusion: async () => null,
     updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
     listSceneRowsWithSourcePhotos: async () => [
       { scene: sceneRow({ id: "scene-2", sort_order: 2, title: "Bedroom" }), sourcePhotos: [photoRow({ scene_id: "scene-2" })] },
       { scene: sceneRow({ id: "scene-1", sort_order: 1, title: "Kitchen" }), sourcePhotos: [photoRow({ scene_id: "scene-1" })] },
@@ -178,6 +180,7 @@ test("persists a valid TourScene reorder and returns stable workspace order", as
     ],
     updateSceneInclusion: async () => null,
     updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
   });
 
   assert.equal(result.ok, true);
@@ -204,6 +207,7 @@ test("rejects cross-project scene IDs before persisting order", async () => {
     listSceneRowsWithSourcePhotos: async () => [],
     updateSceneInclusion: async () => null,
     updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
   });
 
   assert.deepEqual(result, {
@@ -227,6 +231,7 @@ test("rejects missing scenes before persisting order", async () => {
     listSceneRowsWithSourcePhotos: async () => [],
     updateSceneInclusion: async () => null,
     updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
   });
 
   assert.deepEqual(result, { ok: false, error: "TourScene order includes missing scenes." });
@@ -251,6 +256,7 @@ test("rejects incomplete TourScene orders before persisting", async () => {
     listSceneRowsWithSourcePhotos: async () => [],
     updateSceneInclusion: async () => null,
     updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
   });
 
   assert.deepEqual(result, {
@@ -285,6 +291,7 @@ test("toggles TourScene inclusion without deleting source media", async () => {
     },
     listSceneRowsWithSourcePhotos: async () => [],
     updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
   });
 
   assert.equal(result.ok, true);
@@ -307,6 +314,7 @@ test("rejects cross-project TourScene inclusion updates", async () => {
     },
     listSceneRowsWithSourcePhotos: async () => [],
     updateSceneCameraMotion: async () => null,
+    updateSceneTransitionEffect: async () => null,
   });
 
   assert.deepEqual(result, {

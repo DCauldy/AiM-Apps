@@ -62,8 +62,10 @@ export function TourProjectSceneWorkspace({
     reorderScenesMutation,
     toggleSceneInclusionMutation,
     updateSceneCameraMotionMutation,
+    updateSceneTransitionEffectMutation,
     deleteSceneMutation,
     updateCameraMotion,
+    updateTransitionEffect,
     handleCreateScene,
     handleReplaceScenePhoto,
     handleAddScenePhoto,
@@ -196,15 +198,23 @@ export function TourProjectSceneWorkspace({
                 isUpdatingFact={updateSceneFactMutation.isPending}
                 isDeletingFact={deleteSceneFactMutation.isPending}
                 isUpdatingCameraMotion={updateSceneCameraMotionMutation.isPending}
+                isUpdatingTransitionEffect={updateSceneTransitionEffectMutation.isPending}
                 factError={sceneFactMutation.error}
                 factActionError={updateSceneFactMutation.error ?? deleteSceneFactMutation.error}
                 cameraMotionError={updateSceneCameraMotionMutation.error}
+                transitionEffectError={updateSceneTransitionEffectMutation.error}
                 onAddScene={() => setIsAddSceneOpen(true)}
                 onCameraMotionChange={async (cameraMotion) => {
                   if (!activeScene) {
                     return;
                   }
                   await updateCameraMotion(activeScene.id, cameraMotion);
+                }}
+                onTransitionEffectChange={async (transitionEffect) => {
+                  if (!activeScene) {
+                    return;
+                  }
+                  await updateTransitionEffect(activeScene.id, transitionEffect);
                 }}
                 onCreateFact={async (text) => {
                   if (!activeScene) {
@@ -231,6 +241,7 @@ export function TourProjectSceneWorkspace({
               reorderScenesMutation.error ??
               toggleSceneInclusionMutation.error ??
               updateSceneCameraMotionMutation.error ??
+              updateSceneTransitionEffectMutation.error ??
               deleteSceneMutation.error ??
               addPhotoMutation.error ??
               removePhotoMutation.error) && (
@@ -240,6 +251,7 @@ export function TourProjectSceneWorkspace({
                     reorderScenesMutation.error ??
                     toggleSceneInclusionMutation.error ??
                     updateSceneCameraMotionMutation.error ??
+                    updateSceneTransitionEffectMutation.error ??
                     deleteSceneMutation.error ??
                     addPhotoMutation.error ??
                     removePhotoMutation.error)?.message ??

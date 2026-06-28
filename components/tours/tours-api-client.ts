@@ -16,6 +16,7 @@ import type {
 } from "@/lib/tours/rendering/contracts/render.contract";
 import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/preflight";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
+import type { SceneTransitionEffect } from "@/lib/tours/rendering/transitions/scene-transition-effects";
 import type { TourSceneFact } from "@/lib/tours/workspace";
 import type {
   ElevenLabsDigitalTwinVoice,
@@ -318,6 +319,19 @@ export async function updateSceneCameraMotion(
     body: JSON.stringify({ cameraMotion }),
   });
   return readToursJsonResponse(response, "Could not update TourScene camera motion.");
+}
+
+export async function updateSceneTransitionEffect(
+  projectId: string,
+  sceneId: string,
+  transitionEffect: SceneTransitionEffect
+) {
+  const response = await fetch(toursApiRoutes.scene(projectId, sceneId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transitionEffect }),
+  });
+  return readToursJsonResponse(response, "Could not update TourScene transition.");
 }
 
 export async function deleteTourScene(projectId: string, sceneId: string) {

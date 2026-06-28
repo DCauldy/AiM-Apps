@@ -119,6 +119,7 @@ const persistedOptionsWithInternals = {
   elevenLabsVoiceId: "voice-secret",
   elevenLabsVoiceSettings: { stability: 0.5 },
   sceneClipRenderSettings: { width: 1920, height: 1080 },
+  sceneTransitions: { effect: "swipe-on-top" },
   transitionDetectionModelId: "transition-model",
   finalMuxSettings: { videoCodec: "libx264" },
 };
@@ -153,6 +154,7 @@ function renderRun(
         sceneClips: false,
         finalVideo: false,
       },
+      sceneTransitions: { effect: "swipe-on-top" },
     },
     ...overrides,
   };
@@ -214,7 +216,7 @@ test("renders a compact launcher with current estimated cost and dev-only popove
   );
   assert.ok(
     screen.getByText(
-      "OpenRouter provider image-to-video is not expected because Ken Burns local rendering is selected.",
+      "OpenRouter provider image-to-video is not expected because scene-clip reuse is requested.",
     ),
   );
   assert.ok(
@@ -231,6 +233,7 @@ test("renders a compact launcher with current estimated cost and dev-only popove
   assert.ok(screen.getByRole("combobox", { name: "Render mode" }));
   assert.ok(screen.getByLabelText("Provider scene clip model id"));
   assert.ok(screen.getByLabelText("Script planning model id"));
+  assert.ok(screen.getByRole("combobox", { name: "Scene transition" }));
 
   await user.click(screen.getByRole("tab", { name: "Reuse" }));
   assert.ok(screen.getByRole("switch", { name: "Script plan reuse" }));
@@ -378,7 +381,7 @@ test("submits advanced options through the provided dev-tool callback", async ()
 
   assert.equal(onSubmitOptions.mock.calls.length, 1);
   assert.deepEqual(onSubmitOptions.mock.calls[0]?.[0], {
-    renderMode: "ken_burns_ffmpeg",
+    renderMode: "provider_image_to_video",
     reuseExistingAssets: true,
     reuse: {
       scriptPlan: true,
@@ -387,6 +390,7 @@ test("submits advanced options through the provided dev-tool callback", async ()
       sceneClips: true,
       finalVideo: false,
     },
+    sceneTransitions: { effect: "swipe-on-top" },
   });
 });
 
@@ -441,6 +445,9 @@ test("render mode changes and selected model ids are reflected in submitted opti
     onSubmitOptions.mock.calls[0]?.[0].sceneClipProviderModelId,
     "bytedance/seedance-2.0",
   );
+  assert.deepEqual(onSubmitOptions.mock.calls[0]?.[0].sceneTransitions, {
+    effect: "swipe-on-top",
+  });
 });
 
 test("reuse toggles use on for reuse and off for regenerate", async () => {
@@ -498,6 +505,17 @@ test("opens and closes a formatted script planner prompt modal", async () => {
   renderQaRenderLab();
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("tab", { name: "Render" }));
+  await user.click(screen.getByRole("combobox", { name: "Render mode" }));
+  await user.click(
+    screen.getByRole("option", { name: "Ken Burns FFmpeg (ken_burns_ffmpeg)" }),
+  );
+  await waitFor(() => {
+    assert.match(
+      screen.getByRole("combobox", { name: "Render mode" }).textContent ?? "",
+      /Ken Burns FFmpeg/,
+    );
+  });
   await user.click(screen.getByRole("tab", { name: "Prompts" }));
   await user.click(
     screen.getByRole("button", { name: "View Script Planner Prompt" }),
@@ -523,24 +541,6 @@ test("opens and closes a formatted script planner prompt modal", async () => {
   assert.equal(
     screen.queryByRole("dialog", { name: "Script Planner Prompt" }),
     null,
-  );
-});
-
-test("shows an unavailable image-to-video prompt state until provider mode is selected", async () => {
-  const user = userEvent.setup();
-
-  renderQaRenderLab();
-
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
-  await user.click(screen.getByRole("tab", { name: "Prompts" }));
-  await user.click(
-    screen.getByRole("button", { name: "View Image to Video Prompt" }),
-  );
-
-  assert.ok(
-    screen.getByText(
-      "Image-to-video prompt preview is unavailable while Ken Burns FFmpeg mode is selected.",
-    ),
   );
 });
 
