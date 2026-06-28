@@ -82,10 +82,6 @@ const ANGLE_STOPS: { lens: DialLens; label: string; subject: (n: string) => stri
   },
 ];
 
-// Reach maps to min_segment_size: LOW threshold → "everyone" gets the full
-// report; HIGH threshold → only the warmest/densest neighborhoods do.
-const REACH_MIN = 1; // everyone
-const REACH_MAX = 20; // just the warmest
 
 export function CampaignDialPanel({
   selectedZips,
@@ -100,9 +96,9 @@ export function CampaignDialPanel({
   // (full) report: Magic from auto-pulled market data, Control from the
   // agent's MLS upload. Kept in DialValues for the launch contract.
   const depth: DialDepth = "full";
-  // Slider is inverted vs min value: left = "warmest" (high min), right =
-  // "everyone" (min 1). Store the raw min; render the slider reversed.
-  const [reach, setReach] = useState<number>(initial?.reach ?? 3);
+  // Reach (min_segment_size) is no longer user-facing — auto market data means
+  // every selected neighborhood gets a full report. Pin it to 1 ("everyone").
+  const reach = 1;
 
   // Data-scope filters.
   const [propertyType, setPropertyType] = useState<PropertyType>(
@@ -126,12 +122,6 @@ export function CampaignDialPanel({
   const recipientCount = useMemo(
     () => selected.reduce((sum, z) => sum + z.contact_count, 0),
     [selected],
-  );
-
-  // How many selected neighborhoods clear the "full report" bar (full depth).
-  const fullReportCount = useMemo(
-    () => selected.filter((z) => z.contact_count >= reach).length,
-    [selected, reach],
   );
 
   const topName = selected[0]?.zip ?? "your area";
@@ -195,32 +185,6 @@ export function CampaignDialPanel({
           Everyone in these neighborhoods gets it — this just sets the story we
           lead with.
         </p>
-      </div>
-
-      {/* Dial 2 — Reach */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Reach</span>
-          <span className="text-[11px] text-muted-foreground">
-            {`${fullReportCount} of ${selected.length} get the full report`}
-          </span>
-        </div>
-        {/* Inverted slider: left = warmest (high min), right = everyone (min 1) */}
-        <input
-          type="range"
-          min={REACH_MIN}
-          max={REACH_MAX}
-          step={1}
-          value={REACH_MAX - reach + REACH_MIN}
-          onChange={(e) =>
-            setReach(REACH_MAX - Number(e.target.value) + REACH_MIN)
-          }
-          className="w-full accent-[#F43F5E]"
-        />
-        <div className="flex justify-between text-[10px] text-muted-foreground">
-          <span>Just my warmest</span>
-          <span>Everyone</span>
-        </div>
       </div>
 
       {/* Data scope — constrains the market analysis (price band + home type),
