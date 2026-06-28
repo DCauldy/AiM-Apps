@@ -57,8 +57,13 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const lens: CampaignLens =
-    body.lens === "seller" || body.lens === "buyer" ? body.lens : "balanced";
+  // Audience is ALWAYS everyone in the selected neighborhoods. We bucket with
+  // the "balanced" lens (home-address residents OR active searchers) so no one
+  // is filtered out, and the generator writes both a seller and a buyer
+  // version — each recipient gets the relevant one. The dial's chosen angle
+  // (body.lens) is the message emphasis, not an audience filter, so it never
+  // shrinks the list to zero.
+  const lens: CampaignLens = "balanced";
   const depth = body.depth === "full" ? "full" : "quick";
   const reach =
     typeof body.reach === "number" && body.reach >= 1 && body.reach <= 50

@@ -66,20 +66,13 @@ export function CampaignDialPanel({
     [sphereZips, selectedSet],
   );
 
-  // Audience size per angle: seller→residents who live here, buyer→contacts
-  // searching here, balanced→either. A seller-heavy sphere can have ~0 buyers,
-  // so we surface each angle's count rather than silently showing "0".
-  const angleCount = (l: DialLens) =>
-    selected.reduce((sum, z) => {
-      if (l === "seller") return sum + z.seller_count;
-      if (l === "buyer") return sum + z.buyer_count;
-      return sum + z.contact_count;
-    }, 0);
+  // The audience is ALWAYS everyone in the selected neighborhoods — a homeowner
+  // might sell, buy, or both, so we never filter the list by angle. The angle
+  // is the message emphasis; the generator still tailors a seller vs buyer
+  // version per recipient. So the count is the union of contacts in the area.
   const recipientCount = useMemo(
-    () => angleCount(lens),
-    // angleCount is a pure fn of `selected`; recompute on lens/selection change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected, lens],
+    () => selected.reduce((sum, z) => sum + z.contact_count, 0),
+    [selected],
   );
 
   // How many selected neighborhoods clear the "full report" bar (full depth).
@@ -119,45 +112,29 @@ export function CampaignDialPanel({
           <span className="text-xs font-medium text-muted-foreground">Angle</span>
         </div>
         <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-          {ANGLE_STOPS.map((s, i) => {
-            const c = angleCount(s.lens);
-            return (
-              <button
-                key={s.lens}
-                type="button"
-                onClick={() => setLens(s.lens)}
-                className={cn(
-                  "rounded-md px-2 py-1.5 text-xs font-medium transition-colors text-center leading-tight",
-                  i === angleIndex
-                    ? "bg-[#F43F5E] text-white shadow"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <span className="block">{s.label}</span>
-                <span
-                  className={cn(
-                    "block text-[10px] font-normal mt-0.5",
-                    i === angleIndex ? "text-white/80" : "text-muted-foreground",
-                  )}
-                >
-                  {c.toLocaleString()}
-                </span>
-              </button>
-            );
-          })}
+          {ANGLE_STOPS.map((s, i) => (
+            <button
+              key={s.lens}
+              type="button"
+              onClick={() => setLens(s.lens)}
+              className={cn(
+                "rounded-md px-2 py-1.5 text-xs font-medium transition-colors text-center leading-tight",
+                i === angleIndex
+                  ? "bg-[#F43F5E] text-white shadow"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
-        {recipientCount === 0 ? (
-          <p className="text-xs text-amber-500">
-            No contacts for this angle in these neighborhoods.{" "}
-            {lens === "buyer"
-              ? "These are people who live here, not buyers searching here — try Time to sell or Market pulse."
-              : "Try a different angle."}
-          </p>
-        ) : (
-          <p className="text-xs text-muted-foreground italic truncate">
-            “{sampleSubject}”
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground italic truncate">
+          “{sampleSubject}”
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          Everyone in these neighborhoods gets it — this just sets the story we
+          lead with.
+        </p>
       </div>
 
       {/* Dial 2 — Depth */}
