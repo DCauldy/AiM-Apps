@@ -497,6 +497,14 @@ describe("renderFinalVideoStage", () => {
       durationSeconds: 0.5,
       effect: "swipe-on-top",
     });
+    expect(result.joinedScenesFingerprint.boundaryTransitionEffects).toEqual([
+      {
+        fromSceneId: "scene-1",
+        toSceneId: "scene-2",
+        effect: "swipe-on-top",
+        durationSeconds: 0.5,
+      },
+    ]);
     expect(renderer.joinSceneClips).toHaveBeenCalled();
   });
 
@@ -650,7 +658,10 @@ describe("final render fingerprints", () => {
     const joined = buildJoinedScenesFingerprint({
       clips: [
         finalSceneClip1,
-        finalSceneClip2,
+        {
+          ...finalSceneClip2,
+          transitionEffect: "cross-blur",
+        },
       ],
       concatSettings: { safe: 0, copyCodec: true },
       transitionSettings: resolveSceneTransitionEffectSettings(),
@@ -690,6 +701,14 @@ describe("final render fingerprints", () => {
       durationSeconds: 0.5,
       effect: "swipe-on-top",
     });
+    expect(joined.boundaryTransitionEffects).toEqual([
+      {
+        fromSceneId: "scene-1",
+        toSceneId: "scene-2",
+        effect: "cross-blur",
+        durationSeconds: 0.5,
+      },
+    ]);
     expect(joined.expectedDurationSeconds).toBe(8);
     expect(joined.clipHandlePlans).toEqual([
       expect.objectContaining({ sceneId: "scene-1", requestedDurationSeconds: 4 }),

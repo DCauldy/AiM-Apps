@@ -192,7 +192,17 @@ describe("generateTourProjectVideo", () => {
   });
 
   it("delegates final mux work to a final render runner when provided", async () => {
-    const repository = createRepository();
+    const repository = createRepository({
+      getRenderableTourProject: vi.fn().mockResolvedValue({
+        ...baseProject,
+        scenes: [
+          {
+            ...baseProject.scenes[0],
+            transitionEffect: "cross-zoom",
+          },
+        ],
+      }),
+    });
     const scriptPlanningProvider: TourScriptPlanningProvider = {
       planScript: vi.fn().mockResolvedValue({
         fullScript: "Welcome to the kitchen.",
@@ -240,7 +250,11 @@ describe("generateTourProjectVideo", () => {
         projectId: "project-1",
         userId: "user-1",
         renderRunId: "run-1",
-        options: { renderMode: "ken_burns_ffmpeg", reuseExistingAssets: false },
+        options: {
+          renderMode: "ken_burns_ffmpeg",
+          reuseExistingAssets: false,
+          sceneTransitions: { effect: "fade" },
+        },
       },
       {
         repository,
@@ -260,7 +274,13 @@ describe("generateTourProjectVideo", () => {
         runId: "run-1",
         voiceoverAsset: null,
         avatarOverlay: null,
-        options: expect.objectContaining({ reuseExistingAssets: false }),
+        clips: [
+          expect.objectContaining({
+            sceneId: "scene-1",
+            transitionEffect: "cross-zoom",
+          }),
+        ],
+        options: expect.not.objectContaining({ sceneTransitions: expect.anything() }),
       })
     );
     expect(repository.markCompleted).toHaveBeenCalledWith(

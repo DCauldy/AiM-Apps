@@ -2,8 +2,11 @@
 
 import { Mic2, UserRound, Video } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import { PageFrame } from "@/components/app-shell/PagePrimitives";
 import { Badge } from "@/components/ui/badge";
+import { useToursBreadcrumbs } from "@/components/tours/ToursBreadcrumbsContext";
 import {
   ConfirmDialog,
   ErrorMessage,
@@ -30,6 +33,35 @@ const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
   tour_video_avatar: UserRound,
 };
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getSceneIdFromToursPathname(
+  pathname: string | null,
+  projectId: string,
+) {
+  if (!pathname) {
+    return null;
+  }
+
+  const projectRoute = `/apps/tours/projects/${projectId}`;
+  const sceneRouteMatch = pathname.match(
+    new RegExp(`^${escapeRegExp(projectRoute)}/([^/]+)$`),
+  );
+  const routeSegment = sceneRouteMatch?.[1];
+
+  if (!routeSegment || routeSegment === "rendering") {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(routeSegment);
+  } catch {
+    return routeSegment;
+  }
+}
+
 export function TourProjectLayoutClient({
   initialViewModel,
   isQaRenderLabAvailable,
@@ -55,6 +87,8 @@ function TourProjectLayoutContent({
   isQaRenderLabAvailable: boolean;
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const { setBreadcrumbItems, resetBreadcrumbItems } = useToursBreadcrumbs();
   const {
     viewModel,
     projectDetails,
@@ -81,6 +115,39 @@ function TourProjectLayoutContent({
   const latestDownloadUrl =
     renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
   const renderingHref = `/apps/tours/projects/${viewModel.project.id}/rendering`;
+  const projectHref = `/apps/tours/projects/${viewModel.project.id}`;
+  const routeSceneId = getSceneIdFromToursPathname(
+    pathname,
+    viewModel.project.id,
+  );
+  const routeScene = routeSceneId
+    ? viewModel.tourScenes.find((scene) => scene.id === routeSceneId)
+    : null;
+
+  useEffect(() => {
+    const items = [
+      { href: "/apps/tours", label: "Projects" },
+      { href: projectHref, label: viewModel.project.name },
+    ];
+
+    if (routeSceneId) {
+      items.push({
+        href: `${projectHref}/${encodeURIComponent(routeSceneId)}`,
+        label: routeScene?.title ?? "Scene",
+      });
+    }
+
+    setBreadcrumbItems(items);
+
+    return () => resetBreadcrumbItems();
+  }, [
+    projectHref,
+    resetBreadcrumbItems,
+    routeScene?.title,
+    routeSceneId,
+    setBreadcrumbItems,
+    viewModel.project.name,
+  ]);
 
   return (
     <PageFrame className="max-w-none px-4 py-4 sm:px-6 lg:px-8">

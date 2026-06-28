@@ -232,7 +232,18 @@ describe("tour render investigation options", () => {
     expect(
       parseTourRenderOptionsInput({
         sceneTransitions: {
-          effect: "dissolve",
+          effect: "cross-dissolve",
+        },
+      }),
+    ).toEqual({
+      ok: true,
+      options: { sceneTransitions: { effect: "cross-dissolve" } },
+    });
+
+    expect(
+      parseTourRenderOptionsInput({
+        sceneTransitions: {
+          effect: "dip-to-black",
         },
       }),
     ).toEqual({

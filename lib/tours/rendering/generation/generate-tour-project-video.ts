@@ -16,7 +16,6 @@ import {
   normalizeVoiceoverTranscript,
   SceneBoundaryDetectionError,
 } from "../transitions/scene-boundaries";
-import { DEFAULT_SCENE_TRANSITION_EFFECT } from "../transitions/scene-transition-effects";
 import {
   renderSceneClipsStage,
   type SceneClipBatchRunner,
@@ -440,11 +439,6 @@ export async function generateTourProjectVideo(
     }
 
     const renderableProject = applyScriptPlannedCameraMotions(project, scriptPlanResult.plan);
-    const sceneTransitionOptions = {
-      effect:
-        renderableProject.scenes.find((scene) => scene.included)?.transitionEffect ??
-        DEFAULT_SCENE_TRANSITION_EFFECT,
-    };
     const finalSceneCameraMotions = summarizeSceneCameraMotions(renderableProject);
     console.log("Tour render scene camera motions resolved.", {
       projectId: input.projectId,
@@ -495,7 +489,6 @@ export async function generateTourProjectVideo(
         includeSecondarySourceImages: input.options?.sceneClipIncludeSecondarySourceImages,
         renderSettings: input.options?.sceneClipRenderSettings,
         concurrencyLimit: input.options?.sceneClipConcurrencyLimit,
-        sceneTransitions: input.options?.sceneTransitions ?? sceneTransitionOptions,
       },
       onClipCompleted: async ({ completedCount, totalCount }) => {
         await recordProgress(repository, input, {
@@ -586,6 +579,7 @@ export async function generateTourProjectVideo(
         durationSeconds: clip.durationSeconds,
         requestedDurationSeconds: clip.requestedDurationSeconds,
         handlePlan: clip.handlePlan,
+        transitionEffect: clip.transitionEffect,
         asset: clip.asset,
         fingerprintHash: clip.fingerprintHash,
       })),
@@ -594,7 +588,6 @@ export async function generateTourProjectVideo(
       options: {
         muxSettings: input.options?.finalMuxSettings,
         reuseExistingAssets: shouldReuseAsset(input.options, "finalVideo"),
-        sceneTransitions: input.options?.sceneTransitions ?? sceneTransitionOptions,
       },
     };
 

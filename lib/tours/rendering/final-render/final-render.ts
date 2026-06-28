@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import type { TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
 import type { HeyGenAvatarMetadata } from "../avatars/tour-avatar";
 import {
-  buildSwipeOnTopSceneJoinArgs,
+  buildSceneTransitionJoinArgs,
   expectedJoinedScenesDurationSeconds,
   joinedSceneTransitionEffectSegments,
   resolveSceneTransitionEffectSettings,
@@ -53,6 +53,7 @@ export type FinalRenderSceneClip = {
   durationSeconds: number;
   requestedDurationSeconds: number;
   handlePlan: SceneClipHandlePlan;
+  transitionEffect?: SceneTransitionEffect;
   asset: TourRenderAsset;
   fingerprintHash: string;
 };
@@ -77,6 +78,12 @@ export type JoinedScenesFingerprint = {
     copyCodec: boolean;
   };
   transitionSettings: SceneTransitionEffectSettings;
+  boundaryTransitionEffects: Array<{
+    fromSceneId: string;
+    toSceneId: string;
+    effect: SceneTransitionEffect;
+    durationSeconds: number;
+  }>;
   expectedDurationSeconds: number;
   clipHandlePlans: ReturnType<typeof joinedSceneTransitionEffectSegments>;
 };
@@ -193,6 +200,12 @@ export function buildJoinedScenesFingerprint(input: {
   transitionSettings: SceneTransitionEffectSettings;
 }): JoinedScenesFingerprint {
   const handlePlans = input.clips.map((clip) => clip.handlePlan);
+  const boundaryTransitionEffects = input.clips.slice(1).map((clip, index) => ({
+    fromSceneId: input.clips[index]?.sceneId ?? "",
+    toSceneId: clip.sceneId,
+    effect: clip.transitionEffect ?? input.transitionSettings.effect,
+    durationSeconds: input.transitionSettings.durationSeconds,
+  }));
   return {
     kind: "joined_scenes",
     version: 1,
@@ -204,6 +217,7 @@ export function buildJoinedScenesFingerprint(input: {
     })),
     concatSettings: input.concatSettings,
     transitionSettings: input.transitionSettings,
+    boundaryTransitionEffects,
     expectedDurationSeconds: expectedJoinedScenesDurationSeconds(handlePlans),
     clipHandlePlans: joinedSceneTransitionEffectSegments(handlePlans),
   };
@@ -411,8 +425,11 @@ export async function renderFinalVideoStage(input: {
         expectedJoinedDurationSeconds: joinedScenesFingerprint.expectedDurationSeconds,
         ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
       });
-    } catch {
-      throw new TourFinalRenderError("Final video mux failed.", "MUX_FAILED");
+    } catch (error) {
+      throw new TourFinalRenderError(
+        appendCauseMessage("Final video mux failed.", error),
+        "MUX_FAILED"
+      );
     }
 
     const finalUpload = await input.repository.uploadRenderAssetBytes({
@@ -476,7 +493,10 @@ export async function renderFinalVideoStage(input: {
     if (error instanceof TourFinalRenderError) {
       throw error;
     }
-    throw new TourFinalRenderError("Final video mux failed.", "MUX_FAILED");
+    throw new TourFinalRenderError(
+      appendCauseMessage("Final video mux failed.", error),
+      "MUX_FAILED"
+    );
   } finally {
     await rm(scratchDir, { recursive: true, force: true });
   }
@@ -488,9 +508,12 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
       if (input.sceneClipPaths.length > 1) {
         await runProcess(
           input.ffmpegPath,
-          buildSwipeOnTopSceneJoinArgs({
+          buildSceneTransitionJoinArgs({
             sceneClipPaths: input.sceneClipPaths,
             handlePlans: input.clips.map((clip) => clip.handlePlan),
+            sceneTransitionEffects: input.clips.map(
+              (clip) => clip.transitionEffect ?? input.transitionSettings.effect
+            ),
             transitionSettings: input.transitionSettings,
             width: input.settings.width,
             height: input.settings.height,
@@ -503,8 +526,13 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
         );
         return {
           metadata: {
-            renderer: "ffmpeg_swipe_on_top_transition",
+            renderer: "ffmpeg_scene_transition",
             transitionSettings: input.transitionSettings,
+            boundaryTransitionEffects: input.clips.slice(1).map((clip, index) => ({
+              fromSceneId: input.clips[index]?.sceneId ?? "",
+              toSceneId: clip.sceneId,
+              effect: clip.transitionEffect ?? input.transitionSettings.effect,
+            })),
             expectedDurationSeconds: input.expectedJoinedDurationSeconds,
           },
         };
@@ -664,8 +692,11 @@ async function joinOrReuseJoinedScenes(input: {
       expectedJoinedDurationSeconds: input.fingerprint.expectedDurationSeconds,
       ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
     });
-  } catch {
-    throw new TourFinalRenderError("Scene clip concat failed.", "CONCAT_FAILED");
+  } catch (error) {
+    throw new TourFinalRenderError(
+      appendCauseMessage("Scene clip concat failed.", error),
+      "CONCAT_FAILED"
+    );
   }
 
   const joinedUpload = await input.repository.uploadRenderAssetBytes({
@@ -928,16 +959,39 @@ async function validateJoinedScenesDuration(input: {
 
 async function runProcess(command: string, args: string[]): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "ignore" });
+    let stderr = "";
+    const child = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"] });
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderr = truncateProcessOutput(`${stderr}${chunk}`);
+    });
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
         return;
       }
-      reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
+      const detail = stderr.trim();
+      reject(
+        new Error(
+          detail
+            ? `${command} exited with code ${code ?? "unknown"}: ${detail}`
+            : `${command} exited with code ${code ?? "unknown"}`
+        )
+      );
     });
   });
+}
+
+function appendCauseMessage(message: string, error: unknown): string {
+  if (!(error instanceof Error) || !error.message.trim()) {
+    return message;
+  }
+  return `${message} ${truncateProcessOutput(error.message, 1600)}`;
+}
+
+function truncateProcessOutput(value: string, maxLength = 4000): string {
+  return value.length > maxLength ? value.slice(value.length - maxLength) : value;
 }
 
 function escapeConcatPath(filePath: string): string {

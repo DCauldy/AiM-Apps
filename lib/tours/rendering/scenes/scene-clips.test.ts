@@ -316,6 +316,71 @@ describe("renderSceneClipsStage", () => {
     expect(reusedScene2Asset.createdByRunId).toBe("older-run");
   });
 
+  it("carries each saved scene transition effect through clip results and fingerprints", async () => {
+    const projectWithTransitions: RenderableTourProject = {
+      ...multiSceneProject,
+      scenes: multiSceneProject.scenes.map((scene, index) => ({
+        ...scene,
+        transitionEffect:
+          index === 0 ? "fade" : index === 1 ? "cross-dissolve" : "whip-pan",
+      })),
+    };
+    const repository = createRepository({
+      createAsset: vi.fn((input) =>
+        Promise.resolve({
+          ...sceneClipAsset,
+          id: `asset-${input.sceneId}`,
+          sceneId: input.sceneId ?? null,
+          storagePath: input.storagePath ?? null,
+          fingerprintHash: input.fingerprintHash,
+          fingerprint: input.fingerprint,
+          metadata: input.metadata,
+        })
+      ),
+    });
+    const renderer: SceneClipRenderer = {
+      renderSceneClip: vi.fn(async (input) => {
+        await writeFile(input.outputVideoPath, Buffer.from(`mp4-${input.scene.id}`));
+        return {};
+      }),
+    };
+
+    const result = await renderSceneClipsStage({
+      project: projectWithTransitions,
+      repository,
+      runId: "scene-clips-run",
+      userId: "user-1",
+      durations: multiSceneTimings,
+      renderer,
+      options: {
+        renderMode: "ken_burns_ffmpeg",
+        reuseExistingAssets: false,
+      },
+    });
+
+    expect(result.clips.map((clip) => clip.transitionEffect)).toEqual([
+      "fade",
+      "cross-dissolve",
+      "whip-pan",
+    ]);
+    expect(repository.createAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sceneId: "scene-2",
+        fingerprint: expect.objectContaining({
+          transition: expect.objectContaining({
+            settings: expect.objectContaining({ effect: "cross-dissolve" }),
+          }),
+        }),
+        metadata: expect.objectContaining({
+          transitionEffect: "cross-dissolve",
+          transition: expect.objectContaining({
+            settings: expect.objectContaining({ effect: "cross-dissolve" }),
+          }),
+        }),
+      })
+    );
+  });
+
   it("delegates scene rendering to a batch runner when provided", async () => {
     const repository = createRepository();
     const batchRunner = vi.fn(async (items) =>

@@ -1,18 +1,20 @@
 "use client";
 
 import { ProductHeader } from "@/components/app-shell/ProductHeader";
-
-const NAV_ITEMS = [{ label: "Dashboard", href: "/apps/tours" }];
+import { useToursBreadcrumbs } from "@/components/tours/ToursBreadcrumbsContext";
 
 function isToursActive(href: string, pathname: string | null) {
   return Boolean(pathname?.startsWith(href));
 }
 
 export function ToursHeader() {
+  const { breadcrumbItems } = useToursBreadcrumbs();
+
   return (
     <ProductHeader
       homeHref="/apps/tours"
-      navItems={[]}
+      navItems={breadcrumbItems}
+      navVariant="breadcrumbs"
       isActive={isToursActive}
       accentClassName="text-[#6366F1]"
       activeIndicatorClassName="bg-gradient-to-r from-[#2563EB] to-[#7C3AED]"

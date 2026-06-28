@@ -18,6 +18,22 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function TourProjectCardSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="aspect-[16/9] animate-pulse bg-muted" />
+      <div className="p-4">
+        <div className="h-4 w-28 animate-pulse rounded bg-muted" />
+        <div className="mt-2 h-3 w-full max-w-64 animate-pulse rounded bg-muted" />
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+          <div className="h-9 w-[84px] animate-pulse rounded-md bg-muted" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function TourProjectsList() {
   const {
     data: projects,
@@ -38,14 +54,7 @@ export function TourProjectsList() {
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2].map((item) => (
-            <div
-              key={item}
-              className="rounded-lg border border-border bg-card p-5"
-            >
-              <div className="h-5 w-56 animate-pulse rounded bg-muted" />
-              <div className="mt-2 h-4 w-80 max-w-full animate-pulse rounded bg-muted" />
-              <div className="mt-6 h-9 w-24 animate-pulse rounded bg-muted" />
-            </div>
+            <TourProjectCardSkeleton key={item} />
           ))}
         </div>
       </section>

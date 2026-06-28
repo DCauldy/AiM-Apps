@@ -14,6 +14,7 @@ import { getDefaultTourRenderMode, type TourRenderMode } from "../preflight/pref
 import { TourSceneClipRenderError } from "./scene-clip-errors";
 import {
   buildSceneClipTransitionEffectFingerprint,
+  isSceneTransitionEffect,
   planSceneClipTransitionHandles,
   resolveSceneTransitionEffectSettings,
   type SceneClipHandlePlan,
@@ -112,6 +113,7 @@ export type SceneClipStageResult = {
     fingerprint: SceneClipFingerprint;
     requestedDurationSeconds: number;
     handlePlan: SceneClipHandlePlan;
+    transitionEffect?: SceneTransitionEffect;
   }>;
   completedCount: number;
   totalCount: number;
@@ -124,6 +126,7 @@ export type SceneClipBatchItem = {
   scene: RenderableTourScene;
   duration: SceneTiming;
   handlePlan: SceneClipHandlePlan;
+  transitionEffect: SceneTransitionEffect;
   projectId: string;
   runId: string;
   userId: string;
@@ -332,6 +335,10 @@ export async function renderSceneClipsStage(input: {
       index,
       duration,
       handlePlan,
+      transitionEffect: resolveSceneTransitionEffectForScene(
+        scene,
+        resolvedOptions.sceneTransitions.effect
+      ),
       projectId: input.project.project.id,
       runId: input.runId,
       userId: input.userId,
@@ -370,7 +377,11 @@ export async function renderSceneClipsStage(input: {
 
   const clips = indexedClips
     .sort((a, b) => a.index - b.index)
-    .map(({ clip }) => clip);
+    .map(({ clip }, index) => ({
+      ...clip,
+      transitionEffect:
+        clip.transitionEffect ?? items[index]?.transitionEffect ?? resolvedOptions.sceneTransitions.effect,
+    }));
 
   return { clips, completedCount, totalCount };
 }
@@ -389,6 +400,7 @@ export async function renderSceneClipBatchItem(input: {
     scene: input.item.scene,
     duration: input.item.duration,
     handlePlan: input.item.handlePlan,
+    transitionEffect: input.item.transitionEffect,
     projectId: input.item.projectId,
     repository: input.repository,
     runId: input.item.runId,
@@ -407,6 +419,7 @@ async function renderOrReuseSceneClip(input: {
   scene: RenderableTourScene;
   duration: SceneTiming;
   handlePlan: SceneClipHandlePlan;
+  transitionEffect: SceneTransitionEffect;
   projectId: string;
   repository: TourRenderRepository;
   runId: string;
@@ -421,11 +434,14 @@ async function renderOrReuseSceneClip(input: {
 }): Promise<SceneClipStageClip> {
   const duration = input.duration;
   const handlePlan = input.handlePlan;
+  const sceneTransitions = resolveSceneTransitionEffectSettings({
+    effect: input.transitionEffect,
+  });
   const fingerprint = buildSceneClipFingerprint({
     scene: input.scene,
     durationSeconds: handlePlan.requestedDurationSeconds,
     handlePlan,
-    sceneTransitions: input.options.sceneTransitions,
+    sceneTransitions,
     renderMode: input.options.renderMode,
     providerModelId: input.options.providerModelId,
     includeSecondarySourceImages: input.options.includeSecondarySourceImages,
@@ -456,6 +472,7 @@ async function renderOrReuseSceneClip(input: {
         fingerprint,
         requestedDurationSeconds: handlePlan.requestedDurationSeconds,
         handlePlan,
+        transitionEffect: input.transitionEffect,
       };
     }
   }
@@ -521,9 +538,10 @@ async function renderOrReuseSceneClip(input: {
       requestedDurationSeconds: handlePlan.requestedDurationSeconds,
       renderMode: input.options.renderMode,
       transition: buildSceneClipTransitionEffectFingerprint({
-        transitionSettings: input.options.sceneTransitions,
+        transitionSettings: sceneTransitions,
         handlePlan,
       }),
+      transitionEffect: input.transitionEffect,
       providerModelId:
         input.options.renderMode === "provider_image_to_video"
           ? input.options.providerModelId
@@ -553,6 +571,7 @@ async function renderOrReuseSceneClip(input: {
     fingerprintHash,
     fingerprint,
     handlePlan,
+    transitionEffect: input.transitionEffect,
   };
 }
 
@@ -902,6 +921,13 @@ function includedRenderableScenes(project: RenderableTourProject): RenderableTou
   return project.scenes
     .filter((scene) => scene.included)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+}
+
+function resolveSceneTransitionEffectForScene(
+  scene: RenderableTourScene,
+  fallback: SceneTransitionEffect
+): SceneTransitionEffect {
+  return isSceneTransitionEffect(scene.transitionEffect) ? scene.transitionEffect : fallback;
 }
 
 function getSecondarySourcePhotos(scene: RenderableTourScene): RenderableTourSceneSourcePhoto[] {
