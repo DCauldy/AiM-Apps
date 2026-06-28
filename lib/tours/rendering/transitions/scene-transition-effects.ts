@@ -1,14 +1,28 @@
-import type { SceneDuration } from "./tour-transitions";
+import type { SceneTiming } from "./scene-boundaries";
 
-export const TOUR_SCENE_TRANSITION_SECONDS = 0.5;
-export const TOUR_SCENE_TRANSITION_HANDLE_POLICY_VERSION = "tour-scene-transition-handles-v1";
+export const SCENE_TRANSITION_EFFECT_SECONDS = 0.5;
+export const SCENE_TRANSITION_EFFECT_HANDLE_POLICY_VERSION = "tour-scene-transition-handles-v1";
 
-export type TourSceneTransitionEffect = "swipe-on-top";
+export type SceneTransitionEffect = "swipe-on-top";
 
-export type TourSceneTransitionSettings = {
-  enabled: boolean;
+export type SceneTransitionEffectOption = {
+  value: SceneTransitionEffect;
+  label: string;
+};
+
+export const DEFAULT_SCENE_TRANSITION_EFFECT: SceneTransitionEffect = "swipe-on-top";
+
+export const SCENE_TRANSITION_EFFECT_OPTIONS = [
+  { value: "swipe-on-top", label: "Swipe on top" },
+] as const satisfies readonly SceneTransitionEffectOption[];
+
+const SCENE_TRANSITION_EFFECT_SET = new Set<SceneTransitionEffect>(
+  SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => option.value)
+);
+
+export type SceneTransitionEffectSettings = {
   durationSeconds: number;
-  effect: TourSceneTransitionEffect;
+  effect: SceneTransitionEffect;
   handlePolicyVersion: string;
 };
 
@@ -22,12 +36,12 @@ export type SceneClipHandlePlan = {
   outgoingHandleSeconds: number;
 };
 
-export type SceneClipTransitionFingerprint = {
-  settings: TourSceneTransitionSettings;
+export type SceneClipTransitionEffectFingerprint = {
+  settings: SceneTransitionEffectSettings;
   handlePlan: SceneClipHandlePlan;
 };
 
-export type JoinedSceneTransitionSegment = {
+export type JoinedSceneTransitionEffectSegment = {
   sceneId: string;
   targetDurationSeconds: number;
   requestedDurationSeconds: number;
@@ -35,28 +49,41 @@ export type JoinedSceneTransitionSegment = {
   outgoingHandleSeconds: number;
 };
 
-export function resolveTourSceneTransitionSettings(options?: {
-  enabled?: boolean;
-}): TourSceneTransitionSettings {
+export function isSceneTransitionEffect(value: unknown): value is SceneTransitionEffect {
+  return (
+    typeof value === "string" &&
+    SCENE_TRANSITION_EFFECT_SET.has(value as SceneTransitionEffect)
+  );
+}
+
+export function getSceneTransitionEffectLabel(effect: SceneTransitionEffect): string {
+  return (
+    SCENE_TRANSITION_EFFECT_OPTIONS.find((option) => option.value === effect)?.label ??
+    effect
+  );
+}
+
+export function resolveSceneTransitionEffectSettings(options?: {
+  effect?: SceneTransitionEffect;
+}): SceneTransitionEffectSettings {
   return {
-    enabled: options?.enabled !== false,
-    durationSeconds: TOUR_SCENE_TRANSITION_SECONDS,
-    effect: "swipe-on-top",
-    handlePolicyVersion: TOUR_SCENE_TRANSITION_HANDLE_POLICY_VERSION,
+    durationSeconds: SCENE_TRANSITION_EFFECT_SECONDS,
+    effect: options?.effect ?? DEFAULT_SCENE_TRANSITION_EFFECT,
+    handlePolicyVersion: SCENE_TRANSITION_EFFECT_HANDLE_POLICY_VERSION,
   };
 }
 
-export function planSceneClipHandles(input: {
-  durations: SceneDuration[];
-  transitionSettings: TourSceneTransitionSettings;
+export function planSceneClipTransitionHandles(input: {
+  durations: SceneTiming[];
+  transitionSettings: SceneTransitionEffectSettings;
 }): SceneClipHandlePlan[] {
   const transitionSeconds = input.transitionSettings.durationSeconds;
-  const transitionsEnabled = input.transitionSettings.enabled && input.durations.length > 1;
+  const hasSceneTransitionEffects = input.durations.length > 1;
 
   return input.durations.map((duration, index) => {
-    const incomingHandleSeconds = transitionsEnabled && index > 0 ? transitionSeconds : 0;
+    const incomingHandleSeconds = hasSceneTransitionEffects && index > 0 ? transitionSeconds : 0;
     const outgoingHandleSeconds =
-      transitionsEnabled && index < input.durations.length - 1 ? transitionSeconds : 0;
+      hasSceneTransitionEffects && index < input.durations.length - 1 ? transitionSeconds : 0;
     const targetDurationSeconds = duration.durationSeconds;
     return {
       sceneId: duration.sceneId,
@@ -72,19 +99,19 @@ export function planSceneClipHandles(input: {
   });
 }
 
-export function buildSceneClipTransitionFingerprint(input: {
-  transitionSettings: TourSceneTransitionSettings;
+export function buildSceneClipTransitionEffectFingerprint(input: {
+  transitionSettings: SceneTransitionEffectSettings;
   handlePlan: SceneClipHandlePlan;
-}): SceneClipTransitionFingerprint {
+}): SceneClipTransitionEffectFingerprint {
   return {
     settings: input.transitionSettings,
     handlePlan: input.handlePlan,
   };
 }
 
-export function joinedSceneTransitionSegments(
+export function joinedSceneTransitionEffectSegments(
   handlePlans: SceneClipHandlePlan[]
-): JoinedSceneTransitionSegment[] {
+): JoinedSceneTransitionEffectSegment[] {
   return handlePlans.map((plan) => ({
     sceneId: plan.sceneId,
     targetDurationSeconds: plan.targetDurationSeconds,
@@ -100,10 +127,10 @@ export function expectedJoinedScenesDurationSeconds(handlePlans: SceneClipHandle
   );
 }
 
-export function buildSwipeOnTopJoinArgs(input: {
+export function buildSwipeOnTopSceneJoinArgs(input: {
   sceneClipPaths: string[];
   handlePlans: SceneClipHandlePlan[];
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
   width: number;
   height: number;
   fps: number;
@@ -115,8 +142,11 @@ export function buildSwipeOnTopJoinArgs(input: {
   if (input.sceneClipPaths.length !== input.handlePlans.length) {
     throw new Error("Scene clip path count does not match transition handle plan count.");
   }
-  if (input.sceneClipPaths.length <= 1 || !input.transitionSettings.enabled) {
-    throw new Error("Swipe transition join requires at least two clips and enabled transitions.");
+  if (input.sceneClipPaths.length <= 1) {
+    throw new Error("Swipe transition join requires at least two clips.");
+  }
+  if (input.transitionSettings.effect !== "swipe-on-top") {
+    throw new Error(`Unsupported scene transition effect: ${input.transitionSettings.effect}.`);
   }
 
   const filterParts: string[] = [];

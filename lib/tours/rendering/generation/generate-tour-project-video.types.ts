@@ -26,7 +26,7 @@ import type {
   SceneClipRenderer,
 } from "../scenes/scene-clips";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
-import type { TransitionDetectionProvider } from "../transitions/tour-transitions";
+import type { SceneBoundaryDetectionProvider } from "../transitions/scene-boundaries";
 import type { VoiceoverProvider } from "../voiceover/tour-voiceover";
 
 export type TourRenderProgressUpdate = {
@@ -52,7 +52,7 @@ export type GenerateTourProjectVideoOptions = {
   preflight?: typeof preflightTourRender;
   scriptPlanningProvider?: TourScriptPlanningProvider;
   voiceoverProvider?: VoiceoverProvider;
-  transitionDetectionProvider?: TransitionDetectionProvider;
+  transitionDetectionProvider?: SceneBoundaryDetectionProvider;
   sceneClipRenderer?: SceneClipRenderer;
   sceneClipBatchRunner?: SceneClipBatchRunner;
   mediaBatchRunner?: TourMediaBatchRunner;

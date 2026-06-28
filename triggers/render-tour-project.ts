@@ -12,7 +12,7 @@ import { safeErrorMessage } from "@/lib/tours/rendering/generation/generate-tour
 import { renderFinalVideoStage } from "@/lib/tours/rendering/final-render/final-render";
 import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/voiceover/tour-voiceover";
 import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/providers/openrouter-script-planning-provider";
-import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/transitions/tour-transitions";
+import { createOpenRouterSceneBoundaryDetectionProvider } from "@/lib/tours/rendering/transitions/scene-boundaries";
 import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/repositories/tour-render.repository";
 import {
   createHeyGenAvatarProvider,
@@ -331,7 +331,7 @@ export const renderTourProjectTask = task({
         }),
         voiceoverProvider: createElevenLabsVoiceoverProvider(),
         transitionDetectionProvider:
-          createOpenRouterTransitionDetectionProvider({
+          createOpenRouterSceneBoundaryDetectionProvider({
             apiKey: process.env.OPENROUTER_API_KEY ?? "",
           }),
         imageToVideoProvider: createOpenRouterImageToVideoProvider({

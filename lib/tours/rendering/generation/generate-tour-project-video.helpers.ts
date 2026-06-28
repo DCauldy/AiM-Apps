@@ -7,7 +7,7 @@ import type {
 import type { RenderableTourProject, TourRenderAsset } from "../repositories/tour-render.repository";
 import { TourSceneClipRenderError } from "../scenes/scene-clips";
 import { TourScriptPlanningError, type TourScriptPlan } from "./tour-script-planning";
-import { type SceneDuration, TourTransitionDetectionError } from "../transitions/tour-transitions";
+import { type SceneTiming, SceneBoundaryDetectionError } from "../transitions/scene-boundaries";
 import { TourVoiceoverError } from "../voiceover/tour-voiceover";
 import { TourFinalRenderError } from "../final-render/final-render";
 import { TourAvatarError } from "../avatars/tour-avatar";
@@ -32,9 +32,9 @@ export function safeErrorMessage(_error: unknown): string {
     }
     return "Script planning failed.";
   }
-  if (_error instanceof TourTransitionDetectionError) {
+  if (_error instanceof SceneBoundaryDetectionError) {
     if (_error.code === "PROVIDER_RESPONSE_INVALID") {
-      return "Scene transition detection returned an invalid response.";
+      return "Scene boundary detection returned an invalid response.";
     }
     if (_error.code === "TRANSITION_TIMING_INVALID" || _error.code === "TRANSCRIPT_INVALID") {
       return "Scene transition timing could not be validated.";
@@ -147,11 +147,11 @@ export function shouldReuseAsset(
 
 export function scriptTimingsToDurations(scriptPlan: {
   sceneTimings: Array<{ sceneId: string; scriptText: string; durationSeconds: number }>;
-}): SceneDuration[] {
+}): SceneTiming[] {
   let offsetMs = 0;
   return scriptPlan.sceneTimings.map((timing) => {
     const durationMs = Math.max(0, Math.round(timing.durationSeconds * 1000));
-    const duration: SceneDuration = {
+    const duration: SceneTiming = {
       sceneId: timing.sceneId,
       title: timing.sceneId,
       durationSeconds: timing.durationSeconds,

@@ -2,6 +2,7 @@ import type { createClient } from "@/lib/supabase/server";
 import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-settings/avatar-project-settings";
 import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
+import type { SceneTransitionEffect } from "../transitions/scene-transition-effects";
 
 export type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -82,6 +83,7 @@ export type RenderableTourScene = {
   sortOrder: number;
   included: boolean;
   cameraMotion: TourSceneCameraMotion;
+  transitionEffect?: SceneTransitionEffect;
   authoritativePhoto: RenderableTourSceneSourcePhoto;
   sourcePhotos: RenderableTourSceneSourcePhoto[];
   proofedFacts: Array<{
@@ -168,6 +170,7 @@ export type TourSceneRow = {
   sort_order: number;
   included: boolean;
   camera_motion: TourSceneCameraMotion;
+  transition_effect?: SceneTransitionEffect | null;
 };
 
 export type TourSceneSourcePhotoRow = {

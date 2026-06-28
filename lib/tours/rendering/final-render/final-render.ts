@@ -5,13 +5,14 @@ import { spawn } from "node:child_process";
 import type { TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
 import type { HeyGenAvatarMetadata } from "../avatars/tour-avatar";
 import {
-  buildSwipeOnTopJoinArgs,
+  buildSwipeOnTopSceneJoinArgs,
   expectedJoinedScenesDurationSeconds,
-  joinedSceneTransitionSegments,
-  resolveTourSceneTransitionSettings,
+  joinedSceneTransitionEffectSegments,
+  resolveSceneTransitionEffectSettings,
   type SceneClipHandlePlan,
-  type TourSceneTransitionSettings,
-} from "../transitions/render-transitions";
+  type SceneTransitionEffect,
+  type SceneTransitionEffectSettings,
+} from "../transitions/scene-transition-effects";
 import {
   assertVideoDurationAtLeast,
   assertVideoDurationClose,
@@ -43,7 +44,7 @@ export type FinalRenderStageOptions = {
   muxSettings?: FinalRenderSettings;
   outputPreset?: "vertical_1080p_h264_aac";
   sceneTransitions?: {
-    enabled?: boolean;
+    effect?: SceneTransitionEffect;
   };
 };
 
@@ -75,9 +76,9 @@ export type JoinedScenesFingerprint = {
     safe: 0 | 1;
     copyCodec: boolean;
   };
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
   expectedDurationSeconds: number;
-  clipHandlePlans: ReturnType<typeof joinedSceneTransitionSegments>;
+  clipHandlePlans: ReturnType<typeof joinedSceneTransitionEffectSegments>;
 };
 
 export type FinalVideoAvatarOverlayFingerprint = {
@@ -116,7 +117,7 @@ export type FinalVideoRendererInput = {
   avatarVideoPath?: string;
   avatarOverlay?: HeyGenAvatarMetadata["overlay"];
   settings: ResolvedFinalRenderSettings;
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
   expectedJoinedDurationSeconds: number;
   ffmpegPath: string;
 };
@@ -182,14 +183,14 @@ export function resolveFinalRenderStageOptions(options: FinalRenderStageOptions 
       ...(options.muxSettings ?? {}),
     },
     outputPreset: options.outputPreset ?? "vertical_1080p_h264_aac",
-    sceneTransitions: resolveTourSceneTransitionSettings(options.sceneTransitions),
+    sceneTransitions: resolveSceneTransitionEffectSettings(options.sceneTransitions),
   } as const;
 }
 
 export function buildJoinedScenesFingerprint(input: {
   clips: FinalRenderSceneClip[];
   concatSettings: JoinedScenesFingerprint["concatSettings"];
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
 }): JoinedScenesFingerprint {
   const handlePlans = input.clips.map((clip) => clip.handlePlan);
   return {
@@ -204,7 +205,7 @@ export function buildJoinedScenesFingerprint(input: {
     concatSettings: input.concatSettings,
     transitionSettings: input.transitionSettings,
     expectedDurationSeconds: expectedJoinedScenesDurationSeconds(handlePlans),
-    clipHandlePlans: joinedSceneTransitionSegments(handlePlans),
+    clipHandlePlans: joinedSceneTransitionEffectSegments(handlePlans),
   };
 }
 
@@ -484,10 +485,10 @@ export async function renderFinalVideoStage(input: {
 export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
   return {
     async joinSceneClips(input) {
-      if (input.transitionSettings.enabled && input.sceneClipPaths.length > 1) {
+      if (input.sceneClipPaths.length > 1) {
         await runProcess(
           input.ffmpegPath,
-          buildSwipeOnTopJoinArgs({
+          buildSwipeOnTopSceneJoinArgs({
             sceneClipPaths: input.sceneClipPaths,
             handlePlans: input.clips.map((clip) => clip.handlePlan),
             transitionSettings: input.transitionSettings,
@@ -639,7 +640,7 @@ async function joinOrReuseJoinedScenes(input: {
   avatarVideoPath?: string;
   avatarOverlay?: HeyGenAvatarMetadata["overlay"];
   settings: ResolvedFinalRenderSettings;
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
   fingerprint: JoinedScenesFingerprint;
   fingerprintHash: string;
   reuseExistingAssets: boolean;

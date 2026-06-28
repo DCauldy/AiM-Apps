@@ -16,8 +16,8 @@ import {
 } from "./scene-clips";
 import { buildOpenRouterSceneClipPrompt } from "./scene-clip-openrouter";
 import type { RenderableTourProject, TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
-import { planSceneClipHandles, resolveTourSceneTransitionSettings } from "../transitions/render-transitions";
-import type { SceneDuration } from "../transitions/tour-transitions";
+import { planSceneClipTransitionHandles, resolveSceneTransitionEffectSettings } from "../transitions/scene-transition-effects";
+import type { SceneTiming } from "../transitions/scene-boundaries";
 
 const primarySourcePhoto = {
   id: "photo-1",
@@ -53,7 +53,7 @@ const project: RenderableTourProject = {
   ],
 };
 
-const durations: SceneDuration[] = [
+const durations: SceneTiming[] = [
   {
     sceneId: "scene-1",
     title: "Kitchen",
@@ -109,7 +109,7 @@ const multiSceneProject: RenderableTourProject = {
   ],
 };
 
-const multiSceneDurations: SceneDuration[] = [
+const multiSceneTimings: SceneTiming[] = [
   durations[0]!,
   {
     sceneId: "scene-2",
@@ -283,7 +283,7 @@ describe("renderSceneClipsStage", () => {
       repository,
       runId: "scene-clips-run",
       userId: "user-1",
-      durations: multiSceneDurations,
+      durations: multiSceneTimings,
       renderer,
       options: {
         renderMode: "ken_burns_ffmpeg",
@@ -346,7 +346,7 @@ describe("renderSceneClipsStage", () => {
       repository,
       runId: "scene-clips-run",
       userId: "user-1",
-      durations: multiSceneDurations,
+      durations: multiSceneTimings,
       batchRunner,
       onClipCompleted,
     });
@@ -454,7 +454,7 @@ describe("renderSceneClipsStage", () => {
       repository,
       runId: "scene-clips-run",
       userId: "user-1",
-      durations: multiSceneDurations,
+      durations: multiSceneTimings,
       renderer,
       options: {
         renderMode: "ken_burns_ffmpeg",
@@ -809,9 +809,9 @@ describe("renderSceneClipsStage", () => {
 describe("buildSceneClipFingerprint", () => {
   it("plans fixed incoming and outgoing transition handles for first, middle, and last scenes", () => {
     expect(
-      planSceneClipHandles({
-        durations: multiSceneDurations,
-        transitionSettings: resolveTourSceneTransitionSettings(),
+      planSceneClipTransitionHandles({
+        durations: multiSceneTimings,
+        transitionSettings: resolveSceneTransitionEffectSettings(),
       })
     ).toEqual([
       expect.objectContaining({
@@ -869,7 +869,7 @@ describe("buildSceneClipFingerprint", () => {
       repository,
       runId: "scene-clips-run",
       userId: "user-1",
-      durations: multiSceneDurations,
+      durations: multiSceneTimings,
       provider,
       providerNormalizer,
       fetcher,
@@ -942,7 +942,7 @@ describe("buildSceneClipFingerprint", () => {
         repository,
         runId: "scene-clips-run",
         userId: "user-1",
-        durations: multiSceneDurations,
+        durations: multiSceneTimings,
         provider,
         providerNormalizer,
         fetcher,
@@ -960,15 +960,15 @@ describe("buildSceneClipFingerprint", () => {
   });
 
   it("includes scene, source photo identity, duration, renderer policy, settings, and adapter version", () => {
-    const handlePlan = planSceneClipHandles({
+    const handlePlan = planSceneClipTransitionHandles({
       durations,
-      transitionSettings: resolveTourSceneTransitionSettings(),
+      transitionSettings: resolveSceneTransitionEffectSettings(),
     })[0]!;
     const fingerprint = buildSceneClipFingerprint({
       scene: project.scenes[0]!,
       durationSeconds: 4,
       handlePlan,
-      sceneTransitions: resolveTourSceneTransitionSettings(),
+      sceneTransitions: resolveSceneTransitionEffectSettings(),
       renderMode: "provider_image_to_video",
       providerModelId: "openrouter/kling",
       includeSecondarySourceImages: true,

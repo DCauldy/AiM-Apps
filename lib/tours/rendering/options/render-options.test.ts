@@ -128,6 +128,7 @@ describe("advanced tour render controls", () => {
         renderMode: "provider_image_to_video",
         sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
         scriptPlanningModelId: "openrouter/planner-model",
+        sceneTransitionEffect: "swipe-on-top",
         reuse: {
           scriptPlan: true,
           voiceover: true,
@@ -140,6 +141,7 @@ describe("advanced tour render controls", () => {
       renderMode: "provider_image_to_video",
       sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
       scriptPlanningModelId: "openrouter/planner-model",
+      sceneTransitions: { effect: "swipe-on-top" },
       reuseExistingAssets: true,
       reuse: {
         scriptPlan: true,
@@ -157,6 +159,7 @@ describe("advanced tour render controls", () => {
         renderMode: "ken_burns_ffmpeg",
         sceneClipProviderModelId: "   ",
         scriptPlanningModelId: "\n\t",
+        sceneTransitionEffect: "swipe-on-top",
         reuse: {
           scriptPlan: false,
           voiceover: false,
@@ -167,6 +170,7 @@ describe("advanced tour render controls", () => {
       }),
     ).toEqual({
       renderMode: "ken_burns_ffmpeg",
+      sceneTransitions: { effect: "swipe-on-top" },
       reuseExistingAssets: false,
       reuse: {
         scriptPlan: false,
@@ -195,6 +199,7 @@ describe("tour render investigation options", () => {
         },
         scriptPlanningModelId: "  openrouter/planner  ",
         sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+        sceneTransitions: { effect: "swipe-on-top" },
         tourType: "tour_video_avatar",
         heyGenAvatarId: "avatar-secret",
         heyGenAvatarPositioning: { anchor: "bottom-right" },
@@ -218,7 +223,21 @@ describe("tour render investigation options", () => {
       },
       scriptPlanningModelId: "openrouter/planner",
       sceneClipProviderModelId: "kwaivgi/kling-v3.0-std",
+      sceneTransitions: { effect: "swipe-on-top" },
       tourType: "tour_video_avatar",
+    });
+  });
+
+  test("rejects unsupported scene transition effects", () => {
+    expect(
+      parseTourRenderOptionsInput({
+        sceneTransitions: {
+          effect: "dissolve",
+        },
+      }),
+    ).toEqual({
+      ok: false,
+      errors: ["sceneTransitions.effect must be a supported scene transition effect."],
     });
   });
 });

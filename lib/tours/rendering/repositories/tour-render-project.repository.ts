@@ -2,6 +2,7 @@ import {
   FACT_SELECT,
   PROJECT_SELECT,
   SCENE_SELECT,
+  SCENE_WITH_TRANSITION_SELECT,
   SOURCE_PHOTO_SELECT,
   mapTourRenderPreflightProject,
 } from "./tour-render.repository.mappers";
@@ -33,11 +34,19 @@ export async function loadTourRenderPreflightProject(
 
   const { data: scenes, error: scenesError } = await supabase
     .from("tour_scenes")
-    .select(SCENE_SELECT)
+    .select(SCENE_WITH_TRANSITION_SELECT)
     .eq("project_id", input.projectId)
     .order("sort_order", { ascending: true });
 
-  if (scenesError || !scenes) {
+  const resolvedScenes = scenesError
+    ? await supabase
+        .from("tour_scenes")
+        .select(SCENE_SELECT)
+        .eq("project_id", input.projectId)
+        .order("sort_order", { ascending: true })
+    : { data: scenes, error: scenesError };
+
+  if (resolvedScenes.error || !resolvedScenes.data) {
     return null;
   }
 
@@ -67,7 +76,7 @@ export async function loadTourRenderPreflightProject(
 
   return mapTourRenderPreflightProject({
     project,
-    scenes: scenes as TourSceneRow[],
+    scenes: resolvedScenes.data as TourSceneRow[],
     sourcePhotos: sourcePhotos as TourSceneSourcePhotoRow[],
     facts: facts as TourSceneFactRow[],
   });

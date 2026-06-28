@@ -26,7 +26,7 @@ import type {
   TourMediaBatchRunner,
 } from "./generate-tour-project-video";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
-import type { TransitionDetectionProvider } from "../transitions/tour-transitions";
+import type { SceneBoundaryDetectionProvider } from "../transitions/scene-boundaries";
 import type { VoiceoverProvider } from "../voiceover/tour-voiceover";
 
 describe("generateTourProjectVideo", () => {
@@ -501,8 +501,8 @@ describe("generateTourProjectVideo", () => {
         };
       }),
     };
-    const transitionDetectionProvider: TransitionDetectionProvider = {
-      detectTransitions: vi.fn().mockResolvedValue({
+    const transitionDetectionProvider: SceneBoundaryDetectionProvider = {
+      detectSceneBoundaries: vi.fn().mockResolvedValue({
         transitions: [{ sceneId: "scene-1", chunkId: 0 }],
       }),
     };
@@ -598,8 +598,8 @@ describe("generateTourProjectVideo", () => {
         };
       }),
     };
-    const transitionDetectionProvider: TransitionDetectionProvider = {
-      detectTransitions: vi.fn().mockResolvedValue({
+    const transitionDetectionProvider: SceneBoundaryDetectionProvider = {
+      detectSceneBoundaries: vi.fn().mockResolvedValue({
         transitions: [{ sceneId: "scene-1", chunkId: 0 }],
       }),
     };
@@ -743,7 +743,7 @@ describe("generateTourProjectVideo", () => {
     expect(finalVideoRenderer.muxFinalVideo).toHaveBeenCalled();
   });
 
-  it("marks the run failed with a safe message when transition detection is invalid", async () => {
+  it("marks the run failed with a safe message when scene boundary detection is invalid", async () => {
     const projectWithVoiceover: RenderableTourProject = {
       ...baseProject,
       project: {
@@ -830,8 +830,8 @@ describe("generateTourProjectVideo", () => {
         };
       }),
     };
-    const transitionDetectionProvider: TransitionDetectionProvider = {
-      detectTransitions: vi.fn().mockResolvedValue("{not-json"),
+    const transitionDetectionProvider: SceneBoundaryDetectionProvider = {
+      detectSceneBoundaries: vi.fn().mockResolvedValue("{not-json"),
     };
     const preflight = vi.fn().mockResolvedValue({
       ok: true,
@@ -872,7 +872,7 @@ describe("generateTourProjectVideo", () => {
     expect(repository.markFailed).toHaveBeenCalledWith(
       expect.objectContaining({
         step: "failed",
-        safeMessage: "Scene transition detection returned an invalid response.",
+        safeMessage: "Scene boundary detection returned an invalid response.",
       })
     );
   });

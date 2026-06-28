@@ -14,6 +14,7 @@ import type {
   HeyGenAvatarSize,
 } from "../avatars/tour-avatar";
 import { mergeProjectAvatarSettingsIntoRenderOptions } from "../avatars/avatar-project-render-options";
+import type { SceneTransitionEffect } from "../transitions/scene-transition-effects";
 
 export type TourRenderMode = "ken_burns_ffmpeg" | "provider_image_to_video";
 
@@ -59,7 +60,7 @@ export type TourRenderOptions = {
   };
   sceneClipConcurrencyLimit?: number;
   sceneTransitions?: {
-    enabled?: boolean;
+    effect?: SceneTransitionEffect;
   };
   finalMuxSettings?: {
     width?: number;

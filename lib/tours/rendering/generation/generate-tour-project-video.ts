@@ -11,11 +11,12 @@ import {
 } from "./tour-script-planning";
 import { generateVoiceoverStage } from "../voiceover/tour-voiceover";
 import {
-  DEFAULT_TOUR_TRANSITION_DETECTION_MODEL,
-  detectTransitionsAndDurationsStage,
+  DEFAULT_SCENE_BOUNDARY_DETECTION_MODEL,
+  detectSceneBoundariesAndTimingsStage,
   normalizeVoiceoverTranscript,
-  TourTransitionDetectionError,
-} from "../transitions/tour-transitions";
+  SceneBoundaryDetectionError,
+} from "../transitions/scene-boundaries";
+import { DEFAULT_SCENE_TRANSITION_EFFECT } from "../transitions/scene-transition-effects";
 import {
   renderSceneClipsStage,
   type SceneClipBatchRunner,
@@ -259,7 +260,7 @@ export async function generateTourProjectVideo(
         message: "Checking for reusable scene transition and duration assets.",
         metadata: {
           modelId:
-            input.options?.transitionDetectionModelId ?? DEFAULT_TOUR_TRANSITION_DETECTION_MODEL,
+            input.options?.transitionDetectionModelId ?? DEFAULT_SCENE_BOUNDARY_DETECTION_MODEL,
         },
       });
 
@@ -277,7 +278,7 @@ export async function generateTourProjectVideo(
           voiceoverResult.transcriptAsset.storageBucket !== "tours-generated-media" ||
           !voiceoverResult.transcriptAsset.storagePath
         ) {
-          throw new TourTransitionDetectionError(
+          throw new SceneBoundaryDetectionError(
             "Stored voiceover transcript asset is missing a storage object.",
             "TRANSCRIPT_INVALID"
           );
@@ -291,13 +292,13 @@ export async function generateTourProjectVideo(
         );
       }
       if (!transcript) {
-        throw new TourTransitionDetectionError(
-          "Voiceover transcript is required for scene transition detection.",
+        throw new SceneBoundaryDetectionError(
+          "Voiceover transcript is required for scene boundary detection.",
           "TRANSCRIPT_INVALID"
         );
       }
 
-      const transitionsResult = await detectTransitionsAndDurationsStage({
+      const transitionsResult = await detectSceneBoundariesAndTimingsStage({
         project,
         repository,
         runId: input.renderRunId,
@@ -439,6 +440,11 @@ export async function generateTourProjectVideo(
     }
 
     const renderableProject = applyScriptPlannedCameraMotions(project, scriptPlanResult.plan);
+    const sceneTransitionOptions = {
+      effect:
+        renderableProject.scenes.find((scene) => scene.included)?.transitionEffect ??
+        DEFAULT_SCENE_TRANSITION_EFFECT,
+    };
     const finalSceneCameraMotions = summarizeSceneCameraMotions(renderableProject);
     console.log("Tour render scene camera motions resolved.", {
       projectId: input.projectId,
@@ -489,7 +495,7 @@ export async function generateTourProjectVideo(
         includeSecondarySourceImages: input.options?.sceneClipIncludeSecondarySourceImages,
         renderSettings: input.options?.sceneClipRenderSettings,
         concurrencyLimit: input.options?.sceneClipConcurrencyLimit,
-        sceneTransitions: input.options?.sceneTransitions,
+        sceneTransitions: input.options?.sceneTransitions ?? sceneTransitionOptions,
       },
       onClipCompleted: async ({ completedCount, totalCount }) => {
         await recordProgress(repository, input, {
@@ -588,7 +594,7 @@ export async function generateTourProjectVideo(
       options: {
         muxSettings: input.options?.finalMuxSettings,
         reuseExistingAssets: shouldReuseAsset(input.options, "finalVideo"),
-        sceneTransitions: input.options?.sceneTransitions,
+        sceneTransitions: input.options?.sceneTransitions ?? sceneTransitionOptions,
       },
     };
 

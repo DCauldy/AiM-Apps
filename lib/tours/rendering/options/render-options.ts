@@ -3,6 +3,11 @@ import type {
   TourRenderOptions,
 } from "../preflight/preflight";
 import { TOUR_PROJECT_TYPES, type TourProjectType } from "../../projects/project-types";
+import {
+  DEFAULT_SCENE_TRANSITION_EFFECT,
+  isSceneTransitionEffect,
+  type SceneTransitionEffect,
+} from "../transitions/scene-transition-effects";
 
 type TourRenderOptionValidationResult =
   | { ok: true; options?: TourRenderOptions }
@@ -26,6 +31,7 @@ export type TourRenderInvestigationOptions = Pick<
   | "reuse"
   | "scriptPlanningModelId"
   | "sceneClipProviderModelId"
+  | "sceneTransitions"
   | "tourType"
 >;
 
@@ -33,6 +39,7 @@ export type TourRenderAdvancedControlsState = {
   renderMode: TourRenderMode;
   scriptPlanningModelId: string;
   sceneClipProviderModelId: string;
+  sceneTransitionEffect: SceneTransitionEffect;
   reuse: Record<SupportedReuseFlag, boolean>;
 };
 
@@ -135,6 +142,7 @@ const SUPPORTED_RENDER_OPTION_KEYS = new Set([
   "reuse",
   "scriptPlanningModelId",
   "sceneClipProviderModelId",
+  "sceneTransitions",
 ]);
 const SUPPORTED_RENDER_MODES = new Set<TourRenderMode>([...TOUR_RENDER_MODES]);
 
@@ -241,6 +249,8 @@ export function getAdvancedControlsStateForPreset(
     renderMode: options.renderMode ?? "provider_image_to_video",
     scriptPlanningModelId: options.scriptPlanningModelId ?? "",
     sceneClipProviderModelId: options.sceneClipProviderModelId ?? "",
+    sceneTransitionEffect:
+      options.sceneTransitions?.effect ?? DEFAULT_SCENE_TRANSITION_EFFECT,
     reuse: {
       ...REUSE_ALL_SUPPORTED_ASSETS,
       ...(options.reuse ?? {}),
@@ -255,6 +265,9 @@ export function buildTourRenderOptionsFromAdvancedControls(
     renderMode: controls.renderMode,
     reuseExistingAssets: Object.values(controls.reuse).some(Boolean),
     reuse: { ...controls.reuse },
+    sceneTransitions: {
+      effect: controls.sceneTransitionEffect,
+    },
   };
 
   const scriptPlanningModelId = controls.scriptPlanningModelId.trim();
@@ -312,6 +325,15 @@ export function sanitizeTourRenderInvestigationOptions(
     if (sceneClipProviderModelId) {
       options.sceneClipProviderModelId = sceneClipProviderModelId;
     }
+  }
+
+  if (
+    isRecord(value.sceneTransitions) &&
+    isSceneTransitionEffect(value.sceneTransitions.effect)
+  ) {
+    options.sceneTransitions = {
+      effect: value.sceneTransitions.effect,
+    };
   }
 
   if (isTourProjectType(value.tourType)) {
@@ -384,6 +406,38 @@ export function parseTourRenderOptionsInput(
 
       if (Object.keys(reuse).length > 0) {
         options.reuse = reuse;
+      }
+    }
+  }
+
+  if (value.sceneTransitions !== undefined) {
+    if (!isRecord(value.sceneTransitions)) {
+      errors.push("sceneTransitions must be an object when provided.");
+    } else {
+      const sceneTransitions: NonNullable<TourRenderOptions["sceneTransitions"]> =
+        {};
+      for (const key of Object.keys(value.sceneTransitions)) {
+        if (key !== "effect") {
+          errors.push(
+            `sceneTransitions.${key} is not a supported scene transition option.`,
+          );
+          continue;
+        }
+
+        const effect = value.sceneTransitions[key];
+        if (effect === undefined) {
+          continue;
+        }
+        if (!isSceneTransitionEffect(effect)) {
+          errors.push("sceneTransitions.effect must be a supported scene transition effect.");
+          continue;
+        }
+
+        sceneTransitions.effect = effect;
+      }
+
+      if (Object.keys(sceneTransitions).length > 0) {
+        options.sceneTransitions = sceneTransitions;
       }
     }
   }
