@@ -106,27 +106,31 @@ export function CampaignDialPanel({
         </div>
       </div>
 
-      {/* Dial 1 — Angle */}
+      {/* Dial 1 — Angle. A 3-stop slider that sets which perspective LEADS the
+          email (every email still carries both a seller and a buyer section —
+          this just decides the hero). ANGLE_STOPS is ordered seller→balanced→
+          buyer, so the slider index maps straight to the lens. */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-muted-foreground">Angle</span>
+          <span className="text-[11px] font-medium text-[#F43F5E]">
+            {ANGLE_STOPS[angleIndex].label}
+          </span>
         </div>
-        <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-          {ANGLE_STOPS.map((s, i) => (
-            <button
-              key={s.lens}
-              type="button"
-              onClick={() => setLens(s.lens)}
-              className={cn(
-                "rounded-md px-2 py-1.5 text-xs font-medium transition-colors text-center leading-tight",
-                i === angleIndex
-                  ? "bg-[#F43F5E] text-white shadow"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {s.label}
-            </button>
-          ))}
+        <input
+          type="range"
+          min={0}
+          max={ANGLE_STOPS.length - 1}
+          step={1}
+          value={angleIndex}
+          onChange={(e) => setLens(ANGLE_STOPS[Number(e.target.value)].lens)}
+          className="w-full accent-[#F43F5E]"
+          aria-label="Campaign angle"
+        />
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>Seller-focused</span>
+          <span>Balanced</span>
+          <span>Buyer-focused</span>
         </div>
         <p className="text-xs text-muted-foreground italic truncate">
           “{sampleSubject}”
