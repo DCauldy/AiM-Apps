@@ -268,7 +268,11 @@ export async function runBlogPipeline({ userId, triggeredBy, topicId: requestedT
 
   let blogContent: Record<string, unknown>;
   try {
-    const jsonMatch = blogResult.match(/\{[\s\S]*\}/);
+    // Strip any ```json code fence the model may wrap the object in before
+    // isolating the {...} payload.
+    const unfenced =
+      blogResult.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] ?? blogResult;
+    const jsonMatch = unfenced.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       blogContent = JSON.parse(jsonMatch[0]);
     } else {
@@ -276,15 +280,26 @@ export async function runBlogPipeline({ userId, triggeredBy, topicId: requestedT
     }
   } catch {
     console.error("[Pipeline] Failed to parse blog content JSON, using raw text");
+    // Recover a readable excerpt/answer even from malformed JSON instead of
+    // dumping the raw `{ "title": … }` blob into the excerpt field.
+    const field = (name: string) =>
+      blogResult.match(new RegExp(`"${name}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`))?.[1]
+        ?.replace(/\\"/g, '"')
+        .replace(/\\n/g, " ")
+        .trim();
     blogContent = {
-      title: selectedTopic.title,
-      slug: selectedTopic.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, ""),
-      content_html: `<article>${blogResult}</article>`,
-      excerpt: blogResult.slice(0, 200),
-      answer_capsule: "",
+      title: field("title") || selectedTopic.title,
+      slug:
+        field("slug") ||
+        selectedTopic.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, ""),
+      content_html: field("content_html")
+        ? (field("content_html") as string)
+        : `<article>${blogResult.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim()}</article>`,
+      excerpt: field("excerpt") || field("answer_capsule") || selectedTopic.title,
+      answer_capsule: field("answer_capsule") || "",
     };
   }
 
