@@ -44,6 +44,24 @@ export interface RunHlDiscoverResult {
   failureReason?: string;
 }
 
+/** Read the Magic/Control marker written at launch (storage, no schema). */
+async function readRunMode(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  userId: string,
+  runId: string,
+): Promise<"magic" | "control" | null> {
+  const { data } = await supabase.storage
+    .from("hyperlocal-uploads")
+    .download(`${userId}/run-mode/${runId}.json`);
+  if (!data) return null;
+  try {
+    const parsed = JSON.parse(await data.text()) as { mode?: string };
+    return parsed.mode === "control" ? "control" : "magic";
+  } catch {
+    return null;
+  }
+}
+
 export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult> {
   const supabase = createServiceRoleClient();
 
@@ -245,6 +263,12 @@ export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult>
   // any we can't (no key, no data, or a non-ZIP geo) stay pending and fall
   // through to the manual MLS upload — the "use my own MLS data" override is
   // always available.
+  // Mode marker written at launch (Magic vs Control). Control keeps segments
+  // PENDING after auto-fill so the agent can still enrich with their own MLS
+  // export; Magic marks them ready and proceeds straight to generation.
+  const runMode = await readRunMode(supabase, runRow.user_id, runId);
+  const isControl = runMode === "control";
+
   const filledKeys = new Set<string>();
   if (hasServiceArea && pendingBuckets.length > 0) {
     const { getMarketMetricsForZip, isMarketDataAvailable } = await import(
@@ -262,16 +286,22 @@ export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult>
           () => null,
         );
         if (!metrics) continue;
+        // Control: write the base metrics but keep the segment pending so the
+        // MLS-upload step still offers to sharpen it. Magic: mark ready.
         const { error: updErr } = await supabase
           .from("hl_segments")
-          .update({ mls_metrics: metrics, status: "ready" })
+          .update({
+            mls_metrics: metrics,
+            ...(isControl ? {} : { status: "ready" }),
+          })
           .eq("run_id", runId)
           .eq("geo_key", b.geo_key);
-        if (!updErr) filledKeys.add(b.geo_key);
+        if (!updErr && !isControl) filledKeys.add(b.geo_key);
       }
-      if (filledKeys.size > 0) {
+      if (filledKeys.size > 0 || isControl) {
         console.log(
-          `[hl-discover] auto-filled market data for ${filledKeys.size}/${pendingBuckets.length} segments (run ${runId})`,
+          `[hl-discover] auto-filled market data for ${pendingBuckets.length} segments ` +
+            `(mode=${runMode ?? "magic"}, run ${runId})`,
         );
       }
     }

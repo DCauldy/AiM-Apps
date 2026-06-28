@@ -172,6 +172,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Record the chosen mode as a tiny storage marker (no schema change) so the
+  // discover task can branch: Magic auto-fills market data and proceeds;
+  // Control auto-fills a BASE but still parks at the MLS-upload step so the
+  // agent can enrich with their own export.
+  const mode = body.mode === "control" ? "control" : "magic";
+  await service.storage
+    .from("hyperlocal-uploads")
+    .upload(
+      `${user.id}/run-mode/${run.id}.json`,
+      JSON.stringify({ mode }),
+      { contentType: "application/json", upsert: true },
+    )
+    .catch(() => {});
+
   try {
     await triggerDiscover(run.id);
   } catch (e) {

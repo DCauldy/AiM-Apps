@@ -12,6 +12,10 @@ import {
   suggestCampaign,
   type CampaignSuggestion,
 } from "@/lib/hyperlocal/sphere-suggest";
+import {
+  SphereModeLauncher,
+  type SphereMode,
+} from "@/components/hyperlocal/sphere/SphereModeLauncher";
 import type { SphereSnapshot, SphereZip } from "@/lib/hyperlocal/sphere";
 
 interface SphereResponse {
@@ -40,6 +44,8 @@ export function SphereMapClient() {
   const [progressMsg, setProgressMsg] = useState<string>("");
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Chosen at the mode picker. Null = picker still showing.
+  const [mode, setMode] = useState<SphereMode | null>(null);
   // The pre-built campaign suggestion (the "we built this for you" magic).
   const [suggestion, setSuggestion] = useState<CampaignSuggestion | null>(null);
   // Remount key so the dial panel re-seeds from a fresh suggestion.
@@ -47,8 +53,14 @@ export function SphereMapClient() {
   const esRef = useRef<EventSource | null>(null);
   // Once the user clicks the map themselves, we stop auto-building.
   const userTouched = useRef(false);
+  // Snapshot kept around so picking a mode after load can apply the suggestion.
+  const snapshotRef = useRef<SphereSnapshot | null>(null);
+  // Mirror of `mode` for stable reads inside the EventSource/fetch closures.
+  const modeRef = useRef<SphereMode | null>(null);
+  modeRef.current = mode;
 
   // Pre-light the densest neighborhoods + pre-set the dials from the sphere.
+  // Only Magic mode auto-builds; Control starts blank so the agent curates.
   const applySuggestion = useCallback((snapshot: SphereSnapshot) => {
     const sugg = suggestCampaign(snapshot);
     if (!sugg) return;
@@ -56,6 +68,17 @@ export function SphereMapClient() {
     setSelected(new Set(sugg.zips));
     setPanelKey((k) => k + 1);
   }, []);
+
+  // Mode chosen at the picker. Magic pre-builds from the cached snapshot.
+  const pickMode = useCallback(
+    (m: SphereMode) => {
+      setMode(m);
+      if (m === "magic" && !userTouched.current && snapshotRef.current) {
+        applySuggestion(snapshotRef.current);
+      }
+    },
+    [applySuggestion],
+  );
 
   const toggleZip = useCallback((zip: string) => {
     userTouched.current = true;
@@ -90,7 +113,9 @@ export function SphereMapClient() {
           if (data.snapshot) {
             setZips(data.snapshot.zips);
             setConnected(true);
-            if (!userTouched.current) applySuggestion(data.snapshot);
+            snapshotRef.current = data.snapshot;
+            if (modeRef.current === "magic" && !userTouched.current)
+              applySuggestion(data.snapshot);
           } else if (data.connected === false) {
             setConnected(false);
           }
@@ -121,7 +146,9 @@ export function SphereMapClient() {
         if (cancelled) return;
         if (data.snapshot) {
           setZips(data.snapshot.zips);
-          if (!userTouched.current) applySuggestion(data.snapshot);
+          snapshotRef.current = data.snapshot;
+          if (modeRef.current === "magic" && !userTouched.current)
+            applySuggestion(data.snapshot);
         }
         setConnected(data.connected);
         setLoading(false);
@@ -175,7 +202,7 @@ export function SphereMapClient() {
         setLaunching(false);
       }
     },
-    [selected, router],
+    [selected, router, mode],
   );
 
   const segments = zipsToSegments(zips);
@@ -201,31 +228,62 @@ export function SphereMapClient() {
     );
   }
 
+  // Mode picker — the front door. Magic vs Control Freak, mirroring the
+  // profile-onboarding choice. Shown until the agent picks how to build.
+  if (mode === null) {
+    return (
+      <SphereModeLauncher
+        onPick={pickMode}
+        totalContacts={totalContacts}
+        neighborhoodCount={zips.length}
+      />
+    );
+  }
+
   return (
     <div className="relative">
       {/* Header line */}
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Your sphere</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold">Your sphere</h1>
+            <span className="rounded-full border border-[#F43F5E]/30 bg-[#F43F5E]/10 px-2 py-0.5 text-[10px] font-medium text-[#F43F5E]">
+              {mode === "magic" ? "✨ AI Magic" : "🤓 Control Freak"}
+            </span>
+          </div>
           <p className="text-sm text-muted-foreground">
             {loading
               ? "Loading your neighborhoods…"
               : `${zips.length} neighborhood${zips.length === 1 ? "" : "s"} · ${totalContacts.toLocaleString()} contacts`}
           </p>
         </div>
-        {hasSelection && (
+        <div className="flex items-center gap-3">
+          {hasSelection && (
+            <button
+              type="button"
+              onClick={() => {
+                userTouched.current = true;
+                setSuggestion(null);
+                setSelected(new Set());
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Start over
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
-              userTouched.current = true;
+              setMode(null);
               setSuggestion(null);
               setSelected(new Set());
+              userTouched.current = false;
             }}
             className="text-xs text-muted-foreground hover:text-foreground"
           >
-            Start over
+            ← Change mode
           </button>
-        )}
+        </div>
       </div>
 
       {/* Refresh progress bar */}
@@ -270,7 +328,7 @@ export function SphereMapClient() {
         {/* Dial panel floats over the map's bottom-right when a selection exists */}
         {hasSelection && (
           <div className="absolute bottom-4 right-4 z-20 w-[340px] max-w-[calc(100%-2rem)] space-y-2">
-            {suggestion && (
+            {suggestion && mode === "magic" && (
               <div className="rounded-xl border border-[#F43F5E]/30 bg-[#F43F5E]/10 px-3 py-2 text-xs text-foreground backdrop-blur">
                 <span className="mr-1">✨</span>
                 {suggestion.rationale} Tweak it or just hit Send.
@@ -278,6 +336,7 @@ export function SphereMapClient() {
             )}
             <CampaignDialPanel
               key={panelKey}
+              mode={mode}
               selectedZips={Array.from(selected)}
               sphereZips={zips}
               onLaunch={handleLaunch}

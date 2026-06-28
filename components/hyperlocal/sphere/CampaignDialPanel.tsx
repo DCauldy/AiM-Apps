@@ -17,7 +17,11 @@ export interface DialValues {
 export interface CampaignDialPanelProps {
   selectedZips: string[];
   sphereZips: SphereZip[];
-  /** Launch a run. mode "magic" = AI finishes it; "control" = review each. */
+  /** The mode chosen at the picker. Magic = auto market data + approve-all;
+   *  Control = your MLS upload + full editor. Drives the data depth (the old
+   *  Depth dial) and the launch CTA. */
+  mode: "magic" | "control";
+  /** Launch a run. */
   onLaunch: (values: DialValues, mode: "magic" | "control") => Promise<void>;
   launching?: boolean;
   /** AI-suggested starting positions (the "pre-set" magic). */
@@ -50,12 +54,16 @@ const REACH_MAX = 20; // just the warmest
 export function CampaignDialPanel({
   selectedZips,
   sphereZips,
+  mode,
   onLaunch,
   launching = false,
   initial,
 }: CampaignDialPanelProps) {
   const [lens, setLens] = useState<DialLens>(initial?.lens ?? "balanced");
-  const [depth, setDepth] = useState<DialDepth>(initial?.depth ?? "full");
+  // Depth is no longer a dial — the mode sets it. Both modes produce a real
+  // (full) report: Magic from auto-pulled market data, Control from the
+  // agent's MLS upload. Kept in DialValues for the launch contract.
+  const depth: DialDepth = "full";
   // Slider is inverted vs min value: left = "warmest" (high min), right =
   // "everyone" (min 1). Store the raw min; render the slider reversed.
   const [reach, setReach] = useState<number>(initial?.reach ?? 3);
@@ -141,55 +149,12 @@ export function CampaignDialPanel({
         </p>
       </div>
 
-      {/* Dial 2 — Depth */}
+      {/* Dial 2 — Reach */}
       <div className="space-y-2">
-        <span className="text-xs font-medium text-muted-foreground">Depth</span>
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-          <button
-            type="button"
-            onClick={() => setDepth("quick")}
-            className={cn(
-              "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-              depth === "quick"
-                ? "bg-[#F43F5E] text-white shadow"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            ⚡ Quick note
-          </button>
-          <button
-            type="button"
-            onClick={() => setDepth("full")}
-            className={cn(
-              "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-              depth === "full"
-                ? "bg-[#F43F5E] text-white shadow"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            📊 Full report
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {depth === "quick"
-            ? "A warm, personal market note — no data upload needed."
-            : "A stats-rich report. You'll add MLS numbers next."}
-        </p>
-      </div>
-
-      {/* Dial 3 — Reach (only meaningful for full reports) */}
-      <div
-        className={cn(
-          "space-y-2 transition-opacity",
-          depth === "quick" && "opacity-40 pointer-events-none",
-        )}
-      >
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium text-muted-foreground">Reach</span>
           <span className="text-[11px] text-muted-foreground">
-            {depth === "quick"
-              ? "everyone selected"
-              : `${fullReportCount} of ${selected.length} get the full report`}
+            {`${fullReportCount} of ${selected.length} get the full report`}
           </span>
         </div>
         {/* Inverted slider: left = warmest (high min), right = everyone (min 1) */}
@@ -210,24 +175,25 @@ export function CampaignDialPanel({
         </div>
       </div>
 
-      {/* Launch */}
-      <div className="grid grid-cols-2 gap-2 pt-1">
+      {/* Launch — single CTA per mode (the mode was chosen at the picker). */}
+      <div className="pt-1">
         <button
           type="button"
           disabled={launching || recipientCount === 0}
-          onClick={() => onLaunch({ lens, reach, depth }, "magic")}
-          className="rounded-lg bg-[#F43F5E] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60 disabled:cursor-not-allowed"
+          onClick={() => onLaunch({ lens, reach, depth }, mode)}
+          className="w-full rounded-lg bg-[#F43F5E] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {launching ? "Starting…" : "✨ Send it"}
+          {launching
+            ? "Starting…"
+            : mode === "magic"
+              ? "✨ Send it"
+              : "🤓 Build my report"}
         </button>
-        <button
-          type="button"
-          disabled={launching || recipientCount === 0}
-          onClick={() => onLaunch({ lens, reach, depth }, "control")}
-          className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          🤓 Review each
-        </button>
+        <p className="mt-2 text-center text-[11px] text-muted-foreground">
+          {mode === "magic"
+            ? "We'll pull live market data and draft every email for you."
+            : "Next you'll see exactly which MLS fields to export for the deepest report."}
+        </p>
       </div>
     </div>
   );
