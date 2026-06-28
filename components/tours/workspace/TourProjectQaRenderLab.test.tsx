@@ -168,6 +168,11 @@ function sanitizedRunFromPersistedInternals() {
   });
 }
 
+async function openQaRenderLab(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  return screen.findByRole("region", { name: "QA Render Lab" });
+}
+
 test("does not render when the server-authored availability signal is false", () => {
   renderQaRenderLab({ isAvailable: false });
 
@@ -187,9 +192,7 @@ test("renders a compact launcher with current estimated cost and dev-only popove
     /fixed/,
   );
 
-  await user.click(launcher);
-
-  const panel = screen.getByRole("region", { name: "QA Render Lab" });
+  const panel = await openQaRenderLab(user);
   assert.match(panel.className, /border-dotted/);
   assert.match(panel.className, /border-yellow-400/);
   assert.match(panel.className, /max-h-\[50vh\]/);
@@ -252,7 +255,7 @@ test("shows run details with parent Trigger.dev run id and persisted options", a
 
   renderQaRenderLab({ currentRun: sanitizedRunFromPersistedInternals() });
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("tab", { name: "Debug packet" }));
 
   assert.ok(screen.getByText("Run investigation"));
@@ -306,7 +309,7 @@ test("shows missing Trigger.dev run id handling in run details", async () => {
 
   renderQaRenderLab({ currentRun: renderRun({ triggerRunId: null }) });
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("tab", { name: "Debug packet" }));
 
   assert.ok(screen.getAllByText("Not available").length >= 1);
@@ -337,7 +340,7 @@ test("shows failed run errors and copies the investigation packet", async () => 
     }),
   });
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("tab", { name: "Debug packet" }));
 
   assert.ok(screen.getByText("Scene clip rendering failed."));
@@ -360,7 +363,7 @@ test("submits advanced options through the provided dev-tool callback", async ()
 
   renderQaRenderLab({ onSubmitOptions });
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("combobox", { name: "Render preset" }));
   await user.click(
     screen.getByRole("option", { name: "Regenerate final video" }),
@@ -400,7 +403,7 @@ test("render mode changes and selected model ids are reflected in submitted opti
 
   renderQaRenderLab({ onSubmitOptions });
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("tab", { name: "Render" }));
   await user.click(screen.getByRole("combobox", { name: "Render mode" }));
   await user.click(
@@ -456,7 +459,7 @@ test("reuse toggles use on for reuse and off for regenerate", async () => {
 
   renderQaRenderLab({ onSubmitOptions });
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("tab", { name: "Reuse" }));
   await user.click(screen.getByRole("switch", { name: "Scene clips reuse" }));
   await user.click(screen.getByRole("switch", { name: "Final video reuse" }));
@@ -481,7 +484,7 @@ test("updates expanded estimate dollars when provider image-to-video regeneratio
 
   renderQaRenderLab({ includedSceneCount: 6 });
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("combobox", { name: "Render preset" }));
   await user.click(
     screen.getByRole("option", {
@@ -504,7 +507,7 @@ test("opens and closes a formatted script planner prompt modal", async () => {
 
   renderQaRenderLab();
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("tab", { name: "Render" }));
   await user.click(screen.getByRole("combobox", { name: "Render mode" }));
   await user.click(
@@ -549,7 +552,7 @@ test("opens formatted image-to-video prompt details in provider mode", async () 
 
   renderQaRenderLab();
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("combobox", { name: "Render preset" }));
   await user.click(
     screen.getByRole("option", {

@@ -42,6 +42,7 @@ import {
 } from "./ImageOverlayControls";
 import type { HeyGenAvatarProjectPosition } from "./avatar-positioning";
 import { appendDownloadTitle } from "./TourRenderStatusPanel";
+import { useToast } from "@/components/ui/toast";
 
 export type ProjectDetailsForm = {
   name: string;
@@ -295,7 +296,7 @@ export function SceneImageRail({
 }
 
 export function ProjectActionsMenuItems({
-  latestDownloadUrl,
+  latestDownloadHref,
   renderingHref,
   downloadTitle,
   canGenerateReuseAssets = false,
@@ -304,7 +305,7 @@ export function ProjectActionsMenuItems({
   onEdit,
   onDelete,
 }: {
-  latestDownloadUrl?: string | null;
+  latestDownloadHref?: string | null;
   renderingHref: string;
   downloadTitle: string;
   canGenerateReuseAssets?: boolean;
@@ -313,7 +314,7 @@ export function ProjectActionsMenuItems({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const hasRenderActions = Boolean(onGenerateReuseAssets || latestDownloadUrl);
+  const { addToast } = useToast();
 
   return (
     <>
@@ -333,28 +334,33 @@ export function ProjectActionsMenuItems({
             : "Generate and reuse assets"}
         </DropdownMenuItem>
       ) : null}
-      {latestDownloadUrl ? (
+      {latestDownloadHref ? (
         <DropdownMenuItem asChild>
           <a
-            href={appendDownloadTitle(latestDownloadUrl, downloadTitle)}
+            href={appendDownloadTitle(latestDownloadHref, downloadTitle)}
             target="_blank"
             rel="noreferrer"
             download
+            onClick={() => {
+              addToast({
+                title: "Preparing download",
+                description:
+                  "Generating the secure render link. This can take a moment.",
+              });
+            }}
           >
             <Download className="mr-2 h-4 w-4" />
             Download render
           </a>
         </DropdownMenuItem>
       ) : null}
-      {latestDownloadUrl ? (
-        <DropdownMenuItem asChild>
-          <Link href={renderingHref}>
-            <Images className="mr-2 h-4 w-4" />
-            View render assets
-          </Link>
-        </DropdownMenuItem>
-      ) : null}
-      {hasRenderActions ? <DropdownMenuSeparator /> : null}
+      <DropdownMenuItem asChild>
+        <Link href={renderingHref}>
+          <Images className="mr-2 h-4 w-4" />
+          View render assets
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
       <DropdownMenuItem
         className="text-destructive hover:text-destructive"
         onClick={onDelete}

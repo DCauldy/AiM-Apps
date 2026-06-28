@@ -8,10 +8,12 @@ import type {
   UpdateTourProjectResponse,
 } from "@/lib/tours/projects/project-api-contracts";
 import type {
+  TourActiveRenderRunResponse,
   TourRenderRunAssetResponse,
   TourRenderRunAssetsResponse,
   TourRenderRunResponse,
   TourRenderRunsResponse,
+  TourRenderRunsSummaryResponse,
   TourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/contracts/render.contract";
 import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/preflight";
@@ -80,6 +82,10 @@ export const FRESH_RENDER_OPTIONS = {
 export const tourQueryKeys = {
   openProjects: () => ["tours", "projects", "open"] as const,
   workspace: (projectId: string) => ["tours", "workspace", projectId] as const,
+  activeRenderRun: (projectId: string) =>
+    ["tours", "render-runs", projectId, "active"] as const,
+  renderRunsSummary: (projectId: string) =>
+    ["tours", "render-runs", projectId, "summary"] as const,
   renderRuns: (projectId: string) => ["tours", "render-runs", projectId] as const,
   renderRunStatus: (projectId: string, runId: string | null) =>
     ["tours", "render-runs", projectId, runId, "status"] as const,
@@ -117,8 +123,12 @@ export const toursApiRoutes = {
   sceneFact: (projectId: string, sceneId: string, factId: string) =>
     `${sceneRoute(projectId, sceneId)}/facts/${encodeRouteSegment(factId)}`,
   renderRuns: renderRunsRoute,
+  activeRenderRun: (projectId: string) => `${renderRunsRoute(projectId)}/active`,
+  renderRunsSummary: (projectId: string) => `${renderRunsRoute(projectId)}/summary`,
   renderRunStatus: (projectId: string, runId: string) =>
     `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/status`,
+  renderRunDownload: (projectId: string, runId: string) =>
+    `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/download`,
   renderRunAssets: (runId: string) =>
     `/api/apps/tours/render-runs/${encodeRouteSegment(runId)}/assets`,
 };
@@ -350,6 +360,27 @@ export async function fetchRecentRenderRuns(
     "Could not load render status."
   );
   return payload.runs;
+}
+
+export async function fetchActiveRenderRun(
+  projectId: string
+): Promise<TourRenderRunStatusResponse | null> {
+  const response = await fetch(toursApiRoutes.activeRenderRun(projectId));
+  const payload = await readToursJsonResponse<TourActiveRenderRunResponse>(
+    response,
+    "Could not load render status."
+  );
+  return payload.activeRun;
+}
+
+export async function fetchRenderRunsSummary(
+  projectId: string
+): Promise<TourRenderRunsSummaryResponse> {
+  const response = await fetch(toursApiRoutes.renderRunsSummary(projectId));
+  return readToursJsonResponse<TourRenderRunsSummaryResponse>(
+    response,
+    "Could not load render status."
+  );
 }
 
 export async function fetchRenderRunStatus(

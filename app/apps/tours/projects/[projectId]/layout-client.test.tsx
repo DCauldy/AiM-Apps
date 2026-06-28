@@ -140,6 +140,11 @@ function BreadcrumbProbe() {
   );
 }
 
+async function openQaRenderLab(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  return screen.findByRole("region", { name: "QA Render Lab" });
+}
+
 test("project layout renders the QA render lab from the server-authored page signal", () => {
   renderWithProviders(
     <TourProjectLayoutClient
@@ -174,7 +179,7 @@ test("QA render lab estimate ignores skipped scenes from the workspace", async (
     </TourProjectLayoutClient>,
   );
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("combobox", { name: "Render preset" }));
   await user.click(
     screen.getByRole("option", {

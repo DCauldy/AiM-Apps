@@ -35,13 +35,12 @@ function renderRun(
   };
 }
 
-test("picks the newest completed render with a download URL", () => {
+test("picks the newest completed render with a result asset", () => {
   const olderDownloadableRun = renderRun({
     id: "run-older",
     status: "completed",
     result: {
       assetId: "asset-older",
-      downloadUrl: "https://storage.example.test/older",
     },
   });
   const newestDownloadableRun = renderRun({
@@ -49,7 +48,6 @@ test("picks the newest completed render with a download URL", () => {
     status: "completed",
     result: {
       assetId: "asset-newest",
-      downloadUrl: "https://storage.example.test/newest",
     },
   });
 
@@ -63,13 +61,13 @@ test("picks the newest completed render with a download URL", () => {
   );
 });
 
-test("ignores completed renders without signed download URLs", () => {
+test("ignores completed renders without result assets", () => {
   assert.equal(
     pickLatestDownloadableRenderRun([
       renderRun({
-        id: "run-completed-without-url",
+        id: "run-completed-without-result",
         status: "completed",
-        result: { assetId: "asset-final" },
+        result: null,
       }),
     ]),
     null,

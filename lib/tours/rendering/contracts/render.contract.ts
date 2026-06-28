@@ -61,6 +61,15 @@ export type TourRenderRunResponse = {
   run: TourRenderRunStatusResponse;
 };
 
+export type TourActiveRenderRunResponse = {
+  activeRun: TourRenderRunStatusResponse | null;
+};
+
+export type TourRenderRunsSummaryResponse = {
+  activeRun: TourRenderRunStatusResponse | null;
+  latestDownloadableRun: TourRenderRunStatusResponse | null;
+};
+
 export type TourRenderRunAssetsResponse = {
   assets: TourRenderRunAssetResponse[];
 };

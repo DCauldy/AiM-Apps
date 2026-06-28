@@ -3,7 +3,7 @@
 import { Mic2, UserRound, Video } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { PageFrame } from "@/components/app-shell/PagePrimitives";
 import { Badge } from "@/components/ui/badge";
 import { useToursBreadcrumbs } from "@/components/tours/ToursBreadcrumbsContext";
@@ -24,6 +24,7 @@ import {
   TOUR_PROJECT_TYPE_LABELS,
   type TourProjectType,
 } from "@/lib/tours/projects/project-types";
+import { toursApiRoutes } from "@/components/tours/tours-api-client";
 import { getTourProjectConfiguration } from "@/lib/tours/projects/project-configuration";
 import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
 
@@ -102,19 +103,25 @@ function TourProjectLayoutContent({
     handleProjectDetailsSubmit,
   } = useTourProjectWorkspace();
   const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
-  const renderRuns = useTourRenderRuns(viewModel.project.id);
   const projectConfiguration = getTourProjectConfiguration(
     viewModel.project.tourType,
   );
+  const renderingHref = `/apps/tours/projects/${viewModel.project.id}/rendering`;
+  const renderRuns = useTourRenderRuns(viewModel.project.id, {
+    loadRecentRuns: pathname === renderingHref,
+  });
   const isProjectRendering =
     renderRuns.currentRun?.status === "queued" ||
     renderRuns.currentRun?.status === "running";
   const includedSceneCount = viewModel.tourScenes.filter(
     (scene) => scene.included,
   ).length;
-  const latestDownloadUrl =
-    renderRuns.latestDownloadableRun?.result?.downloadUrl ?? null;
-  const renderingHref = `/apps/tours/projects/${viewModel.project.id}/rendering`;
+  const latestDownloadHref = renderRuns.latestDownloadableRun
+    ? toursApiRoutes.renderRunDownload(
+        viewModel.project.id,
+        renderRuns.latestDownloadableRun.id,
+      )
+    : null;
   const projectHref = `/apps/tours/projects/${viewModel.project.id}`;
   const routeSceneId = getSceneIdFromToursPathname(
     pathname,
@@ -123,6 +130,46 @@ function TourProjectLayoutContent({
   const routeScene = routeSceneId
     ? viewModel.tourScenes.find((scene) => scene.id === routeSceneId)
     : null;
+  const getPromptPreviewProject = useCallback(
+    () => ({
+      id: viewModel.project.id,
+      name: viewModel.project.name,
+      propertyAddress: viewModel.listing.address,
+      listingUrl: viewModel.listing.listingUrl,
+      tourType: viewModel.project.tourType,
+      scenes: viewModel.tourScenes.map((scene) => ({
+        id: scene.id,
+        title: scene.title,
+        sortOrder: scene.sortOrder,
+        included: scene.included,
+        cameraMotion: scene.cameraMotion,
+        transitionEffect: scene.transitionEffect,
+        authoritativePhoto: {
+          id: scene.authoritativePhoto.id,
+          previewUrl: scene.authoritativePhoto.previewUrl,
+        },
+        sourcePhotos: scene.sourcePhotos.map((photo) => ({
+          id: photo.id,
+          previewUrl: photo.previewUrl,
+        })),
+        facts: scene.facts.map((fact) => ({
+          id: fact.id,
+          text: fact.text,
+          sourcePhotoId: fact.sourcePhotoId,
+          proofStatus: fact.proofStatus,
+          sortOrder: fact.sortOrder,
+        })),
+      })),
+    }),
+    [
+      viewModel.listing.address,
+      viewModel.listing.listingUrl,
+      viewModel.project.id,
+      viewModel.project.name,
+      viewModel.project.tourType,
+      viewModel.tourScenes,
+    ],
+  );
 
   useEffect(() => {
     const items = [
@@ -177,7 +224,7 @@ function TourProjectLayoutContent({
             renderingHref={renderingHref}
             projectActions={
               <ProjectActionsMenuItems
-                latestDownloadUrl={latestDownloadUrl}
+                latestDownloadHref={latestDownloadHref}
                 renderingHref={renderingHref}
                 downloadTitle={viewModel.project.name}
                 canGenerateReuseAssets={
@@ -233,36 +280,7 @@ function TourProjectLayoutContent({
         isAvailable={isQaRenderLabAvailable}
         includedSceneCount={includedSceneCount}
         tourType={viewModel.project.tourType}
-        promptPreviewProject={{
-          id: viewModel.project.id,
-          name: viewModel.project.name,
-          propertyAddress: viewModel.listing.address,
-          listingUrl: viewModel.listing.listingUrl,
-          tourType: viewModel.project.tourType,
-          scenes: viewModel.tourScenes.map((scene) => ({
-            id: scene.id,
-            title: scene.title,
-            sortOrder: scene.sortOrder,
-            included: scene.included,
-            cameraMotion: scene.cameraMotion,
-            transitionEffect: scene.transitionEffect,
-            authoritativePhoto: {
-              id: scene.authoritativePhoto.id,
-              previewUrl: scene.authoritativePhoto.previewUrl,
-            },
-            sourcePhotos: scene.sourcePhotos.map((photo) => ({
-              id: photo.id,
-              previewUrl: photo.previewUrl,
-            })),
-            facts: scene.facts.map((fact) => ({
-              id: fact.id,
-              text: fact.text,
-              sourcePhotoId: fact.sourcePhotoId,
-              proofStatus: fact.proofStatus,
-              sortOrder: fact.sortOrder,
-            })),
-          })),
-        }}
+        getPromptPreviewProject={getPromptPreviewProject}
         currentRun={renderRuns.currentRun}
         isSubmitting={renderRuns.isCreatingOptionsRenderRun}
         onSubmitOptions={renderRuns.createOptionsRenderRun}
