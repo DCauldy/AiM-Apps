@@ -131,7 +131,6 @@ export function TourProjectWorkspaceProvider({
   initialViewModel: TourProjectWorkspaceViewModel;
   children: ReactNode;
 }) {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const workspaceQuery = useTourProjectWorkspaceQuery(initialViewModel.project.id, initialViewModel);
   const viewModel = workspaceQuery.data;
@@ -173,8 +172,7 @@ export function TourProjectWorkspaceProvider({
     queryClient.invalidateQueries({
       queryKey: tourWorkspaceQueryKey(viewModel.project.id),
     });
-    router.refresh();
-  }, [queryClient, router, viewModel.project.id]);
+  }, [queryClient, viewModel.project.id]);
 
   const acknowledgementMutation = useAcknowledgeListingMediaAuthorizationMutation({
     projectId: viewModel.project.id,

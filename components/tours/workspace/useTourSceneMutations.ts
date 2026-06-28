@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
 import type { SceneTransitionEffect } from "@/lib/tours/rendering/transitions/scene-transition-effects";
@@ -33,15 +32,13 @@ export function useTourSceneMutations({
   onScenePhotoReplaced: () => void;
   onAddPhotoSettled: () => void;
 }) {
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   const invalidateWorkspace = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: tourQueryKeys.workspace(projectId),
     });
-    router.refresh();
-  }, [projectId, queryClient, router]);
+  }, [projectId, queryClient]);
 
   const createSceneMutation = useMutation({
     mutationFn: (formData: FormData) => createSceneFromListingPhoto(projectId, formData),
