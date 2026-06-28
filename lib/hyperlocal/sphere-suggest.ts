@@ -50,7 +50,7 @@ export function suggestCampaign(
   return {
     zips: chosen.map((z) => z.zip),
     lens,
-    depth: "quick",
+    depth: "full",
     reach: 3,
     rationale: rationale(chosen.length, contacts, lens),
   };

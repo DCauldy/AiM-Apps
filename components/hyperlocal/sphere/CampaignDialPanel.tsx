@@ -55,7 +55,7 @@ export function CampaignDialPanel({
   initial,
 }: CampaignDialPanelProps) {
   const [lens, setLens] = useState<DialLens>(initial?.lens ?? "balanced");
-  const [depth, setDepth] = useState<DialDepth>(initial?.depth ?? "quick");
+  const [depth, setDepth] = useState<DialDepth>(initial?.depth ?? "full");
   // Slider is inverted vs min value: left = "warmest" (high min), right =
   // "everyone" (min 1). Store the raw min; render the slider reversed.
   const [reach, setReach] = useState<number>(initial?.reach ?? 3);
@@ -66,14 +66,21 @@ export function CampaignDialPanel({
     [sphereZips, selectedSet],
   );
 
-  // Recipient tally respects the angle (seller→home owners, buyer→searchers).
-  const recipientCount = useMemo(() => {
-    return selected.reduce((sum, z) => {
-      if (lens === "seller") return sum + z.seller_count;
-      if (lens === "buyer") return sum + z.buyer_count;
+  // Audience size per angle: seller→residents who live here, buyer→contacts
+  // searching here, balanced→either. A seller-heavy sphere can have ~0 buyers,
+  // so we surface each angle's count rather than silently showing "0".
+  const angleCount = (l: DialLens) =>
+    selected.reduce((sum, z) => {
+      if (l === "seller") return sum + z.seller_count;
+      if (l === "buyer") return sum + z.buyer_count;
       return sum + z.contact_count;
     }, 0);
-  }, [selected, lens]);
+  const recipientCount = useMemo(
+    () => angleCount(lens),
+    // angleCount is a pure fn of `selected`; recompute on lens/selection change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, lens],
+  );
 
   // How many selected neighborhoods clear the "full report" bar (full depth).
   const fullReportCount = useMemo(
@@ -112,25 +119,45 @@ export function CampaignDialPanel({
           <span className="text-xs font-medium text-muted-foreground">Angle</span>
         </div>
         <div className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-          {ANGLE_STOPS.map((s, i) => (
-            <button
-              key={s.lens}
-              type="button"
-              onClick={() => setLens(s.lens)}
-              className={cn(
-                "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
-                i === angleIndex
-                  ? "bg-[#F43F5E] text-white shadow"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {s.label}
-            </button>
-          ))}
+          {ANGLE_STOPS.map((s, i) => {
+            const c = angleCount(s.lens);
+            return (
+              <button
+                key={s.lens}
+                type="button"
+                onClick={() => setLens(s.lens)}
+                className={cn(
+                  "rounded-md px-2 py-1.5 text-xs font-medium transition-colors text-center leading-tight",
+                  i === angleIndex
+                    ? "bg-[#F43F5E] text-white shadow"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <span className="block">{s.label}</span>
+                <span
+                  className={cn(
+                    "block text-[10px] font-normal mt-0.5",
+                    i === angleIndex ? "text-white/80" : "text-muted-foreground",
+                  )}
+                >
+                  {c.toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
         </div>
-        <p className="text-xs text-muted-foreground italic truncate">
-          “{sampleSubject}”
-        </p>
+        {recipientCount === 0 ? (
+          <p className="text-xs text-amber-500">
+            No contacts for this angle in these neighborhoods.{" "}
+            {lens === "buyer"
+              ? "These are people who live here, not buyers searching here — try Time to sell or Market pulse."
+              : "Try a different angle."}
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground italic truncate">
+            “{sampleSubject}”
+          </p>
+        )}
       </div>
 
       {/* Dial 2 — Depth */}
@@ -206,17 +233,17 @@ export function CampaignDialPanel({
       <div className="grid grid-cols-2 gap-2 pt-1">
         <button
           type="button"
-          disabled={launching}
+          disabled={launching || recipientCount === 0}
           onClick={() => onLaunch({ lens, reach, depth }, "magic")}
-          className="rounded-lg bg-[#F43F5E] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60"
+          className="rounded-lg bg-[#F43F5E] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {launching ? "Starting…" : "✨ Send it"}
         </button>
         <button
           type="button"
-          disabled={launching}
+          disabled={launching || recipientCount === 0}
           onClick={() => onLaunch({ lens, reach, depth }, "control")}
-          className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-60"
+          className="rounded-lg border border-border px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-accent disabled:opacity-60 disabled:cursor-not-allowed"
         >
           🤓 Review each
         </button>
