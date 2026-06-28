@@ -5,6 +5,7 @@ import {
   Map as MapboxMap,
   Source,
   Layer,
+  AttributionControl,
   type MapRef,
   type MapMouseEvent,
 } from "react-map-gl/mapbox";
@@ -269,6 +270,10 @@ export function HyperlocalMap({
         ref={mapRef}
         mapboxAccessToken={MAPBOX_TOKEN}
         mapStyle="mapbox://styles/mapbox/dark-v11"
+        // Disable the default (always-expanded) attribution so we can render
+        // a compact ⓘ version below. Required OSM/Mapbox credit is preserved —
+        // just collapsed — keeping us within the data license + Mapbox ToS.
+        attributionControl={false}
         initialViewState={{
           longitude: -98.5,
           latitude: 39.5,
@@ -296,6 +301,9 @@ export function HyperlocalMap({
         cursor={onToggleZip && hovered ? "pointer" : undefined}
         style={{ width: "100%", height: "100%" }}
       >
+        {/* Compact attribution — small ⓘ in the corner that expands on click.
+            Keeps the required OSM/Mapbox credit without the wide footer bar. */}
+        <AttributionControl compact position="bottom-right" />
         {geo && (
           <Source id="hl-zips" type="geojson" data={geo}>
             <Layer
