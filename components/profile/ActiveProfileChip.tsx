@@ -71,7 +71,25 @@ export function ActiveProfileChip() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="glass-card inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <DropdownMenuTrigger className="glass-card inline-flex items-center gap-2.5 pl-1.5 pr-3.5 py-1.5 rounded-full text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        {activeProfile &&
+          (activeProfile.headshot_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={activeProfile.headshot_url}
+              alt=""
+              className="w-6 h-6 rounded-full object-cover border border-white/20"
+            />
+          ) : (
+            <span
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+              style={{
+                background: `linear-gradient(135deg, ${activeProfile.primary_color}, ${activeProfile.accent_color})`,
+              }}
+            >
+              {activeProfile.display_name?.[0]?.toUpperCase()}
+            </span>
+          ))}
         <span className="text-muted-foreground">Operating as</span>
         {activeProfile ? (
           <span className="font-semibold">{activeProfile.display_name}</span>

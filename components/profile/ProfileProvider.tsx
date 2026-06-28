@@ -21,6 +21,7 @@ export interface ProfileSummary {
   brokerage: string | null;
   primary_color: string;
   accent_color: string;
+  headshot_url: string | null;
 }
 
 interface ProfileContextValue {
@@ -132,6 +133,12 @@ export function useProfile(): ProfileContextValue {
   return ctx;
 }
 
+/** Like useProfile, but returns null instead of throwing when there's no
+ *  provider (e.g. UserMenu also renders in the admin layout). */
+export function useOptionalProfile(): ProfileContextValue | null {
+  return useContext(ProfileContext);
+}
+
 function toSummary(p: PlatformProfile): ProfileSummary {
   return {
     id: p.id,
@@ -139,5 +146,6 @@ function toSummary(p: PlatformProfile): ProfileSummary {
     brokerage: p.brokerage,
     primary_color: p.primary_color,
     accent_color: p.accent_color,
+    headshot_url: p.headshot_url ?? null,
   };
 }

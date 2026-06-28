@@ -1,16 +1,31 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+interface HoverHandlers {
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}
+
 interface DropdownMenuContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
+  /** Present only when openOnHover — attached to the trigger AND content so the
+   *  menu opens on hover and stays open while the cursor is over either. */
+  hoverHandlers?: HoverHandlers;
 }
 
 const DropdownMenuContext = React.createContext<DropdownMenuContextValue | undefined>(undefined);
 
-const DropdownMenu = ({ children }: { children: React.ReactNode }) => {
+const DropdownMenu = ({
+  children,
+  openOnHover = false,
+}: {
+  children: React.ReactNode;
+  openOnHover?: boolean;
+}) => {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close dropdown when clicking outside
   React.useEffect(() => {
@@ -32,8 +47,24 @@ const DropdownMenu = ({ children }: { children: React.ReactNode }) => {
     };
   }, [open]);
 
+  // Hover-to-open. A short close delay bridges the gap between the trigger and
+  // the (non-adjacent) content so moving onto the menu doesn't dismiss it.
+  const hoverHandlers = React.useMemo<HoverHandlers | undefined>(() => {
+    if (!openOnHover) return undefined;
+    return {
+      onMouseEnter: () => {
+        if (closeTimer.current) clearTimeout(closeTimer.current);
+        setOpen(true);
+      },
+      onMouseLeave: () => {
+        if (closeTimer.current) clearTimeout(closeTimer.current);
+        closeTimer.current = setTimeout(() => setOpen(false), 180);
+      },
+    };
+  }, [openOnHover]);
+
   return (
-    <DropdownMenuContext.Provider value={{ open, setOpen }}>
+    <DropdownMenuContext.Provider value={{ open, setOpen, hoverHandlers }}>
       <div ref={containerRef} className="relative">{children}</div>
     </DropdownMenuContext.Provider>
   );
@@ -51,6 +82,7 @@ const DropdownMenuTrigger = React.forwardRef<
       ref={ref}
       className={className}
       onClick={() => context.setOpen(!context.open)}
+      {...context.hoverHandlers}
       {...props}
     >
       {children}
@@ -93,6 +125,7 @@ const DropdownMenuContent = React.forwardRef<
         sideClasses[side],
         className
       )}
+      {...context.hoverHandlers}
       {...props}
     />
   );

@@ -218,11 +218,30 @@ export function AppSwitcher() {
                 Operating as
               </div>
               {activeProfile && (
-                <div className="px-3 py-1.5 mx-1 mb-1 rounded-md bg-accent/50">
-                  <p className="text-sm font-semibold truncate">{activeProfile.display_name}</p>
-                  {activeProfile.brokerage && (
-                    <p className="text-[11px] text-muted-foreground truncate">{activeProfile.brokerage}</p>
+                <div className="flex items-center gap-2.5 px-3 py-1.5 mx-1 mb-1 rounded-md bg-accent/50">
+                  {activeProfile.headshot_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={activeProfile.headshot_url}
+                      alt=""
+                      className="w-8 h-8 rounded-full object-cover shrink-0 border border-white/15"
+                    />
+                  ) : (
+                    <span
+                      className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center text-xs font-bold text-white"
+                      style={{
+                        background: `linear-gradient(135deg, ${activeProfile.primary_color}, ${activeProfile.accent_color})`,
+                      }}
+                    >
+                      {activeProfile.display_name?.[0]?.toUpperCase()}
+                    </span>
                   )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">{activeProfile.display_name}</p>
+                    {activeProfile.brokerage && (
+                      <p className="text-[11px] text-muted-foreground truncate">{activeProfile.brokerage}</p>
+                    )}
+                  </div>
                 </div>
               )}
               {otherProfiles.slice(0, 5).map((p) => (
@@ -234,10 +253,19 @@ export function AppSwitcher() {
                     profileSwitchBusy && "opacity-50 pointer-events-none"
                   )}
                 >
-                  <span
-                    className="w-6 h-6 rounded-md shrink-0"
-                    style={{ background: `linear-gradient(135deg, ${p.primary_color}, ${p.accent_color})` }}
-                  />
+                  {p.headshot_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.headshot_url}
+                      alt=""
+                      className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/15"
+                    />
+                  ) : (
+                    <span
+                      className="w-6 h-6 rounded-md shrink-0"
+                      style={{ background: `linear-gradient(135deg, ${p.primary_color}, ${p.accent_color})` }}
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">{p.display_name}</p>
                     {p.brokerage && (
