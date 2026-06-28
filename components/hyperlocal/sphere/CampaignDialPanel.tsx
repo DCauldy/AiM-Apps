@@ -132,9 +132,10 @@ export function CampaignDialPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card p-4">
-      {/* Scrollable body — dials. Launch is pinned below so the panel bottom
-          lines up with the map even when the dials don't fill the height. */}
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+      {/* Scrollable body — dials + preview. Launch is pinned below so the panel
+          bottom lines up with the map even when the dials don't fill it. The
+          preview grows to absorb any extra height (no awkward dead space). */}
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
       {/* Header */}
       <div className="flex items-baseline justify-between gap-3">
         <div>
@@ -268,6 +269,42 @@ export function CampaignDialPanel({
             </p>
           </div>
         )}
+      </div>
+
+      {/* Preview — "what each email will include". Fills the remaining height
+          so the panel never shows dead space, and reassures before sending. */}
+      <div className="mt-1 flex flex-1 flex-col justify-center rounded-xl border border-border bg-background/40 p-3">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          Each email includes
+        </p>
+        <ul className="mt-2 space-y-1.5 text-xs text-foreground">
+          <li className="flex gap-2">
+            <span>✉️</span>
+            <span className="text-muted-foreground">
+              Subject like{" "}
+              <span className="italic text-foreground">“{sampleSubject}”</span>
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span>📊</span>
+            <span className="text-muted-foreground">
+              A {topName} market snapshot —{" "}
+              {mode === "magic" ? "live market data" : "sharpened by your MLS"}
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span>🏡</span>
+            <span className="text-muted-foreground">
+              A homeowner section <em>and</em> a buyer section
+            </span>
+          </li>
+          <li className="flex gap-2">
+            <span>🎨</span>
+            <span className="text-muted-foreground">
+              Your brand, headshot &amp; sign-off
+            </span>
+          </li>
+        </ul>
       </div>
 
       </div>
