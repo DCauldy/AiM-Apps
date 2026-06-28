@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import {
+  CampaignBuildProgress,
+  type BuildPhase,
+} from "@/components/hyperlocal/sphere/CampaignBuildProgress";
 import type { HlRun, HlSegment, HlEmail, RunPhase } from "@/types/hyperlocal";
 
 // ============================================================
@@ -39,12 +43,60 @@ const POLL_PHASES = new Set<RunPhase>([
   "awaiting_audience_confirmation",
 ]);
 
-const WORKING_LINES = [
-  "Reading the room in your neighborhoods…",
-  "Finding the story in the numbers…",
-  "Writing like you'd write it…",
-  "Polishing every subject line…",
+// The campaign-building pipeline, surfaced as live steps (Tours-style).
+const BUILD_PHASES: BuildPhase[] = [
+  {
+    key: "reading",
+    label: "Reading your sphere",
+    detail: "Pulling your contacts from the CRM",
+  },
+  {
+    key: "mapping",
+    label: "Mapping neighborhoods",
+    detail: "Grouping your contacts by ZIP code",
+  },
+  {
+    key: "market",
+    label: "Pulling market data",
+    detail: "Live numbers for each neighborhood",
+  },
+  {
+    key: "writing",
+    label: "Writing your emails",
+    detail: "A homeowner + buyer story per neighborhood",
+  },
+  {
+    key: "assembling",
+    label: "Designing & assembling",
+    detail: "Your brand, the market snapshot, and imagery",
+  },
 ];
+
+/** Derive the active step, a percent floor/ceiling, and a sub-label from the
+ *  run's real counters. Floor = where this state starts; the displayed percent
+ *  eases from floor toward ceil over time so it always feels alive. */
+function computeBuild(
+  run: HlRun,
+  emailCount: number,
+): { activeKey: string; floor: number; ceil: number; sub?: string } {
+  if (run.phase === "discover") {
+    if (run.contacts_fetched > 0 && run.segments_count > 0)
+      return { activeKey: "market", floor: 30, ceil: 42 };
+    if (run.contacts_fetched > 0)
+      return { activeKey: "mapping", floor: 18, ceil: 30 };
+    return { activeKey: "reading", floor: 5, ceil: 18 };
+  }
+  if (run.phase === "generate" || run.phase === "awaiting_audience_confirmation") {
+    const total = run.segments_count || 0;
+    const frac = total > 0 ? Math.min(1, emailCount / total) : 0;
+    const sub =
+      total > 0 ? `${emailCount} of ${total} neighborhoods written` : undefined;
+    if (frac < 0.95)
+      return { activeKey: "writing", floor: 44 + frac * 42, ceil: 88, sub };
+    return { activeKey: "assembling", floor: 90, ceil: 99, sub };
+  }
+  return { activeKey: "assembling", floor: 99, ceil: 100 };
+}
 
 export function MagicRunExperience({
   runId,
@@ -61,7 +113,9 @@ export function MagicRunExperience({
   });
   const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lineIdx, setLineIdx] = useState(0);
+  // Displayed build percent — eases from the current step's floor toward its
+  // ceiling so the bar always feels alive between 3s polls.
+  const [pct, setPct] = useState(5);
 
   const fetchData = useCallback(async () => {
     try {
@@ -83,18 +137,34 @@ export function MagicRunExperience({
     return () => clearInterval(id);
   }, [data.run.phase, fetchData]);
 
-  // Rotate the encouraging copy while the AI works.
   const working = WORKING_PHASES.has(data.run.phase);
-  const lineRef = useRef(working);
-  lineRef.current = working;
+
+  // Build-progress model derived from real run counters.
+  const build = useMemo(
+    () => computeBuild(data.run, data.emails.length),
+    [
+      data.run,
+      data.emails.length,
+    ],
+  );
+
+  // Never go backward; jump up to the new floor when a step advances.
+  useEffect(() => {
+    setPct((p) => Math.max(p, build.floor));
+  }, [build.floor]);
+
+  // Gentle ease toward the current ceiling while working.
   useEffect(() => {
     if (!working) return;
-    const id = setInterval(
-      () => setLineIdx((i) => (i + 1) % WORKING_LINES.length),
-      2600,
-    );
+    const id = setInterval(() => {
+      setPct((p) =>
+        p < build.ceil
+          ? Math.min(build.ceil, p + Math.max(0.3, (build.ceil - p) * 0.06))
+          : p,
+      );
+    }, 450);
     return () => clearInterval(id);
-  }, [working]);
+  }, [working, build.ceil]);
 
   // If a Magic run lands somewhere only the full editor handles, bounce there.
   useEffect(() => {
@@ -130,20 +200,14 @@ export function MagicRunExperience({
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
-      {/* Working */}
+      {/* Working — live multi-step build progress */}
       {working && (
-        <div className="text-center">
-          <MagicOrb />
-          <h1 className="mt-6 text-2xl font-semibold">Writing your campaign</h1>
-          <p className="mt-2 h-5 text-sm text-muted-foreground transition-opacity">
-            {WORKING_LINES[lineIdx]}
-          </p>
-          {run.segments_count > 0 && (
-            <p className="mt-4 text-xs text-muted-foreground">
-              {emails.length} of {run.segments_count} neighborhoods drafted
-            </p>
-          )}
-        </div>
+        <CampaignBuildProgress
+          phases={BUILD_PHASES}
+          activeKey={build.activeKey}
+          percent={pct}
+          subLabel={build.sub}
+        />
       )}
 
       {/* Review — one decision */}
