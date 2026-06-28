@@ -6,12 +6,48 @@ import type { SphereZip } from "@/lib/hyperlocal/sphere";
 
 export type DialLens = "seller" | "balanced" | "buyer";
 export type DialDepth = "quick" | "full";
+export type PropertyType = "all" | "single_family" | "condo" | "townhome";
 
 export interface DialValues {
   lens: DialLens;
   /** min_segment_size — the "big enough for a full report" threshold. */
   reach: number;
   depth: DialDepth;
+  /** Data-scope filters — constrain WHICH listings the market analysis pulls,
+   *  not which contacts get the email. The whole segment still receives it;
+   *  the numbers (and phrasing) reflect this scope. */
+  propertyType: PropertyType;
+  priceMin: number | null;
+  priceMax: number | null;
+}
+
+const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "single_family", label: "Single Family" },
+  { value: "condo", label: "Condo" },
+  { value: "townhome", label: "Townhome" },
+];
+
+// Price slider scale: 0 → $2M in $25K steps. The top stop means "no ceiling".
+const PRICE_MIN = 0;
+const PRICE_MAX = 2_000_000;
+const PRICE_STEP = 25_000;
+
+function formatPrice(n: number): string {
+  if (n >= PRICE_MAX) return "$2M+";
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 ? 2 : 1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1000)}K`;
+  return `$${n}`;
+}
+
+/** Collapsed-state summary of the data scope (shown next to the toggle). */
+function scopeSummary(type: PropertyType, min: number, max: number): string {
+  const typeLabel =
+    PROPERTY_TYPES.find((t) => t.value === type)?.label ?? "All";
+  const allPrice = min <= PRICE_MIN && max >= PRICE_MAX;
+  if (type === "all" && allPrice) return "All homes";
+  if (allPrice) return typeLabel;
+  return `${typeLabel === "All" ? "All" : typeLabel} · ${formatPrice(min)}–${formatPrice(max)}`;
 }
 
 export interface CampaignDialPanelProps {
@@ -67,6 +103,14 @@ export function CampaignDialPanel({
   // Slider is inverted vs min value: left = "warmest" (high min), right =
   // "everyone" (min 1). Store the raw min; render the slider reversed.
   const [reach, setReach] = useState<number>(initial?.reach ?? 3);
+
+  // Data-scope filters.
+  const [propertyType, setPropertyType] = useState<PropertyType>(
+    initial?.propertyType ?? "all",
+  );
+  const [priceMin, setPriceMin] = useState<number>(initial?.priceMin ?? PRICE_MIN);
+  const [priceMax, setPriceMax] = useState<number>(initial?.priceMax ?? PRICE_MAX);
+  const [scopeOpen, setScopeOpen] = useState(false);
 
   const selectedSet = useMemo(() => new Set(selectedZips), [selectedZips]);
   const selected = useMemo(
@@ -175,12 +219,107 @@ export function CampaignDialPanel({
         </div>
       </div>
 
+      {/* Data scope — constrains the market analysis (price band + home type),
+          not the audience. The whole segment still gets the email. */}
+      <div className="space-y-2 border-t border-border pt-3">
+        <button
+          type="button"
+          onClick={() => setScopeOpen((o) => !o)}
+          className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground hover:text-foreground"
+        >
+          <span>Data scope</span>
+          <span className="text-[11px]">
+            {scopeSummary(propertyType, priceMin, priceMax)} {scopeOpen ? "▲" : "▾"}
+          </span>
+        </button>
+
+        {scopeOpen && (
+          <div className="space-y-3 pt-1">
+            {/* Property type — single choice */}
+            <div className="space-y-1">
+              <span className="text-[11px] text-muted-foreground">Home type</span>
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+                {PROPERTY_TYPES.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    onClick={() => setPropertyType(t.value)}
+                    className={cn(
+                      "rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                      propertyType === t.value
+                        ? "bg-[#F43F5E] text-white shadow"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Price band — two thumbs (min + max) on a shared scale */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-muted-foreground">Price band</span>
+                <span className="text-[11px] font-medium text-foreground">
+                  {priceMin <= PRICE_MIN && priceMax >= PRICE_MAX
+                    ? "Any price"
+                    : `${formatPrice(priceMin)} – ${formatPrice(priceMax)}`}
+                </span>
+              </div>
+              <div className="relative h-5">
+                <input
+                  type="range"
+                  min={PRICE_MIN}
+                  max={PRICE_MAX}
+                  step={PRICE_STEP}
+                  value={priceMin}
+                  onChange={(e) =>
+                    setPriceMin(Math.min(Number(e.target.value), priceMax - PRICE_STEP))
+                  }
+                  className="pointer-events-none absolute inset-0 w-full appearance-none bg-transparent accent-[#F43F5E] [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto"
+                  aria-label="Minimum price"
+                />
+                <input
+                  type="range"
+                  min={PRICE_MIN}
+                  max={PRICE_MAX}
+                  step={PRICE_STEP}
+                  value={priceMax}
+                  onChange={(e) =>
+                    setPriceMax(Math.max(Number(e.target.value), priceMin + PRICE_STEP))
+                  }
+                  className="pointer-events-none absolute inset-0 w-full appearance-none bg-transparent accent-[#F43F5E] [&::-webkit-slider-thumb]:pointer-events-auto [&::-moz-range-thumb]:pointer-events-auto"
+                  aria-label="Maximum price"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Scopes the market numbers only — everyone in the segment still gets
+              the email, phrased around this slice.
+            </p>
+          </div>
+        )}
+      </div>
+
       {/* Launch — single CTA per mode (the mode was chosen at the picker). */}
       <div className="pt-1">
         <button
           type="button"
           disabled={launching || recipientCount === 0}
-          onClick={() => onLaunch({ lens, reach, depth }, mode)}
+          onClick={() =>
+            onLaunch(
+              {
+                lens,
+                reach,
+                depth,
+                propertyType,
+                priceMin: priceMin > PRICE_MIN ? priceMin : null,
+                priceMax: priceMax < PRICE_MAX ? priceMax : null,
+              },
+              mode,
+            )
+          }
           className="w-full rounded-lg bg-[#F43F5E] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {launching

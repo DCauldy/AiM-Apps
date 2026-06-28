@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
     lens?: CampaignLens;
     reach?: number;
     depth?: "quick" | "full";
+    propertyType?: string;
+    priceMin?: number | null;
+    priceMax?: number | null;
     mode?: "magic" | "control";
   };
 
@@ -71,6 +74,22 @@ export async function POST(req: NextRequest) {
       : 3;
   const minSegmentSize =
     depth === "quick" ? QUICK_MIN_SEGMENT_SENTINEL : reach;
+
+  // Data-scope filters: constrain the market analysis (which listings we pull),
+  // never the audience. Single property-type choice → a one-entry filter array
+  // ("all" or unknown → no filter). Prices clamped to a sane band.
+  const VALID_TYPES = ["single_family", "condo", "townhome"];
+  const propertyTypeFilters = VALID_TYPES.includes(body.propertyType ?? "")
+    ? [body.propertyType as string]
+    : [];
+  const priceLow =
+    typeof body.priceMin === "number" && body.priceMin > 0
+      ? Math.round(body.priceMin)
+      : null;
+  const priceHigh =
+    typeof body.priceMax === "number" && body.priceMax > 0
+      ? Math.round(body.priceMax)
+      : null;
 
   // Pack-cap gate (mirrors POST /runs — the server-side closure).
   const usage = await getHyperlocalUsage(user.id);
@@ -139,7 +158,9 @@ export async function POST(req: NextRequest) {
       lens,
       min_segment_size: minSegmentSize,
       service_area_zips: zips,
-      property_type_filters: [],
+      property_type_filters: propertyTypeFilters,
+      price_range_low: priceLow,
+      price_range_high: priceHigh,
       source_filters: [],
       is_active: true,
     })

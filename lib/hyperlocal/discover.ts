@@ -44,6 +44,19 @@ export interface RunHlDiscoverResult {
   failureReason?: string;
 }
 
+/** Map our property-type filters to the Zillow provider's home_type vocab.
+ *  Empty/unknown → all home types. */
+function zillowHomeTypes(filters: string[] | null | undefined): string | undefined {
+  if (!filters || filters.length === 0) return undefined; // provider default = homes
+  const map: Record<string, string> = {
+    single_family: "Houses",
+    condo: "Condos",
+    townhome: "Townhomes",
+  };
+  const mapped = filters.map((f) => map[f]).filter(Boolean);
+  return mapped.length > 0 ? mapped.join(",") : undefined;
+}
+
 /** Read the Magic/Control marker written at launch (storage, no schema). */
 async function readRunMode(
   supabase: ReturnType<typeof createServiceRoleClient>,
@@ -278,6 +291,7 @@ export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult>
       const opts = {
         minPrice: campaign.price_range_low ?? null,
         maxPrice: campaign.price_range_high ?? null,
+        homeTypes: zillowHomeTypes(campaign.property_type_filters),
       };
       // Sequential — the provider is rate-limited and the client spaces calls.
       for (const b of pendingBuckets) {

@@ -66,12 +66,42 @@ function formatTrends(t: TrendContext | undefined): string {
   return `\n\nTREND CONTEXT — weave one of these naturally if it strengthens the story; never both:\n${lines.join("\n")}`;
 }
 
+/** Human phrase for the data scope (price band + home type) so the writer
+ *  frames the numbers honestly — "based on single-family homes $300–500K". */
+function formatScope(
+  campaign: Pick<
+    HlCampaign,
+    "property_type_filters" | "price_range_low" | "price_range_high"
+  >,
+): string {
+  const typeMap: Record<string, string> = {
+    single_family: "single-family homes",
+    condo: "condos",
+    townhome: "townhomes",
+  };
+  const types = (campaign.property_type_filters ?? [])
+    .map((t) => typeMap[t])
+    .filter(Boolean);
+  const typePhrase = types.length > 0 ? types.join(" and ") : "homes";
+  const lo = campaign.price_range_low;
+  const hi = campaign.price_range_high;
+  let pricePhrase = "";
+  if (lo && hi) pricePhrase = ` priced ${formatMoney(lo)}–${formatMoney(hi)}`;
+  else if (lo) pricePhrase = ` priced ${formatMoney(lo)}+`;
+  else if (hi) pricePhrase = ` priced under ${formatMoney(hi)}`;
+  if (typePhrase === "homes" && !pricePhrase) return "";
+  return `\n\nDATA SCOPE: These numbers reflect ${typePhrase}${pricePhrase} in the area — frame the story around that slice (e.g. "for ${typePhrase}${pricePhrase} here…"). Don't imply it covers every property.`;
+}
+
 export function getEmailWriterPrompt(opts: {
   sender: PlatformSenderProfile | null;
   segment: HlSegment;
   metrics: MlsMetrics | null;
   perspective: Perspective;
-  campaign: Pick<HlCampaign, "lens">;
+  campaign: Pick<
+    HlCampaign,
+    "lens" | "property_type_filters" | "price_range_low" | "price_range_high"
+  >;
   trends?: TrendContext;
 }): string {
   const { sender, segment, metrics, perspective, campaign, trends } = opts;
@@ -101,7 +131,7 @@ ${emphasisNote}
 ${PERSPECTIVE_GUIDANCE[perspective]}
 
 REAL MARKET DATA — do not invent numbers, only use what's here:
-${formatMetrics(metrics)}${formatTrends(trends)}
+${formatMetrics(metrics)}${formatTrends(trends)}${formatScope(campaign)}
 
 OUTPUT FORMAT: clean HTML, no <html> or <body> wrapper. Use <p>, <strong>, <em>, and one <ul> if you call out 2–4 data points as bullets. NO emojis. NO marketing fluff. Sound like a knowledgeable agent texting a neighbor, not a brochure.
 

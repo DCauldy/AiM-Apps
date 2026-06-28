@@ -183,6 +183,9 @@ export function SphereMapClient() {
             lens: values.lens,
             reach: values.reach,
             depth: values.depth,
+            propertyType: values.propertyType,
+            priceMin: values.priceMin,
+            priceMax: values.priceMax,
             mode,
           }),
         });
