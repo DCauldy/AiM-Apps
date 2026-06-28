@@ -79,10 +79,24 @@ export function getEmailWriterPrompt(opts: {
     ? `Sender: ${sender.full_name}${sender.title ? `, ${sender.title}` : ""}${sender.brokerage ? `, ${sender.brokerage}` : ""}.`
     : "Sender details will be appended.";
 
-  return `You are writing a hyperlocal market report email for the ${segment.geo_label || segment.geo_key} area. ${senderBlock}
+  // The email always contains both sections; the campaign lens decides which
+  // one LEADS and carries more weight. A section that matches the lens is the
+  // hero (fuller, more detailed); the off-lens section is a tighter companion.
+  const isLead =
+    campaign.lens === "balanced" || campaign.lens === perspective;
+  const emphasisNote =
+    campaign.lens === "balanced"
+      ? `EMPHASIS: Balanced campaign — give this section equal weight to its counterpart.`
+      : isLead
+        ? `EMPHASIS: This campaign leans ${campaign.lens}, so this is the LEAD section — make it the fuller, more detailed half of the email.`
+        : `EMPHASIS: This campaign leans ${campaign.lens}, so this section is the shorter companion to the lead — keep it tight and complementary, not competing.`;
+  const lengthGuide = isLead ? "120–180 words" : "60–100 words";
+
+  return `You are writing one section of a hyperlocal market report email for the ${segment.geo_label || segment.geo_key} area. The full email contains BOTH a homeowner section and a buyer section drawn from the same data — you are writing the ${perspective} section. ${senderBlock}
 
 CAMPAIGN LENS: ${campaign.lens}
 SECTION PERSPECTIVE: ${perspective}
+${emphasisNote}
 
 ${PERSPECTIVE_GUIDANCE[perspective]}
 
@@ -91,7 +105,7 @@ ${formatMetrics(metrics)}${formatTrends(trends)}
 
 OUTPUT FORMAT: clean HTML, no <html> or <body> wrapper. Use <p>, <strong>, <em>, and one <ul> if you call out 2–4 data points as bullets. NO emojis. NO marketing fluff. Sound like a knowledgeable agent texting a neighbor, not a brochure.
 
-LENGTH: 120–180 words for this section.
+LENGTH: ${lengthGuide} for this section.
 
 TONE: Conversational, confident, specific. Cite the actual numbers above. Add brief context for what the numbers mean (e.g. "a 12-day DOM means homes are moving fast"). End with a single soft CTA — something like "happy to share what I'm seeing on the ground" — not a hard sell.
 
