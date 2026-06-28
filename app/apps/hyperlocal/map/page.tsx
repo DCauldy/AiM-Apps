@@ -17,5 +17,11 @@ export default async function HyperlocalMapPage() {
 
   await requireActiveProfileOrRedirect(user.id, "/apps/hyperlocal/map");
 
-  return <SphereMapClient />;
+  // Match the padded page container the rest of Hyperlocal uses — AppShell
+  // intentionally adds none, so each page supplies its own.
+  return (
+    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-6">
+      <SphereMapClient />
+    </div>
+  );
 }
