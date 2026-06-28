@@ -226,10 +226,16 @@ export function DashboardClient({
           </div>
         )}
 
-        {/* Nudge banner (1 remaining) */}
+        {/* Low-quota banner — fires at ≤1 remaining (incl. 0 = limit reached). */}
         {usage.nudge && !runError && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400 flex items-center justify-between">
-            <span>1 blog remaining this week</span>
+            <span>
+              {usage.effectiveRemaining === 0
+                ? "No blogs remaining this week"
+                : `${usage.effectiveRemaining} blog${
+                    usage.effectiveRemaining === 1 ? "" : "s"
+                  } remaining this week`}
+            </span>
             <button
               type="button"
               onClick={() => {
