@@ -1217,3 +1217,17 @@ pre code {
 .glass-dropdown .text-muted-foreground {
   color: rgba(255, 255, 255, 0.7);
 }
+
+/* Hyperlocal map — tuck the Mapbox logo into the bottom-right corner beside
+   the compact attribution info control, clearing the bottom-left for our own
+   overlays. The logo stays visible (Mapbox standard-plan ToS); only its
+   corner moves. */
+.hl-map .mapboxgl-ctrl-bottom-left {
+  left: auto;
+  right: 0;
+}
+.hl-map .mapboxgl-ctrl-bottom-left .mapboxgl-ctrl {
+  float: right;
+  /* Leave room for the compact attribution control at the right edge. */
+  margin: 0 40px 10px 0;
+}

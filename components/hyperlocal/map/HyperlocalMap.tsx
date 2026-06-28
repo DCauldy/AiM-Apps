@@ -261,7 +261,7 @@ export function HyperlocalMap({
   return (
     <div
       className={
-        "relative rounded-lg overflow-hidden border border-border " +
+        "hl-map relative rounded-lg overflow-hidden border border-border " +
         (className ?? "")
       }
       style={{ height }}
