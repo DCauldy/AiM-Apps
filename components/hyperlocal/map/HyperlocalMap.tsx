@@ -34,6 +34,9 @@ export interface HyperlocalMapProps {
   fitToSelected?: boolean;
   /** Optional chip rendered top-left over the map (e.g. "10 ZIPs · 5,949 contacts"). */
   overlayChip?: string;
+  /** ZIPs to gently pulse (the "opportunity" neighborhoods on the front door).
+   *  Default off, so the map's other usages are unaffected. */
+  pulseZips?: Set<string>;
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -55,6 +58,7 @@ export function HyperlocalMap({
   className,
   fitToSelected,
   overlayChip,
+  pulseZips,
 }: HyperlocalMapProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [geo, setGeo] = useState<GeoJSON.FeatureCollection | null>(null);
@@ -83,6 +87,7 @@ export function HyperlocalMap({
         contact_count: number;
         selected: 0 | 1;
         below_min: 0 | 1;
+        pulse: 0 | 1;
       }
     >();
     for (const s of segments) {
@@ -93,10 +98,11 @@ export function HyperlocalMap({
         contact_count: s.contact_count ?? 0,
         selected: selectedZips?.has(z) ? 1 : 0,
         below_min: s.below_min_size ? 1 : 0,
+        pulse: pulseZips?.has(z) ? 1 : 0,
       });
     }
     return m;
-  }, [segments, selectedZips]);
+  }, [segments, selectedZips, pulseZips]);
 
   // Load + filter GeoJSON for the segments' states
   useEffect(() => {
@@ -174,6 +180,34 @@ export function HyperlocalMap({
       { padding: 40, duration: 600 }
     );
   }, [geo, fitToSelected, selectedZips, mapLoaded]);
+
+  // Animate the pulse layer — a slow breathe on the opportunity ZIPs.
+  // Cheap: one setPaintProperty pair per frame on a single filtered layer.
+  const hasPulse = useMemo(
+    () => Array.from(zipMetaMap.values()).some((m) => m.pulse === 1),
+    [zipMetaMap],
+  );
+  useEffect(() => {
+    if (!hasPulse || !mapLoaded || !geo || !mapRef.current) return;
+    const map = mapRef.current.getMap();
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      // ~2.4s period sine, 0..1
+      const t = (Math.sin(((now - start) / 2400) * Math.PI * 2) + 1) / 2;
+      try {
+        if (map.getLayer("hl-zip-pulse")) {
+          map.setPaintProperty("hl-zip-pulse", "line-width", 2 + t * 5);
+          map.setPaintProperty("hl-zip-pulse", "line-opacity", 0.35 + t * 0.5);
+        }
+      } catch {
+        /* layer not ready this frame */
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [hasPulse, mapLoaded, geo]);
 
   const onClick = (e: MapMouseEvent) => {
     if (!onToggleZip) return;
@@ -311,6 +345,20 @@ export function HyperlocalMap({
                   2.5,
                   0.5,
                 ],
+              }}
+            />
+            {/* Pulsing glow on opportunity ZIPs. line-width/opacity are
+                animated each frame by the effect below. Filtered to pulse
+                features so non-pulse ZIPs are untouched. */}
+            <Layer
+              id="hl-zip-pulse"
+              type="line"
+              filter={["==", ["get", "pulse"], 1]}
+              paint={{
+                "line-color": "#F43F5E",
+                "line-width": 3,
+                "line-opacity": 0.6,
+                "line-blur": 2,
               }}
             />
             <Layer

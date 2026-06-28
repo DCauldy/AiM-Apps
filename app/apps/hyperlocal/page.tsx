@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireActiveProfileOrRedirect } from "@/lib/profiles/require-active";
+import { FEATURES } from "@/lib/feature-flags";
 
 export default async function HyperlocalPage() {
   const supabase = await createClient();
@@ -36,7 +37,12 @@ export default async function HyperlocalPage() {
     .eq("is_active", true);
 
   if ((emailCount ?? 0) > 0) {
-    redirect("/apps/hyperlocal/dashboard");
+    // Map-first front door when the flag is on; otherwise the legacy dashboard.
+    redirect(
+      FEATURES.HYPERLOCAL_MAP_HOME
+        ? "/apps/hyperlocal/map"
+        : "/apps/hyperlocal/dashboard",
+    );
   }
 
   redirect("/apps/hyperlocal/onboarding");
