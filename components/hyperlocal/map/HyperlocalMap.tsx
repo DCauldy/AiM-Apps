@@ -161,22 +161,34 @@ export function HyperlocalMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments]);
 
-  // Fit viewport when GeoJSON loads or selection changes (when fitToSelected).
-  // Depends on mapLoaded so we never call fitBounds before the map's
-  // internal state is ready — Mapbox silently drops those calls,
-  // which is why some users would see the unzoomed continental view.
+  // Fit viewport. Depends on mapLoaded so we never call fitBounds before the
+  // map's internal state is ready — Mapbox silently drops those calls, which
+  // is why some users would see the unzoomed continental view.
+  //
+  // Critical: the broad "fit to all" must run ONCE per geo load, not on every
+  // selection toggle — otherwise clicking a ZIP (which changes selectedZips)
+  // re-fits to the whole sphere and zooms the user back out. We track the geo
+  // we last fit so re-renders from selection don't re-trigger it. Only the
+  // explicit fitToSelected mode re-frames as the selection changes.
+  const fittedGeoRef = useRef<GeoJSON.FeatureCollection | null>(null);
   useEffect(() => {
     if (!geo || !mapLoaded || !mapRef.current) return;
     // When a focus target is set, the dedicated focus effect below frames the
     // map instead — skip the broad fit so we don't fight it with a zoom-out.
     if (focusZips && focusZips.size > 0) return;
 
-    let toFit: GeoJSON.Feature[] = geo.features;
+    let toFit: GeoJSON.Feature[];
     if (fitToSelected && selectedZips && selectedZips.size > 0) {
+      // Re-frame to the current selection (intentionally follows clicks).
       toFit = geo.features.filter((f) => {
         const z = (f.properties as { zip?: string } | null)?.zip;
         return z && selectedZips.has(z);
       });
+    } else {
+      // Broad fit — once per geo only, so clicks don't zoom back out.
+      if (fittedGeoRef.current === geo) return;
+      fittedGeoRef.current = geo;
+      toFit = geo.features;
     }
     if (toFit.length === 0) return;
 
