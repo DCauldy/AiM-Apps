@@ -255,6 +255,10 @@ export function SphereMapClient() {
           pulseZips={
             suggestion ? new Set(suggestion.zips) : undefined
           }
+          focusZips={
+            suggestion ? new Set(suggestion.zips) : undefined
+          }
+          focusNonce={panelKey}
           height="calc(100vh - 230px)"
           overlayChip={
             hasSelection

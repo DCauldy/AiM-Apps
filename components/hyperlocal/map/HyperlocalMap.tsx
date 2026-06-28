@@ -38,6 +38,11 @@ export interface HyperlocalMapProps {
   /** ZIPs to gently pulse (the "opportunity" neighborhoods on the front door).
    *  Default off, so the map's other usages are unaffected. */
   pulseZips?: Set<string>;
+  /** ZIPs to zoom/frame the viewport around. Fires once each time
+   *  `focusNonce` changes — so the campaign auto-build can frame the cluster
+   *  without re-zooming on every manual selection toggle. */
+  focusZips?: Set<string>;
+  focusNonce?: number;
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -60,6 +65,8 @@ export function HyperlocalMap({
   fitToSelected,
   overlayChip,
   pulseZips,
+  focusZips,
+  focusNonce,
 }: HyperlocalMapProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [geo, setGeo] = useState<GeoJSON.FeatureCollection | null>(null);
@@ -160,6 +167,9 @@ export function HyperlocalMap({
   // which is why some users would see the unzoomed continental view.
   useEffect(() => {
     if (!geo || !mapLoaded || !mapRef.current) return;
+    // When a focus target is set, the dedicated focus effect below frames the
+    // map instead — skip the broad fit so we don't fight it with a zoom-out.
+    if (focusZips && focusZips.size > 0) return;
 
     let toFit: GeoJSON.Feature[] = geo.features;
     if (fitToSelected && selectedZips && selectedZips.size > 0) {
@@ -180,7 +190,33 @@ export function HyperlocalMap({
       ],
       { padding: 40, duration: 600 }
     );
-  }, [geo, fitToSelected, selectedZips, mapLoaded]);
+  }, [geo, fitToSelected, selectedZips, mapLoaded, focusZips]);
+
+  // One-shot focus: zoom/frame the map to a specific cluster of ZIPs each time
+  // focusNonce changes (e.g. when the campaign auto-builds). Deliberately keyed
+  // on the nonce — NOT focusZips — so manual selection toggles never re-zoom.
+  useEffect(() => {
+    if (!focusNonce || !focusZips || focusZips.size === 0) return;
+    if (!geo || !mapLoaded || !mapRef.current) return;
+    const toFit = geo.features.filter((f) => {
+      const z = (f.properties as { zip?: string } | null)?.zip;
+      return z && focusZips.has(z);
+    });
+    if (toFit.length === 0) return;
+    const bounds = bbox({ type: "FeatureCollection", features: toFit });
+    if (!bounds) return;
+    mapRef.current.fitBounds(
+      [
+        [bounds[0], bounds[1]],
+        [bounds[2], bounds[3]],
+      ],
+      // Generous padding + a maxZoom cap so a tight cluster doesn't slam to
+      // street level; reads as "here are your picks" without losing context.
+      { padding: 80, duration: 800, maxZoom: 10 },
+    );
+    // focusZips intentionally omitted — fire only on nonce change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce, geo, mapLoaded]);
 
   // Animate the pulse layer — a slow breathe on the opportunity ZIPs.
   // Cheap: one setPaintProperty pair per frame on a single filtered layer.
