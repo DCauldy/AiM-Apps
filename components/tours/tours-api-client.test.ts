@@ -26,6 +26,15 @@ describe("Tours API client boundary", () => {
     expect(toursApiRoutes.renderRunStatus("project-1", "run-1")).toBe(
       "/api/apps/tours/projects/project-1/render-runs/run-1/status"
     );
+    expect(toursApiRoutes.activeRenderRun("project-1")).toBe(
+      "/api/apps/tours/projects/project-1/render-runs/active"
+    );
+    expect(toursApiRoutes.renderRunsSummary("project-1")).toBe(
+      "/api/apps/tours/projects/project-1/render-runs/summary"
+    );
+    expect(toursApiRoutes.renderRunDownload("project-1", "run-1")).toBe(
+      "/api/apps/tours/projects/project-1/render-runs/run-1/download"
+    );
     expect(toursApiRoutes.renderRunAssets("run-1")).toBe(
       "/api/apps/tours/render-runs/run-1/assets"
     );
@@ -61,8 +70,17 @@ describe("Tours API client boundary", () => {
     expect(toursApiRoutes.renderRuns("project/1")).toBe(
       "/api/apps/tours/projects/project%2F1/render-runs"
     );
+    expect(toursApiRoutes.activeRenderRun("project/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/render-runs/active"
+    );
+    expect(toursApiRoutes.renderRunsSummary("project/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/render-runs/summary"
+    );
     expect(toursApiRoutes.renderRunStatus("project/1", "run/1")).toBe(
       "/api/apps/tours/projects/project%2F1/render-runs/run%2F1/status"
+    );
+    expect(toursApiRoutes.renderRunDownload("project/1", "run/1")).toBe(
+      "/api/apps/tours/projects/project%2F1/render-runs/run%2F1/download"
     );
     expect(toursApiRoutes.renderRunAssets("run/1")).toBe(
       "/api/apps/tours/render-runs/run%2F1/assets"
@@ -86,6 +104,18 @@ describe("Tours API client boundary", () => {
       "tours",
       "render-runs",
       "project-1",
+    ]);
+    expect(tourQueryKeys.activeRenderRun("project-1")).toEqual([
+      "tours",
+      "render-runs",
+      "project-1",
+      "active",
+    ]);
+    expect(tourQueryKeys.renderRunsSummary("project-1")).toEqual([
+      "tours",
+      "render-runs",
+      "project-1",
+      "summary",
     ]);
     expect(tourQueryKeys.renderRunStatus("project-1", "run-1")).toEqual([
       "tours",

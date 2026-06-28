@@ -8,15 +8,18 @@ import type {
   UpdateTourProjectResponse,
 } from "@/lib/tours/projects/project-api-contracts";
 import type {
+  TourActiveRenderRunResponse,
   TourRenderRunAssetResponse,
   TourRenderRunAssetsResponse,
   TourRenderRunResponse,
   TourRenderRunsResponse,
+  TourRenderRunsSummaryResponse,
   TourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/contracts/render.contract";
 import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/preflight";
-import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
-import type { TourSceneFact } from "@/lib/tours/workspace";
+import type { TourSceneCameraMotion, TourSceneModel } from "@/lib/tours/scenes.core";
+import type { SceneTransitionEffect } from "@/lib/tours/rendering/transitions/scene-transition-effects";
+import type { TourScene, TourSceneFact } from "@/lib/tours/workspace";
 import type {
   ElevenLabsDigitalTwinVoice,
   ElevenLabsVoicesResponse,
@@ -60,9 +63,33 @@ type SceneFactResponse = {
 };
 
 type CreateSceneResponse = {
-  scene?: {
-    id?: string;
-  };
+  scene?: TourScene;
+};
+
+type SceneResponse = {
+  scene?: TourSceneModel;
+};
+
+type ReorderScenesResponse = {
+  scenes?: TourSceneModel[];
+};
+
+type ReplaceScenePhotoResponse = {
+  scene?: TourSceneModel;
+  authoritativePhoto?: TourScene["authoritativePhoto"];
+};
+
+type AddScenePhotoResponse = {
+  scene?: TourSceneModel;
+  sourcePhoto?: TourScene["sourcePhotos"][number];
+};
+
+type RemoveScenePhotoResponse = {
+  removedPhotoId?: string;
+};
+
+type DeleteSceneResponse = {
+  removedSceneId?: string;
 };
 
 export const FRESH_RENDER_OPTIONS = {
@@ -79,6 +106,10 @@ export const FRESH_RENDER_OPTIONS = {
 export const tourQueryKeys = {
   openProjects: () => ["tours", "projects", "open"] as const,
   workspace: (projectId: string) => ["tours", "workspace", projectId] as const,
+  activeRenderRun: (projectId: string) =>
+    ["tours", "render-runs", projectId, "active"] as const,
+  renderRunsSummary: (projectId: string) =>
+    ["tours", "render-runs", projectId, "summary"] as const,
   renderRuns: (projectId: string) => ["tours", "render-runs", projectId] as const,
   renderRunStatus: (projectId: string, runId: string | null) =>
     ["tours", "render-runs", projectId, runId, "status"] as const,
@@ -116,8 +147,12 @@ export const toursApiRoutes = {
   sceneFact: (projectId: string, sceneId: string, factId: string) =>
     `${sceneRoute(projectId, sceneId)}/facts/${encodeRouteSegment(factId)}`,
   renderRuns: renderRunsRoute,
+  activeRenderRun: (projectId: string) => `${renderRunsRoute(projectId)}/active`,
+  renderRunsSummary: (projectId: string) => `${renderRunsRoute(projectId)}/summary`,
   renderRunStatus: (projectId: string, runId: string) =>
     `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/status`,
+  renderRunDownload: (projectId: string, runId: string) =>
+    `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/download`,
   renderRunAssets: (runId: string) =>
     `/api/apps/tours/render-runs/${encodeRouteSegment(runId)}/assets`,
 };
@@ -255,7 +290,10 @@ export async function replaceAuthoritativeSceneListingPhoto(
     method: "PATCH",
     body: formData,
   });
-  return readToursJsonResponse(response, "Could not replace the authoritative listing photo.");
+  return readToursJsonResponse<ReplaceScenePhotoResponse>(
+    response,
+    "Could not replace the authoritative listing photo."
+  );
 }
 
 export async function addSceneListingPhoto(
@@ -267,7 +305,7 @@ export async function addSceneListingPhoto(
     method: "POST",
     body: formData,
   });
-  return readToursJsonResponse(response, "Could not add the listing photo.");
+  return readToursJsonResponse<AddScenePhotoResponse>(response, "Could not add the listing photo.");
 }
 
 export async function removeSceneListingPhoto(
@@ -278,7 +316,7 @@ export async function removeSceneListingPhoto(
   const response = await fetch(toursApiRoutes.scenePhoto(projectId, sceneId, sourcePhotoId), {
     method: "DELETE",
   });
-  return readToursJsonResponse(response, "Could not remove the listing photo.");
+  return readToursJsonResponse<RemoveScenePhotoResponse>(response, "Could not remove the listing photo.");
 }
 
 export async function reorderTourScenes(
@@ -291,7 +329,7 @@ export async function reorderTourScenes(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orderedSceneIds }),
   });
-  return readToursJsonResponse(response, fallbackError);
+  return readToursJsonResponse<ReorderScenesResponse>(response, fallbackError);
 }
 
 export async function toggleSceneInclusion(
@@ -304,7 +342,7 @@ export async function toggleSceneInclusion(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ included }),
   });
-  return readToursJsonResponse(response, "Could not update TourScene inclusion.");
+  return readToursJsonResponse<SceneResponse>(response, "Could not update TourScene inclusion.");
 }
 
 export async function updateSceneCameraMotion(
@@ -317,14 +355,27 @@ export async function updateSceneCameraMotion(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ cameraMotion }),
   });
-  return readToursJsonResponse(response, "Could not update TourScene camera motion.");
+  return readToursJsonResponse<SceneResponse>(response, "Could not update TourScene camera motion.");
+}
+
+export async function updateSceneTransitionEffect(
+  projectId: string,
+  sceneId: string,
+  transitionEffect: SceneTransitionEffect
+) {
+  const response = await fetch(toursApiRoutes.scene(projectId, sceneId), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ transitionEffect }),
+  });
+  return readToursJsonResponse<SceneResponse>(response, "Could not update TourScene transition.");
 }
 
 export async function deleteTourScene(projectId: string, sceneId: string) {
   const response = await fetch(toursApiRoutes.scene(projectId, sceneId), {
     method: "DELETE",
   });
-  return readToursJsonResponse(response, "Could not remove the TourScene.");
+  return readToursJsonResponse<DeleteSceneResponse>(response, "Could not remove the TourScene.");
 }
 
 export async function fetchRecentRenderRuns(
@@ -336,6 +387,27 @@ export async function fetchRecentRenderRuns(
     "Could not load render status."
   );
   return payload.runs;
+}
+
+export async function fetchActiveRenderRun(
+  projectId: string
+): Promise<TourRenderRunStatusResponse | null> {
+  const response = await fetch(toursApiRoutes.activeRenderRun(projectId));
+  const payload = await readToursJsonResponse<TourActiveRenderRunResponse>(
+    response,
+    "Could not load render status."
+  );
+  return payload.activeRun;
+}
+
+export async function fetchRenderRunsSummary(
+  projectId: string
+): Promise<TourRenderRunsSummaryResponse> {
+  const response = await fetch(toursApiRoutes.renderRunsSummary(projectId));
+  return readToursJsonResponse<TourRenderRunsSummaryResponse>(
+    response,
+    "Could not load render status."
+  );
 }
 
 export async function fetchRenderRunStatus(

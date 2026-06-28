@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { getProfileApiKey } from "@/lib/user-api-keys/service";
 import type { TourScriptPlan } from "../generation/tour-script-planning";
 import type { TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
+import { hashJsonFingerprint } from "../fingerprint";
 
 export const ELEVENLABS_VOICEOVER_PROVIDER_VERSION = "elevenlabs-voiceover-v2-eleven-v3-tags";
 export const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_v3";
@@ -199,7 +199,7 @@ export function buildVoiceoverFingerprint(input: {
 }
 
 export function hashVoiceoverFingerprint(fingerprint: VoiceoverFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export async function generateVoiceoverStage(input: {
@@ -692,24 +692,4 @@ function isClosingSentencePunctuation(character: string): boolean {
 
 function isWhitespace(character: string): boolean {
   return /\s/.test(character);
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

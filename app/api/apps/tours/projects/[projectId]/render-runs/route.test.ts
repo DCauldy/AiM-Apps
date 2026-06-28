@@ -320,6 +320,36 @@ describe("/api/apps/tours/projects/:projectId/render-runs", () => {
     expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
   });
 
+  it("rejects unsupported scene transition effects before preflight", async () => {
+    mocks.requireToursAccess.mockResolvedValue({ ok: true, user: { id: "user-1" } });
+
+    const response = await POST(
+      new Request("http://localhost/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          options: {
+            sceneTransitions: {
+              effect: "dissolve",
+            },
+          },
+        }),
+      }),
+      {
+        params: Promise.resolve({ projectId: "project-1" }),
+      }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unsupported tour render options.",
+      details: ["sceneTransitions.effect must be a supported scene transition effect."],
+    });
+    expect(mocks.approveAllTourSceneFactsForProject).not.toHaveBeenCalled();
+    expect(mocks.preflightTourRenderRun).not.toHaveBeenCalled();
+    expect(mocks.createTourRenderRun).not.toHaveBeenCalled();
+  });
+
   it("omits blank model ID overrides before preflight and run creation", async () => {
     const expectedOptions = {
       renderMode: "provider_image_to_video",

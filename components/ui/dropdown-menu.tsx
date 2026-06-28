@@ -19,11 +19,9 @@ const DropdownMenuContext = React.createContext<DropdownMenuContextValue | undef
 const DropdownMenu = ({
   children,
   className,
-  openOnHover = false,
 }: {
   children: React.ReactNode;
   className?: string;
-  openOnHover?: boolean;
 }) => {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -66,7 +64,7 @@ const DropdownMenu = ({
   }, [openOnHover]);
 
   return (
-    <DropdownMenuContext.Provider value={{ open, setOpen, hoverHandlers }}>
+    <DropdownMenuContext.Provider value={{ open, setOpen }}>
       <div ref={containerRef} className={cn("relative", className)}>
         {children}
       </div>

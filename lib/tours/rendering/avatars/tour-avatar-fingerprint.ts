@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import type { TourRenderAsset } from "../repositories/tour-render.repository";
+import { hashJsonFingerprint } from "../fingerprint";
 import {
   HEYGEN_AVATAR_PROVIDER_VERSION,
   type HeyGenAvatarFingerprint,
@@ -66,29 +66,9 @@ export function buildHeyGenAvatarVideoFingerprint(input: {
 }
 
 export function hashHeyGenAvatarFingerprint(fingerprint: HeyGenAvatarFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export function hashHeyGenAvatarVideoFingerprint(fingerprint: HeyGenAvatarVideoFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
+  return hashJsonFingerprint(fingerprint);
 }

@@ -244,6 +244,7 @@ export function createTourRenderRunsRepository(
         .eq("id", input.runId)
         .eq("project_id", input.projectId)
         .eq("user_id", input.userId)
+        .in("status", ["queued", "running"])
         .select(RUN_SELECT)
         .maybeSingle<TourRenderRunRow>();
 

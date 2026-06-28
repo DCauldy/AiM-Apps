@@ -4,12 +4,12 @@ vi.mock("server-only", () => ({}));
 
 import {
   buildTranscriptChunks,
-  createOpenRouterTransitionDetectionProvider,
-  deriveSceneDurations,
-  detectTransitionsAndDurationsStage,
-  normalizeSceneTransitions,
-  type TransitionDetectionProvider,
-} from "./tour-transitions";
+  createOpenRouterSceneBoundaryDetectionProvider,
+  deriveSceneTimings,
+  detectSceneBoundariesAndTimingsStage,
+  normalizeSceneBoundaries,
+  type SceneBoundaryDetectionProvider,
+} from "./scene-boundaries";
 import type {
   RenderableTourProject,
   RenderableTourSceneSourcePhoto,
@@ -178,9 +178,9 @@ function createRepository(overrides: Partial<TourRenderRepository> = {}): TourRe
   } as TourRenderRepository;
 }
 
-function createProvider(output: unknown): TransitionDetectionProvider {
+function createProvider(output: unknown): SceneBoundaryDetectionProvider {
   return {
-    detectTransitions: vi.fn().mockResolvedValue(output),
+    detectSceneBoundaries: vi.fn().mockResolvedValue(output),
   };
 }
 
@@ -194,7 +194,7 @@ describe("tour transition detection", () => {
       ],
     });
 
-    const result = await detectTransitionsAndDurationsStage({
+    const result = await detectSceneBoundariesAndTimingsStage({
       project,
       repository,
       runId: "run-1",
@@ -223,7 +223,7 @@ describe("tour transition detection", () => {
         offsets: { from: 2600, to: 5200 },
       },
     ]);
-    expect(provider.detectTransitions).toHaveBeenCalledWith(
+    expect(provider.detectSceneBoundaries).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "openrouter/transition-model",
         transcriptChunks: [
@@ -288,7 +288,7 @@ describe("tour transition detection", () => {
 
   it("rejects invalid provider JSON", () => {
     expect(() =>
-      normalizeSceneTransitions({
+      normalizeSceneBoundaries({
         providerOutput: "{not-json",
         scenes: scenes(),
         transcriptChunks: buildTranscriptChunks(transcript),
@@ -316,13 +316,13 @@ describe("tour transition detection", () => {
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
     );
-    const provider = createOpenRouterTransitionDetectionProvider({
+    const provider = createOpenRouterSceneBoundaryDetectionProvider({
       apiKey: "openrouter-key",
       fetcher: fetcher as typeof globalThis.fetch,
     });
 
     await expect(
-      provider.detectTransitions({
+      provider.detectSceneBoundaries({
         transcriptChunks: buildTranscriptChunks(transcript),
         scenes: scenes(),
         modelId: "openrouter/transition-model",
@@ -365,7 +365,7 @@ describe("tour transition detection", () => {
 
   it("rejects missing scene mapping", () => {
     expect(() =>
-      normalizeSceneTransitions({
+      normalizeSceneBoundaries({
         providerOutput: {
           transitions: [
             { sceneId: "scene-1", chunkId: 0 },
@@ -380,7 +380,7 @@ describe("tour transition detection", () => {
 
   it("anchors the first scene transition to the first transcript chunk", () => {
     expect(
-      normalizeSceneTransitions({
+      normalizeSceneBoundaries({
         providerOutput: {
           transitions: [
             { sceneId: "scene-1", chunkId: 1 },
@@ -398,7 +398,7 @@ describe("tour transition detection", () => {
 
   it("rejects out-of-order transitions", () => {
     expect(() =>
-      normalizeSceneTransitions({
+      normalizeSceneBoundaries({
         providerOutput: {
           transitions: [
             { sceneId: "scene-1", chunkId: 1 },
@@ -412,7 +412,7 @@ describe("tour transition detection", () => {
   });
 
   it("derives scene durations deterministically from transition boundaries", () => {
-    const durations = deriveSceneDurations({
+    const durations = deriveSceneTimings({
       transitions: [
         { sceneId: "scene-1", chunkId: 0 },
         { sceneId: "scene-2", chunkId: 2 },
@@ -442,7 +442,7 @@ describe("tour transition detection", () => {
   });
 
   it("keeps millisecond-level duration precision by default", () => {
-    const durations = deriveSceneDurations({
+    const durations = deriveSceneTimings({
       transitions: [
         { sceneId: "scene-1", chunkId: 0 },
         { sceneId: "scene-2", chunkId: 2 },
@@ -502,7 +502,7 @@ describe("tour transition detection", () => {
     });
     const provider = createProvider({ transitions: [] });
 
-    const result = await detectTransitionsAndDurationsStage({
+    const result = await detectSceneBoundariesAndTimingsStage({
       project,
       repository,
       runId: "run-1",
@@ -513,7 +513,7 @@ describe("tour transition detection", () => {
     });
 
     expect(result.reused).toBe(true);
-    expect(provider.detectTransitions).not.toHaveBeenCalled();
+    expect(provider.detectSceneBoundaries).not.toHaveBeenCalled();
     expect(repository.recordRunAssetUsage).toHaveBeenCalledWith({
       runId: "run-1",
       assetId: "asset-transitions",

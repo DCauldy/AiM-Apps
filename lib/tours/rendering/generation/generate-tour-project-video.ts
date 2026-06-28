@@ -11,11 +11,11 @@ import {
 } from "./tour-script-planning";
 import { generateVoiceoverStage } from "../voiceover/tour-voiceover";
 import {
-  DEFAULT_TOUR_TRANSITION_DETECTION_MODEL,
-  detectTransitionsAndDurationsStage,
+  DEFAULT_SCENE_BOUNDARY_DETECTION_MODEL,
+  detectSceneBoundariesAndTimingsStage,
   normalizeVoiceoverTranscript,
-  TourTransitionDetectionError,
-} from "../transitions/tour-transitions";
+  SceneBoundaryDetectionError,
+} from "../transitions/scene-boundaries";
 import {
   renderSceneClipsStage,
   type SceneClipBatchRunner,
@@ -27,6 +27,7 @@ import {
 import { prepareHeyGenAvatarStage } from "../avatars/tour-avatar";
 import {
   applyScriptPlannedCameraMotions,
+  applyScriptPlannedTransitionEffects,
   buildAvatarBatchItem,
   isProviderReachableUrl,
   needsAvatar,
@@ -37,6 +38,7 @@ import {
   shouldReuseAsset,
   summarizePreflightFailure,
   summarizeSceneCameraMotions,
+  summarizeSceneTransitionEffects,
 } from "./generate-tour-project-video.helpers";
 import {
   markShellFailed,
@@ -54,6 +56,9 @@ export type {
   GenerateTourProjectVideoInput,
   TourAvatarBatchItem,
   TourAvatarBatchResult,
+  TourFinalRenderBatchItem,
+  TourFinalRenderBatchResult,
+  TourFinalRenderRunner,
   TourMediaBatchRunner,
   TourRenderProgressUpdate,
 } from "./generate-tour-project-video.types";
@@ -256,7 +261,7 @@ export async function generateTourProjectVideo(
         message: "Checking for reusable scene transition and duration assets.",
         metadata: {
           modelId:
-            input.options?.transitionDetectionModelId ?? DEFAULT_TOUR_TRANSITION_DETECTION_MODEL,
+            input.options?.transitionDetectionModelId ?? DEFAULT_SCENE_BOUNDARY_DETECTION_MODEL,
         },
       });
 
@@ -274,7 +279,7 @@ export async function generateTourProjectVideo(
           voiceoverResult.transcriptAsset.storageBucket !== "tours-generated-media" ||
           !voiceoverResult.transcriptAsset.storagePath
         ) {
-          throw new TourTransitionDetectionError(
+          throw new SceneBoundaryDetectionError(
             "Stored voiceover transcript asset is missing a storage object.",
             "TRANSCRIPT_INVALID"
           );
@@ -288,13 +293,13 @@ export async function generateTourProjectVideo(
         );
       }
       if (!transcript) {
-        throw new TourTransitionDetectionError(
-          "Voiceover transcript is required for scene transition detection.",
+        throw new SceneBoundaryDetectionError(
+          "Voiceover transcript is required for scene boundary detection.",
           "TRANSCRIPT_INVALID"
         );
       }
 
-      const transitionsResult = await detectTransitionsAndDurationsStage({
+      const transitionsResult = await detectSceneBoundariesAndTimingsStage({
         project,
         repository,
         runId: input.renderRunId,
@@ -435,12 +440,22 @@ export async function generateTourProjectVideo(
       }
     }
 
-    const renderableProject = applyScriptPlannedCameraMotions(project, scriptPlanResult.plan);
+    const cameraResolvedProject = applyScriptPlannedCameraMotions(project, scriptPlanResult.plan);
+    const renderableProject = applyScriptPlannedTransitionEffects(
+      cameraResolvedProject,
+      scriptPlanResult.plan
+    );
     const finalSceneCameraMotions = summarizeSceneCameraMotions(renderableProject);
+    const finalSceneTransitionEffects = summarizeSceneTransitionEffects(renderableProject);
     console.log("Tour render scene camera motions resolved.", {
       projectId: input.projectId,
       runId: input.renderRunId,
       sceneCameraMotions: finalSceneCameraMotions,
+    });
+    console.log("Tour render scene transition effects resolved.", {
+      projectId: input.projectId,
+      runId: input.renderRunId,
+      sceneTransitionEffects: finalSceneTransitionEffects,
     });
 
     await recordProgress(repository, input, {
@@ -453,6 +468,7 @@ export async function generateTourProjectVideo(
       metadata: {
         renderMode: input.options?.renderMode ?? preflightResult.summary.renderMode,
         sceneCameraMotions: finalSceneCameraMotions,
+        sceneTransitionEffects: finalSceneTransitionEffects,
       },
     });
 
@@ -486,7 +502,6 @@ export async function generateTourProjectVideo(
         includeSecondarySourceImages: input.options?.sceneClipIncludeSecondarySourceImages,
         renderSettings: input.options?.sceneClipRenderSettings,
         concurrencyLimit: input.options?.sceneClipConcurrencyLimit,
-        sceneTransitions: input.options?.sceneTransitions,
       },
       onClipCompleted: async ({ completedCount, totalCount }) => {
         await recordProgress(repository, input, {
@@ -531,6 +546,7 @@ export async function generateTourProjectVideo(
         sceneClipAssetIds: sceneClipResult.clips.map((clip) => clip.asset.id),
         reusedCount: sceneClipResult.clips.filter((clip) => clip.reused).length,
         sceneCameraMotions: finalSceneCameraMotions,
+        sceneTransitionEffects: finalSceneTransitionEffects,
       },
     });
 
@@ -568,28 +584,34 @@ export async function generateTourProjectVideo(
       },
     });
 
-    const finalRenderResult = await renderFinalVideoStage({
+    const finalRenderInput = {
       projectId: input.projectId,
       userId: input.userId,
       runId: input.renderRunId,
-      repository,
       clips: sceneClipResult.clips.map((clip) => ({
         sceneId: clip.sceneId,
         durationSeconds: clip.durationSeconds,
         requestedDurationSeconds: clip.requestedDurationSeconds,
         handlePlan: clip.handlePlan,
+        transitionEffect: clip.transitionEffect,
         asset: clip.asset,
         fingerprintHash: clip.fingerprintHash,
       })),
       voiceoverAsset: voiceoverAudioAsset,
       avatarOverlay,
-      renderer: options.finalVideoRenderer,
       options: {
         muxSettings: input.options?.finalMuxSettings,
         reuseExistingAssets: shouldReuseAsset(input.options, "finalVideo"),
-        sceneTransitions: input.options?.sceneTransitions,
       },
-    });
+    };
+
+    const finalRenderResult = options.finalRenderRunner
+      ? await options.finalRenderRunner(finalRenderInput)
+      : await renderFinalVideoStage({
+          ...finalRenderInput,
+          repository,
+          renderer: options.finalVideoRenderer,
+        });
 
     await recordProgress(repository, input, {
       step: "uploading_final",

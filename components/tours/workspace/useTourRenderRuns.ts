@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   isTourRenderRunActive,
+  type TourRenderRunsSummaryResponse,
   type TourRenderRunStatusResponse,
 } from "@/lib/tours/rendering/contracts/render.contract";
 import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/preflight";
 import {
   createRenderRun,
   fetchRecentRenderRuns,
+  fetchRenderRunsSummary,
   fetchRenderRunStatus,
   FRESH_RENDER_OPTIONS,
   buildCreateRenderRunRequestBody,
@@ -31,7 +33,7 @@ export function pickLatestDownloadableRenderRun(
 ): TourRenderRunStatusResponse | null {
   return (
     runs.find(
-      (run) => run.status === "completed" && Boolean(run.result?.downloadUrl),
+      (run) => run.status === "completed" && Boolean(run.result?.assetId),
     ) ?? null
   );
 }
@@ -48,7 +50,15 @@ export function isOptionsRenderRunInput(input?: CreateRenderRunInput) {
   return Boolean(input?.options) && !input?.fresh;
 }
 
-export function useTourRenderRuns(projectId: string) {
+type UseTourRenderRunsOptions = {
+  loadRecentRuns?: boolean;
+};
+
+export function useTourRenderRuns(
+  projectId: string,
+  options: UseTourRenderRunsOptions = {},
+) {
+  const { loadRecentRuns = true } = options;
   const router = useRouter();
   const queryClient = useQueryClient();
   const recentRunsQueryKey = useMemo(
@@ -59,15 +69,28 @@ export function useTourRenderRuns(projectId: string) {
   const recentRunsQuery = useQuery({
     queryKey: recentRunsQueryKey,
     queryFn: () => fetchRecentRenderRuns(projectId),
+    enabled: loadRecentRuns,
     refetchOnWindowFocus: false,
   });
 
+  const summaryQuery = useQuery({
+    queryKey: tourQueryKeys.renderRunsSummary(projectId),
+    queryFn: () => fetchRenderRunsSummary(projectId),
+    enabled: !loadRecentRuns,
+    refetchOnWindowFocus: true,
+  });
+
   const recentRuns = recentRunsQuery.data ?? [];
-  const displayRun = pickDisplayRun(recentRuns);
+  const displayRun = loadRecentRuns
+    ? pickDisplayRun(recentRuns)
+    : summaryQuery.data?.activeRun ?? null;
   const activeRunId =
     displayRun && isTourRenderRunActive(displayRun) ? displayRun.id : null;
+  const latestDownloadableRun = loadRecentRuns
+    ? pickLatestDownloadableRenderRun(recentRuns)
+    : summaryQuery.data?.latestDownloadableRun ?? null;
 
-  const activeRunQuery = useQuery({
+  const activeRunStatusQuery = useQuery({
     queryKey: tourQueryKeys.renderRunStatus(projectId, activeRunId),
     queryFn: () => fetchRenderRunStatus(projectId, activeRunId as string),
     enabled: Boolean(activeRunId),
@@ -79,20 +102,37 @@ export function useTourRenderRuns(projectId: string) {
   });
 
   useEffect(() => {
-    if (!activeRunQuery.data) {
+    const polledRun = activeRunStatusQuery.data;
+    if (!polledRun) {
       return;
     }
+    const isPolledRunActive = isTourRenderRunActive(polledRun);
+    const isPolledRunDownloadable =
+      polledRun.status === "completed" && Boolean(polledRun.result?.assetId);
 
     queryClient.setQueryData<TourRenderRunStatusResponse[]>(
       recentRunsQueryKey,
       (runs = []) => [
-        activeRunQuery.data,
-        ...runs.filter((run) => run.id !== activeRunQuery.data?.id),
+        polledRun,
+        ...runs.filter((run) => run.id !== polledRun.id),
       ],
     );
-  }, [activeRunQuery.data, queryClient, recentRunsQueryKey]);
+    queryClient.setQueryData<TourRenderRunStatusResponse | null>(
+      tourQueryKeys.activeRenderRun(projectId),
+      isPolledRunActive ? polledRun : null,
+    );
+    queryClient.setQueryData(
+      tourQueryKeys.renderRunsSummary(projectId),
+      (summary: TourRenderRunsSummaryResponse | undefined) => ({
+        activeRun: isPolledRunActive ? polledRun : null,
+        latestDownloadableRun: isPolledRunDownloadable
+          ? polledRun
+          : summary?.latestDownloadableRun ?? null,
+      }),
+    );
+  }, [activeRunStatusQuery.data, projectId, queryClient, recentRunsQueryKey]);
 
-  const currentRun = activeRunQuery.data ?? displayRun;
+  const currentRun = activeRunStatusQuery.data ?? displayRun;
   const createRenderRunMutation = useMutation({
     mutationFn: (input: CreateRenderRunInput = {}) =>
       createRenderRun(projectId, input),
@@ -104,6 +144,17 @@ export function useTourRenderRuns(projectId: string) {
           ...runs.filter((existingRun) => existingRun.id !== run.id),
         ],
       );
+      queryClient.setQueryData<TourRenderRunStatusResponse | null>(
+        tourQueryKeys.activeRenderRun(projectId),
+        isTourRenderRunActive(run) ? run : null,
+      );
+      queryClient.setQueryData<TourRenderRunsSummaryResponse>(
+        tourQueryKeys.renderRunsSummary(projectId),
+        (summary) => ({
+          activeRun: isTourRenderRunActive(run) ? run : null,
+          latestDownloadableRun: summary?.latestDownloadableRun ?? null,
+        }),
+      );
       router.push(`/apps/tours/projects/${projectId}/rendering`);
     },
   });
@@ -111,13 +162,14 @@ export function useTourRenderRuns(projectId: string) {
   return {
     currentRun,
     recentRuns,
-    latestDownloadableRun: pickLatestDownloadableRenderRun(recentRuns),
+    latestDownloadableRun,
     isLoadingRecentRuns: recentRunsQuery.isLoading,
     isPollingActiveRun:
-      activeRunQuery.fetchStatus === "fetching" && Boolean(activeRunId),
+      activeRunStatusQuery.fetchStatus === "fetching" && Boolean(activeRunId),
     error:
       recentRunsQuery.error ??
-      activeRunQuery.error ??
+      summaryQuery.error ??
+      activeRunStatusQuery.error ??
       createRenderRunMutation.error,
     createRenderRun: () => createRenderRunMutation.mutate({ fresh: false }),
     createFreshRenderRun: () => createRenderRunMutation.mutate({ fresh: true }),

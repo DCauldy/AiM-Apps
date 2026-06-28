@@ -5,8 +5,13 @@ import type { HeyGenAvatarProjectPosition } from "@/lib/tours/avatar-settings/av
 import { LISTING_MEDIA_ACKNOWLEDGEMENT_COPY } from "@/lib/tours/listing-media/listing-media-authorization";
 import { listTourSceneFactsForProject } from "@/lib/tours/facts/facts";
 import type { TourProjectType } from "@/lib/tours/projects/project-types";
-import { getTourScenesForProject, type TourSceneCameraMotion } from "@/lib/tours/scenes";
+import {
+  getTourScenesForProject,
+  type TourSceneCameraMotion,
+  type TourSceneModel,
+} from "@/lib/tours/scenes";
 import { getTourSceneReadinessStatus } from "@/lib/tours/scenes.core";
+import type { SceneTransitionEffect } from "@/lib/tours/rendering/transitions/scene-transition-effects";
 
 export type TourSceneFact = {
   id: string;
@@ -24,6 +29,7 @@ export type TourScene = {
   sortOrder: number;
   included: boolean;
   cameraMotion: TourSceneCameraMotion;
+  transitionEffect?: SceneTransitionEffect;
   authoritativePhoto: {
     id: string;
     fileName: string;
@@ -92,6 +98,76 @@ type TourProjectRow = {
   updated_at: string;
 };
 
+type WorkspaceStorageClient = {
+  storage: {
+    from: (bucket: string) => {
+      createSignedUrl: (
+        path: string,
+        expiresIn: number
+      ) => Promise<{ data: { signedUrl: string } | null }>;
+    };
+  };
+};
+
+export async function getSignedTourSceneSourcePhoto(
+  supabase: WorkspaceStorageClient,
+  photo: {
+    id: string;
+    fileName: string;
+    storagePath: string;
+    contentType: string;
+  }
+): Promise<TourScene["sourcePhotos"][number]> {
+  const { data: signedPhoto } = await supabase.storage
+    .from("tours-listing-media")
+    .createSignedUrl(photo.storagePath, 60 * 60);
+
+  return {
+    id: photo.id,
+    fileName: photo.fileName,
+    storagePath: photo.storagePath,
+    contentType: photo.contentType,
+    previewUrl: signedPhoto?.signedUrl ?? null,
+  };
+}
+
+export async function mapTourSceneToWorkspaceScene({
+  supabase,
+  scene,
+  facts = [],
+}: {
+  supabase: WorkspaceStorageClient;
+  scene: TourSceneModel;
+  facts?: TourSceneFact[];
+}): Promise<TourScene> {
+  const signedSourcePhotos = await Promise.all(
+    scene.sourcePhotos.map((photo) => getSignedTourSceneSourcePhoto(supabase, photo))
+  );
+  const authoritativePhoto =
+    signedSourcePhotos.find((photo) => photo.id === scene.authoritativePhoto.id) ??
+    signedSourcePhotos[0] ?? {
+      id: scene.authoritativePhoto.id,
+      fileName: scene.authoritativePhoto.fileName,
+      storagePath: scene.authoritativePhoto.storagePath,
+      contentType: scene.authoritativePhoto.contentType,
+      previewUrl: null,
+    };
+
+  return {
+    id: scene.id,
+    title: scene.title,
+    sortOrder: scene.sortOrder,
+    included: scene.included,
+    cameraMotion: scene.cameraMotion,
+    transitionEffect: scene.transitionEffect,
+    authoritativePhoto,
+    sourcePhotos: signedSourcePhotos,
+    facts,
+    hasProofedContext: facts.some((fact) => fact.proofStatus === "proofed"),
+    status: scene.included ? "ready" : "skipped",
+  };
+}
+
 export async function getTourProjectWorkspaceViewModel(
   projectId: string
 ): Promise<TourProjectWorkspaceViewModel | null> {
@@ -135,43 +211,15 @@ export async function getTourProjectWorkspaceViewModel(
     factsBySceneId.set(fact.sceneId, sceneFactsForScene);
   }
 
-  const workspaceScenes = await Promise.all(tourScenes.map(async (scene) => {
-    const signedSourcePhotos = await Promise.all(scene.sourcePhotos.map(async (photo) => {
-      const { data: signedPhoto } = await supabase.storage
-        .from("tours-listing-media")
-        .createSignedUrl(photo.storagePath, 60 * 60);
-
-      return {
-        id: photo.id,
-        fileName: photo.fileName,
-        storagePath: photo.storagePath,
-        contentType: photo.contentType,
-        previewUrl: signedPhoto?.signedUrl ?? null,
-      };
-    }));
-    const authoritativePhoto =
-      signedSourcePhotos.find((photo) => photo.id === scene.authoritativePhoto.id) ??
-      signedSourcePhotos[0] ?? {
-        id: scene.authoritativePhoto.id,
-        fileName: scene.authoritativePhoto.fileName,
-        storagePath: scene.authoritativePhoto.storagePath,
-        contentType: scene.authoritativePhoto.contentType,
-        previewUrl: null,
-      };
-
-    return {
-      id: scene.id,
-      title: scene.title,
-      sortOrder: scene.sortOrder,
-      included: scene.included,
-      cameraMotion: scene.cameraMotion,
-      authoritativePhoto,
-      sourcePhotos: signedSourcePhotos,
-      facts: factsBySceneId.get(scene.id) ?? [],
-      hasProofedContext: (factsBySceneId.get(scene.id) ?? []).some((fact) => fact.proofStatus === "proofed"),
-      status: scene.included ? "ready" as const : "skipped" as const,
-    };
-  }));
+  const workspaceScenes = await Promise.all(
+    tourScenes.map((scene) =>
+      mapTourSceneToWorkspaceScene({
+        supabase,
+        scene,
+        facts: factsBySceneId.get(scene.id) ?? [],
+      })
+    )
+  );
   const sceneReadiness = getTourSceneReadinessStatus(workspaceScenes);
 
   return {

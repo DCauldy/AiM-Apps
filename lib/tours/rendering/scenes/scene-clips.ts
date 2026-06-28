@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,22 +9,25 @@ import type {
   TourRenderAsset,
   TourRenderRepository,
 } from "../repositories/tour-render.repository";
-import type { SceneDuration } from "../transitions/tour-transitions";
+import type { SceneTiming } from "../transitions/scene-boundaries";
 import { getDefaultTourRenderMode, type TourRenderMode } from "../preflight/preflight";
 import { TourSceneClipRenderError } from "./scene-clip-errors";
 import {
-  buildSceneClipTransitionFingerprint,
-  planSceneClipHandles,
-  resolveTourSceneTransitionSettings,
+  buildSceneClipTransitionEffectFingerprint,
+  isResolvedSceneTransitionEffect,
+  planSceneClipTransitionHandles,
+  resolveSceneTransitionEffectSettings,
   type SceneClipHandlePlan,
-  type SceneClipTransitionFingerprint,
-  type TourSceneTransitionSettings,
-} from "../transitions/render-transitions";
+  type SceneClipTransitionEffectFingerprint,
+  type ResolvedSceneTransitionEffect,
+  type SceneTransitionEffectSettings,
+} from "../transitions/scene-transition-effects";
 import {
   assertVideoDurationAtLeast,
   probeVideoDurationSeconds,
   type VideoDurationProbe,
 } from "../final-render/video-duration";
+import { hashJsonFingerprint } from "../fingerprint";
 
 export const KEN_BURNS_SCENE_CLIP_RENDERER_VERSION = "ken-burns-ffmpeg-v1";
 export const PROVIDER_SCENE_CLIP_RENDERER_VERSION = "provider-image-to-video-v3";
@@ -52,7 +54,7 @@ export type SceneClipStageOptions = {
   renderSettings?: SceneClipRenderSettings;
   concurrencyLimit?: number;
   sceneTransitions?: {
-    enabled?: boolean;
+    effect?: ResolvedSceneTransitionEffect;
   };
 };
 
@@ -111,6 +113,7 @@ export type SceneClipStageResult = {
     fingerprint: SceneClipFingerprint;
     requestedDurationSeconds: number;
     handlePlan: SceneClipHandlePlan;
+    transitionEffect?: ResolvedSceneTransitionEffect;
   }>;
   completedCount: number;
   totalCount: number;
@@ -121,8 +124,9 @@ export type SceneClipStageClip = SceneClipStageResult["clips"][number];
 export type SceneClipBatchItem = {
   index: number;
   scene: RenderableTourScene;
-  duration: SceneDuration;
+  duration: SceneTiming;
   handlePlan: SceneClipHandlePlan;
+  transitionEffect: ResolvedSceneTransitionEffect;
   projectId: string;
   runId: string;
   userId: string;
@@ -163,7 +167,7 @@ export type SceneClipFingerprint = {
   secondarySourcePhotos: Array<SceneClipFingerprint["sourcePhoto"] & { priority: number }>;
   durationSeconds: number;
   targetDurationSeconds: number;
-  transition: SceneClipTransitionFingerprint;
+  transition: SceneClipTransitionEffectFingerprint;
   renderSettings: ResolvedSceneClipRenderSettings;
 };
 
@@ -194,7 +198,7 @@ export function resolveSceneClipStageOptions(
   includeSecondarySourceImages: boolean;
   renderSettings: ResolvedSceneClipRenderSettings;
   concurrencyLimit: number;
-  sceneTransitions: TourSceneTransitionSettings;
+  sceneTransitions: SceneTransitionEffectSettings;
 } {
   return {
     renderMode: options.renderMode ?? getDefaultTourRenderMode(),
@@ -206,7 +210,7 @@ export function resolveSceneClipStageOptions(
       ...(options.renderSettings ?? {}),
     },
     concurrencyLimit: normalizeConcurrencyLimit(options.concurrencyLimit),
-    sceneTransitions: resolveTourSceneTransitionSettings(options.sceneTransitions),
+    sceneTransitions: resolveSceneTransitionEffectSettings(options.sceneTransitions),
   };
 }
 
@@ -214,7 +218,7 @@ export function buildSceneClipFingerprint(input: {
   scene: RenderableTourScene;
   durationSeconds: number;
   handlePlan: SceneClipHandlePlan;
-  sceneTransitions: TourSceneTransitionSettings;
+  sceneTransitions: SceneTransitionEffectSettings;
   renderMode: TourRenderMode;
   providerModelId: string;
   includeSecondarySourceImages: boolean;
@@ -264,7 +268,7 @@ export function buildSceneClipFingerprint(input: {
         : [],
     durationSeconds: input.durationSeconds,
     targetDurationSeconds: input.handlePlan.targetDurationSeconds,
-    transition: buildSceneClipTransitionFingerprint({
+    transition: buildSceneClipTransitionEffectFingerprint({
       transitionSettings: input.sceneTransitions,
       handlePlan: input.handlePlan,
     }),
@@ -273,7 +277,7 @@ export function buildSceneClipFingerprint(input: {
 }
 
 export function hashSceneClipFingerprint(fingerprint: SceneClipFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export async function renderSceneClipsStage(input: {
@@ -281,7 +285,7 @@ export async function renderSceneClipsStage(input: {
   repository: TourRenderRepository;
   runId: string;
   userId: string;
-  durations: SceneDuration[];
+  durations: SceneTiming[];
   renderer?: SceneClipRenderer;
   provider?: ImageToVideoProvider;
   providerNormalizer?: ProviderSceneClipNormalizer;
@@ -303,7 +307,7 @@ export async function renderSceneClipsStage(input: {
 
   const durationBySceneId = new Map(input.durations.map((duration) => [duration.sceneId, duration]));
   const handlePlanBySceneId = new Map(
-    planSceneClipHandles({
+    planSceneClipTransitionHandles({
       durations: input.durations,
       transitionSettings: resolvedOptions.sceneTransitions,
     }).map((plan) => [plan.sceneId, plan])
@@ -331,6 +335,10 @@ export async function renderSceneClipsStage(input: {
       index,
       duration,
       handlePlan,
+      transitionEffect: resolveSceneTransitionEffectForScene(
+        scene,
+        resolvedOptions.sceneTransitions.effect
+      ),
       projectId: input.project.project.id,
       runId: input.runId,
       userId: input.userId,
@@ -369,7 +377,11 @@ export async function renderSceneClipsStage(input: {
 
   const clips = indexedClips
     .sort((a, b) => a.index - b.index)
-    .map(({ clip }) => clip);
+    .map(({ clip }, index) => ({
+      ...clip,
+      transitionEffect:
+        clip.transitionEffect ?? items[index]?.transitionEffect ?? resolvedOptions.sceneTransitions.effect,
+    }));
 
   return { clips, completedCount, totalCount };
 }
@@ -388,6 +400,7 @@ export async function renderSceneClipBatchItem(input: {
     scene: input.item.scene,
     duration: input.item.duration,
     handlePlan: input.item.handlePlan,
+    transitionEffect: input.item.transitionEffect,
     projectId: input.item.projectId,
     repository: input.repository,
     runId: input.item.runId,
@@ -404,8 +417,9 @@ export async function renderSceneClipBatchItem(input: {
 
 async function renderOrReuseSceneClip(input: {
   scene: RenderableTourScene;
-  duration: SceneDuration;
+  duration: SceneTiming;
   handlePlan: SceneClipHandlePlan;
+  transitionEffect: ResolvedSceneTransitionEffect;
   projectId: string;
   repository: TourRenderRepository;
   runId: string;
@@ -420,11 +434,14 @@ async function renderOrReuseSceneClip(input: {
 }): Promise<SceneClipStageClip> {
   const duration = input.duration;
   const handlePlan = input.handlePlan;
+  const sceneTransitions = resolveSceneTransitionEffectSettings({
+    effect: input.transitionEffect,
+  });
   const fingerprint = buildSceneClipFingerprint({
     scene: input.scene,
     durationSeconds: handlePlan.requestedDurationSeconds,
     handlePlan,
-    sceneTransitions: input.options.sceneTransitions,
+    sceneTransitions,
     renderMode: input.options.renderMode,
     providerModelId: input.options.providerModelId,
     includeSecondarySourceImages: input.options.includeSecondarySourceImages,
@@ -455,6 +472,7 @@ async function renderOrReuseSceneClip(input: {
         fingerprint,
         requestedDurationSeconds: handlePlan.requestedDurationSeconds,
         handlePlan,
+        transitionEffect: input.transitionEffect,
       };
     }
   }
@@ -519,10 +537,11 @@ async function renderOrReuseSceneClip(input: {
       durationSeconds: duration.durationSeconds,
       requestedDurationSeconds: handlePlan.requestedDurationSeconds,
       renderMode: input.options.renderMode,
-      transition: buildSceneClipTransitionFingerprint({
-        transitionSettings: input.options.sceneTransitions,
+      transition: buildSceneClipTransitionEffectFingerprint({
+        transitionSettings: sceneTransitions,
         handlePlan,
       }),
+      transitionEffect: input.transitionEffect,
       providerModelId:
         input.options.renderMode === "provider_image_to_video"
           ? input.options.providerModelId
@@ -552,6 +571,7 @@ async function renderOrReuseSceneClip(input: {
     fingerprintHash,
     fingerprint,
     handlePlan,
+    transitionEffect: input.transitionEffect,
   };
 }
 
@@ -903,6 +923,13 @@ function includedRenderableScenes(project: RenderableTourProject): RenderableTou
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
 }
 
+function resolveSceneTransitionEffectForScene(
+  scene: RenderableTourScene,
+  fallback: ResolvedSceneTransitionEffect
+): ResolvedSceneTransitionEffect {
+  return isResolvedSceneTransitionEffect(scene.transitionEffect) ? scene.transitionEffect : fallback;
+}
+
 function getSecondarySourcePhotos(scene: RenderableTourScene): RenderableTourSceneSourcePhoto[] {
   return scene.sourcePhotos.filter((photo) => photo.id !== scene.authoritativePhoto.id);
 }
@@ -931,24 +958,4 @@ async function runProcess(command: string, args: string[]): Promise<void> {
       reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
     });
   });
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

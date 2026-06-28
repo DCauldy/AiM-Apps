@@ -2,25 +2,35 @@ import assert from "node:assert/strict";
 import type React from "react";
 import { afterEach, test, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import {
+  ToursBreadcrumbsProvider,
+  useToursBreadcrumbs,
+} from "@/components/tours/ToursBreadcrumbsContext";
 import type {
   TourProjectWorkspaceViewModel,
   TourScene,
 } from "@/lib/tours/workspace";
 import { TourProjectLayoutClient } from "./layout-client";
 
+const navigationState = vi.hoisted(() => ({
+  pathname: "/apps/tours/projects/project-1",
+}));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: vi.fn(),
     refresh: vi.fn(),
   }),
+  usePathname: () => navigationState.pathname,
 }));
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  navigationState.pathname = "/apps/tours/projects/project-1";
 });
 
 if (!HTMLElement.prototype.hasPointerCapture) {
@@ -111,8 +121,28 @@ function renderWithProviders(ui: React.ReactElement) {
   });
 
   return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ToursBreadcrumbsProvider>
+        <BreadcrumbProbe />
+        {ui}
+      </ToursBreadcrumbsProvider>
+    </QueryClientProvider>,
   );
+}
+
+function BreadcrumbProbe() {
+  const { breadcrumbItems } = useToursBreadcrumbs();
+
+  return (
+    <div data-testid="tours-breadcrumbs">
+      {breadcrumbItems.map((item) => item.label).join(" > ")}
+    </div>
+  );
+}
+
+async function openQaRenderLab(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  return screen.findByRole("region", { name: "QA Render Lab" });
 }
 
 test("project layout renders the QA render lab from the server-authored page signal", () => {
@@ -149,7 +179,7 @@ test("QA render lab estimate ignores skipped scenes from the workspace", async (
     </TourProjectLayoutClient>,
   );
 
-  await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await openQaRenderLab(user);
   await user.click(screen.getByRole("combobox", { name: "Render preset" }));
   await user.click(
     screen.getByRole("option", {
@@ -177,4 +207,66 @@ test("project layout keeps normal workspace controls and hides the QA lab when u
 
   assert.ok(screen.getByRole("button", { name: /Generate video/ }));
   assert.equal(screen.queryByRole("button", { name: /QA Render Lab/ }), null);
+});
+
+test("project layout publishes project breadcrumbs", async () => {
+  renderWithProviders(
+    <TourProjectLayoutClient
+      initialViewModel={workspaceViewModel()}
+      isQaRenderLabAvailable={false}
+    >
+      <main>Project workspace body</main>
+    </TourProjectLayoutClient>,
+  );
+
+  await waitFor(() => {
+    assert.equal(
+      screen.getByTestId("tours-breadcrumbs").textContent,
+      "Projects > Lake House Tour",
+    );
+  });
+});
+
+test("project layout publishes scene breadcrumbs for scene routes", async () => {
+  navigationState.pathname = "/apps/tours/projects/project-1/scene-2";
+
+  renderWithProviders(
+    <TourProjectLayoutClient
+      initialViewModel={workspaceViewModel({
+        tourScenes: [tourScene({ id: "scene-2", title: "Covered Patio" })],
+      })}
+      isQaRenderLabAvailable={false}
+    >
+      <main>Scene workspace body</main>
+    </TourProjectLayoutClient>,
+  );
+
+  await waitFor(() => {
+    assert.equal(
+      screen.getByTestId("tours-breadcrumbs").textContent,
+      "Projects > Lake House Tour > Covered Patio",
+    );
+  });
+});
+
+test("project layout keeps rendering routes at the project breadcrumb level", async () => {
+  navigationState.pathname = "/apps/tours/projects/project-1/rendering";
+
+  renderWithProviders(
+    <TourProjectLayoutClient
+      initialViewModel={workspaceViewModel({
+        tourScenes: [tourScene({ id: "rendering", title: "Rendering Scene" })],
+      })}
+      isQaRenderLabAvailable={false}
+    >
+      <main>Rendering workspace body</main>
+    </TourProjectLayoutClient>,
+  );
+
+  await waitFor(() => {
+    assert.equal(
+      screen.getByTestId("tours-breadcrumbs").textContent,
+      "Projects > Lake House Tour",
+    );
+  });
 });

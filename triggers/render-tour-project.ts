@@ -5,11 +5,14 @@ import {
   type GenerateTourProjectVideoInput,
   type TourAvatarBatchItem,
   type TourAvatarBatchResult,
+  type TourFinalRenderBatchItem,
+  type TourFinalRenderBatchResult,
 } from "@/lib/tours/rendering/generation/generate-tour-project-video";
 import { safeErrorMessage } from "@/lib/tours/rendering/generation/generate-tour-project-video.helpers";
+import { renderFinalVideoStage } from "@/lib/tours/rendering/final-render/final-render";
 import { createElevenLabsVoiceoverProvider } from "@/lib/tours/rendering/voiceover/tour-voiceover";
 import { createOpenRouterScriptPlanningProvider } from "@/lib/tours/rendering/providers/openrouter-script-planning-provider";
-import { createOpenRouterTransitionDetectionProvider } from "@/lib/tours/rendering/transitions/tour-transitions";
+import { createOpenRouterSceneBoundaryDetectionProvider } from "@/lib/tours/rendering/transitions/scene-boundaries";
 import { createServiceRoleTourRenderRepository } from "@/lib/tours/rendering/repositories/tour-render.repository";
 import {
   createHeyGenAvatarProvider,
@@ -23,6 +26,8 @@ import {
 } from "@/lib/tours/rendering/scenes/scene-clips";
 import { cleanupSupersededFreshRenderAssets } from "@/lib/tours/rendering/repositories/tour-render-retention";
 import { getDefaultTourRenderMode } from "@/lib/tours/rendering/preflight/preflight";
+import { enqueueTourRenderReadyEmailAfterCompletion } from "@/lib/tours/email/render-ready";
+import { sendTourRenderReadyEmailTask } from "./tour-render-emails";
 
 export const renderTourSceneClipTask = task({
   id: "render-tour-scene-clip",
@@ -33,7 +38,7 @@ export const renderTourSceneClipTask = task({
     name: "tour-scene-clip-renders",
     concurrencyLimit: 2,
   },
-  machine: "medium-1x",
+  machine: "small-1x",
   maxDuration: 30 * 60,
   run: async (payload: SceneClipBatchItem, { ctx }) => {
     metadata.set("product", "tours");
@@ -110,7 +115,7 @@ export const renderTourAvatarTask = task({
     name: "tour-avatar-renders",
     concurrencyLimit: 1,
   },
-  machine: "medium-1x",
+  machine: "small-1x",
   maxDuration: 45 * 60,
   run: async (payload: TourAvatarBatchItem, { ctx }) => {
     metadata.set("product", "tours");
@@ -173,6 +178,10 @@ function getProviderVisibleSupabaseUrlForLog(): string | null {
   }
 }
 
+function getSceneClipMachinePreset(item: SceneClipBatchItem): "small-1x" | "medium-1x" {
+  return item.options.renderMode === "ken_burns_ffmpeg" ? "medium-1x" : "small-1x";
+}
+
 export const cleanupSupersededFreshRenderAssetsTask = task({
   id: "cleanup-superseded-fresh-render-assets",
   queue: {
@@ -210,13 +219,78 @@ export const cleanupSupersededFreshRenderAssetsTask = task({
   },
 });
 
+export const renderTourFinalVideoTask = task({
+  id: "render-tour-final-video",
+  queue: {
+    name: "tour-final-video-renders",
+    concurrencyLimit: 1,
+  },
+  machine: "medium-1x",
+  retry: { maxAttempts: 1 },
+  maxDuration: 30 * 60,
+  run: async (
+    payload: TourFinalRenderBatchItem,
+    { ctx }
+  ): Promise<TourFinalRenderBatchResult> => {
+    metadata.set("product", "tours");
+    metadata.set("projectId", payload.projectId);
+    metadata.set("renderRunId", payload.runId);
+    metadata.set("triggerRunId", ctx.run.id);
+    metadata.set("step", "joining_video");
+
+    logger.log("Tours final video task started.", {
+      projectId: payload.projectId,
+      renderRunId: payload.runId,
+      sceneClipCount: payload.clips.length,
+      hasVoiceover: Boolean(payload.voiceoverAsset),
+      hasAvatarOverlay: Boolean(payload.avatarOverlay),
+      reuseExistingAssets: payload.options.reuseExistingAssets,
+    });
+
+    try {
+      const result = await renderFinalVideoStage({
+        projectId: payload.projectId,
+        userId: payload.userId,
+        runId: payload.runId,
+        repository: createServiceRoleTourRenderRepository(),
+        clips: payload.clips,
+        voiceoverAsset: payload.voiceoverAsset,
+        avatarOverlay: payload.avatarOverlay,
+        options: payload.options,
+      });
+
+      metadata.set("status", "completed");
+      metadata.set("finalVideoAssetId", result.finalVideoAsset.id);
+      metadata.set("joinedScenesAssetId", result.joinedScenesAsset?.id ?? "");
+      metadata.set("reusedFinalVideo", result.reusedFinalVideo);
+      metadata.set("reusedJoinedScenes", result.reusedJoinedScenes);
+      await metadata.flush();
+
+      return result;
+    } catch (error) {
+      const safeMessage = safeErrorMessage(error);
+      logger.error("Tours final video task failed.", {
+        projectId: payload.projectId,
+        renderRunId: payload.runId,
+        triggerRunId: ctx.run.id,
+        error,
+        safeMessage,
+      });
+      metadata.set("status", "failed");
+      metadata.set("errorMessage", safeMessage);
+      await metadata.flush();
+      throw error;
+    }
+  },
+});
+
 export const renderTourProjectTask = task({
   id: "render-tour-project",
   queue: {
     name: "tour-project-renders",
     concurrencyLimit: 1,
   },
-  machine: "medium-2x",
+  machine: "small-1x",
   maxDuration: 60 * 60,
   run: async (payload: RenderTourProjectPayload, { ctx }) => {
     metadata.set("product", "tours");
@@ -257,7 +331,7 @@ export const renderTourProjectTask = task({
         }),
         voiceoverProvider: createElevenLabsVoiceoverProvider(),
         transitionDetectionProvider:
-          createOpenRouterTransitionDetectionProvider({
+          createOpenRouterSceneBoundaryDetectionProvider({
             apiKey: process.env.OPENROUTER_API_KEY ?? "",
           }),
         imageToVideoProvider: createOpenRouterImageToVideoProvider({
@@ -269,6 +343,7 @@ export const renderTourProjectTask = task({
               id: renderTourSceneClipTask.id,
               payload: item,
               options: {
+                machine: getSceneClipMachinePreset(item),
                 tags: [
                   `user:${item.userId}`,
                   `tour-project:${item.projectId}`,
@@ -327,6 +402,37 @@ export const renderTourProjectTask = task({
 
           return { sceneClips, avatar };
         },
+        finalRenderRunner: async (input) => {
+          const result = await renderTourFinalVideoTask.triggerAndWait(input, {
+            idempotencyKey: `tour-final-video:${input.runId}`,
+            concurrencyKey: `tour-project-final-video:${input.projectId}`,
+            tags: [
+              `user:${input.userId}`,
+              `tour-project:${input.projectId}`,
+              `tour-render:${input.runId}`,
+              "render-tour-final-video",
+            ],
+            metadata: {
+              product: "tours",
+              projectId: input.projectId,
+              renderRunId: input.runId,
+              step: "joining_video",
+              progressPercent: 86,
+            },
+          });
+
+          if (result.ok) {
+            return result.output;
+          }
+
+          logger.error("Tours final video child task failed.", {
+            childRunId: result.id,
+            error: result.error,
+            projectId: input.projectId,
+            renderRunId: input.runId,
+          });
+          throw new Error("A tour final video child task failed.");
+        },
         ...(isAvatarRender
           ? { avatarProvider: createHeyGenAvatarProvider() }
           : {}),
@@ -362,6 +468,22 @@ export const renderTourProjectTask = task({
         });
       }
     }
+
+    await enqueueTourRenderReadyEmailAfterCompletion({
+      run,
+      payload: {
+        projectId: payload.projectId,
+        userId: payload.userId,
+        renderRunId: payload.renderRunId,
+        resultAssetId: run?.resultAssetId ?? "",
+      },
+      triggerEmailTask: (emailPayload, options) =>
+        sendTourRenderReadyEmailTask.trigger(emailPayload, options),
+      logger,
+      logContext: {
+        parentTriggerRunId: ctx.run.id,
+      },
+    });
 
     if (run?.status === "failed") {
       logger.error("Tours render task finished failed.", {

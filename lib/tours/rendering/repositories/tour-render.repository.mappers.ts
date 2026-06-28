@@ -10,9 +10,14 @@ import type {
   TourSceneRow,
   TourSceneSourcePhotoRow,
 } from "./tour-render.repository.types";
+import {
+  DEFAULT_SCENE_TRANSITION_EFFECT,
+  isSceneTransitionEffect,
+} from "../transitions/scene-transition-effects";
 
 export const PROJECT_SELECT = "id, user_id, name, property_address, listing_url, tour_type, status, heygen_avatar_id, heygen_avatar_placement";
 export const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion";
+export const SCENE_WITH_TRANSITION_SELECT = `${SCENE_SELECT}, transition_effect`;
 export const SOURCE_PHOTO_SELECT =
   "id, project_id, scene_id, storage_path, file_name, content_type, byte_size, width, height, priority, created_at";
 export const FACT_SELECT = "id, scene_id, fact_text, source_photo_id, sort_order, created_at";
@@ -106,6 +111,9 @@ export function mapTourRenderPreflightProject(input: {
         sortOrder: scene.sort_order,
         included: scene.included,
         cameraMotion: scene.camera_motion,
+        transitionEffect: isSceneTransitionEffect(scene.transition_effect)
+          ? scene.transition_effect
+          : DEFAULT_SCENE_TRANSITION_EFFECT,
         authoritativePhoto: authoritativePhoto
           ? {
               id: authoritativePhoto.id,

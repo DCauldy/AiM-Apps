@@ -7,7 +7,7 @@ import type {
 import type { RenderableTourProject, TourRenderAsset } from "../repositories/tour-render.repository";
 import { TourSceneClipRenderError } from "../scenes/scene-clips";
 import { TourScriptPlanningError, type TourScriptPlan } from "./tour-script-planning";
-import { type SceneDuration, TourTransitionDetectionError } from "../transitions/tour-transitions";
+import { type SceneTiming, SceneBoundaryDetectionError } from "../transitions/scene-boundaries";
 import { TourVoiceoverError } from "../voiceover/tour-voiceover";
 import { TourFinalRenderError } from "../final-render/final-render";
 import { TourAvatarError } from "../avatars/tour-avatar";
@@ -32,9 +32,9 @@ export function safeErrorMessage(_error: unknown): string {
     }
     return "Script planning failed.";
   }
-  if (_error instanceof TourTransitionDetectionError) {
+  if (_error instanceof SceneBoundaryDetectionError) {
     if (_error.code === "PROVIDER_RESPONSE_INVALID") {
-      return "Scene transition detection returned an invalid response.";
+      return "Scene boundary detection returned an invalid response.";
     }
     if (_error.code === "TRANSITION_TIMING_INVALID" || _error.code === "TRANSCRIPT_INVALID") {
       return "Scene transition timing could not be validated.";
@@ -147,11 +147,11 @@ export function shouldReuseAsset(
 
 export function scriptTimingsToDurations(scriptPlan: {
   sceneTimings: Array<{ sceneId: string; scriptText: string; durationSeconds: number }>;
-}): SceneDuration[] {
+}): SceneTiming[] {
   let offsetMs = 0;
   return scriptPlan.sceneTimings.map((timing) => {
     const durationMs = Math.max(0, Math.round(timing.durationSeconds * 1000));
-    const duration: SceneDuration = {
+    const duration: SceneTiming = {
       sceneId: timing.sceneId,
       title: timing.sceneId,
       durationSeconds: timing.durationSeconds,
@@ -193,6 +193,35 @@ export function applyScriptPlannedCameraMotions(
   };
 }
 
+export function applyScriptPlannedTransitionEffects(
+  project: RenderableTourProject,
+  scriptPlan: TourScriptPlan
+): RenderableTourProject {
+  const selectedTransitionBySceneId = new Map(
+    scriptPlan.sceneTimings
+      .filter((timing) => timing.selectedTransitionEffect)
+      .map((timing) => [timing.sceneId, timing.selectedTransitionEffect!])
+  );
+
+  return {
+    ...project,
+    scenes: project.scenes.map((scene) => {
+      const transitionEffect = scene.transitionEffect ?? "auto";
+      if (transitionEffect !== "auto") {
+        return scene;
+      }
+
+      const selectedTransitionEffect = selectedTransitionBySceneId.get(scene.id);
+      return selectedTransitionEffect
+        ? {
+            ...scene,
+            transitionEffect: selectedTransitionEffect,
+          }
+        : scene;
+    }),
+  };
+}
+
 export function summarizeSceneCameraMotions(project: RenderableTourProject): Array<{
   sceneId: string;
   title: string;
@@ -207,6 +236,24 @@ export function summarizeSceneCameraMotions(project: RenderableTourProject): Arr
       sortOrder: scene.sortOrder,
       included: scene.included,
       cameraMotion: scene.cameraMotion,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.sceneId.localeCompare(b.sceneId));
+}
+
+export function summarizeSceneTransitionEffects(project: RenderableTourProject): Array<{
+  sceneId: string;
+  title: string;
+  sortOrder: number;
+  included: boolean;
+  transitionEffect: string;
+}> {
+  return project.scenes
+    .map((scene) => ({
+      sceneId: scene.id,
+      title: scene.title,
+      sortOrder: scene.sortOrder,
+      included: scene.included,
+      transitionEffect: scene.transitionEffect ?? "auto",
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.sceneId.localeCompare(b.sceneId));
 }

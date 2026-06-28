@@ -42,6 +42,11 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   const { projectId } = await params;
+  const access = await requireToursAccess({ projectId, requireOpenProject: true });
+  if (!access.ok) {
+    return toursAccessErrorResponse(access);
+  }
+
   const workspace = await getTourProjectWorkspaceViewModel(projectId);
 
   if (!workspace) {

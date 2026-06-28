@@ -17,6 +17,7 @@ describe("createOpenRouterScriptPlanningProvider", () => {
                       sceneId: "scene-1",
                       spokenText: "Welcome to the foyer.",
                       selectedCameraMotion: "vertical_rise",
+                      selectedTransitionEffect: "iris",
                       durationSeconds: 5,
                     },
                   ],
@@ -48,6 +49,7 @@ describe("createOpenRouterScriptPlanningProvider", () => {
           title: "Foyer",
           sortOrder: 0,
           cameraMotion: "auto",
+          transitionEffect: "auto",
           imageUrl: "https://signed.example/foyer.jpg",
           proofedFacts: [],
         },
@@ -65,6 +67,9 @@ describe("createOpenRouterScriptPlanningProvider", () => {
     const userContent = requestBody.messages[1].content;
     expect(JSON.stringify(userContent)).toContain("cameraMotion: auto");
     expect(JSON.stringify(userContent)).toContain("selectedCameraMotion");
+    expect(JSON.stringify(userContent)).toContain("transitionEffect: auto");
+    expect(JSON.stringify(userContent)).toContain("selectedTransitionEffect");
+    expect(JSON.stringify(userContent)).toContain("Use case:");
     expect(JSON.stringify(userContent)).toContain("inspect its image");
     expect(JSON.stringify(userContent)).toContain("vertical_rise");
     expect(userContent).toContainEqual({
@@ -75,5 +80,6 @@ describe("createOpenRouterScriptPlanningProvider", () => {
     expect(headers.get("X-OpenRouter-Title")).toBe("AiM Tours");
     expect(headers.get("X-Title")).toBe("AiM Tours");
     expect(result.sceneTimings[0]?.selectedCameraMotion).toBe("vertical_rise");
+    expect(result.sceneTimings[0]?.selectedTransitionEffect).toBe("iris");
   });
 });

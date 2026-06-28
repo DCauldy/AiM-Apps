@@ -4,7 +4,9 @@ vi.mock("server-only", () => ({}));
 
 import {
   createTourRenderRun,
+  getActiveTourRenderRun,
   getTourRenderRunResultUrl,
+  getTourRenderRunsSummary,
   listTourRenderRunAssetsWithUrls,
   toTourRenderRunStatusResponse,
 } from "./render-runs";
@@ -665,6 +667,112 @@ describe("getTourRenderRunResultUrl", () => {
     );
 
     expect(result).toBeNull();
+    expect(repository.createSignedGeneratedMediaUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe("getActiveTourRenderRun", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns the newest active project render run without resolving result URLs", async () => {
+    const activeRun = runWith({
+      id: "run-active",
+      status: "running",
+      currentStep: "joining_video",
+      currentStepLabel: "Joining scene clips",
+    });
+    const repository = createRepository({
+      listActiveProjectRenderRuns: vi.fn().mockResolvedValue([activeRun]),
+      createSignedGeneratedMediaUrl: vi.fn(),
+    });
+
+    const result = await getActiveTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+      },
+      { repository }
+    );
+
+    expect(result).toBe(activeRun);
+    expect(repository.listActiveProjectRenderRuns).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+    });
+    expect(repository.createSignedGeneratedMediaUrl).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the project has no active render runs", async () => {
+    const repository = createRepository({
+      listActiveProjectRenderRuns: vi.fn().mockResolvedValue([]),
+    });
+
+    await expect(
+      getActiveTourRenderRun(
+        {
+          projectId: "project-1",
+          userId: "user-1",
+        },
+        { repository }
+      )
+    ).resolves.toBeNull();
+  });
+});
+
+describe("getTourRenderRunsSummary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns active and latest completed render with a result asset without signing URLs", async () => {
+    const activeRun = runWith({
+      id: "run-active",
+      status: "running",
+      currentStep: "joining_video",
+      currentStepLabel: "Joining scene clips",
+    });
+    const completedWithoutAsset = runWith({
+      id: "run-completed-without-asset",
+      status: "completed",
+      resultAssetId: null,
+    });
+    const downloadableRun = runWith({
+      id: "run-downloadable",
+      status: "completed",
+      resultAssetId: "asset-final",
+    });
+    const repository = createRepository({
+      listActiveProjectRenderRuns: vi.fn().mockResolvedValue([activeRun]),
+      listRecentRenderRuns: vi.fn().mockResolvedValue([
+        completedWithoutAsset,
+        downloadableRun,
+      ]),
+      createSignedGeneratedMediaUrl: vi.fn(),
+    });
+
+    const summary = await getTourRenderRunsSummary(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+      },
+      { repository }
+    );
+
+    expect(summary).toEqual({
+      activeRun,
+      latestDownloadableRun: downloadableRun,
+    });
+    expect(repository.listActiveProjectRenderRuns).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+    });
+    expect(repository.listRecentRenderRuns).toHaveBeenCalledWith({
+      projectId: "project-1",
+      userId: "user-1",
+      limit: 20,
+    });
     expect(repository.createSignedGeneratedMediaUrl).not.toHaveBeenCalled();
   });
 });

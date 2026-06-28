@@ -56,6 +56,7 @@ export const baseProject: RenderableTourProject = {
       sortOrder: 1,
       included: true,
       cameraMotion: "slow_push",
+      transitionEffect: "swipe-on-top",
       authoritativePhoto: baseKitchenPhoto,
       sourcePhotos: [baseKitchenPhoto],
       proofedFacts: [

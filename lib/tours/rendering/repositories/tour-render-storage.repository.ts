@@ -7,6 +7,8 @@ import type {
   UploadedRenderAsset,
 } from "./tour-render.repository.types";
 
+export const LISTING_MEDIA_SIGN_BATCH_SIZE = 8;
+
 export function createTourRenderStorageRepository(
   supabase: SupabaseClient
 ): Pick<
@@ -23,12 +25,19 @@ export function createTourRenderStorageRepository(
 > {
   return {
     async canReadListingMedia(input) {
-      for (const storagePath of input.storagePaths) {
-        const { data, error } = await supabase.storage
-          .from("tours-listing-media")
-          .createSignedUrl(storagePath, 60);
+      const bucket = supabase.storage.from("tours-listing-media");
 
-        if (error || !data?.signedUrl) {
+      for (
+        let index = 0;
+        index < input.storagePaths.length;
+        index += LISTING_MEDIA_SIGN_BATCH_SIZE
+      ) {
+        const batch = input.storagePaths.slice(index, index + LISTING_MEDIA_SIGN_BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map((storagePath) => bucket.createSignedUrl(storagePath, 60))
+        );
+
+        if (results.some(({ data, error }) => error || !data?.signedUrl)) {
           return false;
         }
       }

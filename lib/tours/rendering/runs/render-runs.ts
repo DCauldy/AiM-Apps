@@ -46,6 +46,7 @@ const RENDER_TASK_ENQUEUE_FAILED_MESSAGE =
   "Could not start the render task. Try again.";
 const RENDER_TASK_SUPERSEDED_MESSAGE =
   "Cancelled because a newer render was started for this tour project.";
+const DOWNLOADABLE_RUN_LOOKBACK_LIMIT = 20;
 
 function getDefaultTourRenderOptions(): TourRenderOptions {
   return {
@@ -408,6 +409,46 @@ export async function getTourRenderRunStatus(
 ): Promise<TourRenderRun | null> {
   const repository = options.repository ?? (await createTourRenderRepository());
   return repository.getRenderRun(input);
+}
+
+export async function getActiveTourRenderRun(
+  input: {
+    projectId: string;
+    userId: string;
+  },
+  options: RenderRunServiceOptions = {}
+): Promise<TourRenderRun | null> {
+  const repository = options.repository ?? (await createTourRenderRepository());
+  const activeRuns = await repository.listActiveProjectRenderRuns(input);
+  return activeRuns[0] ?? null;
+}
+
+export async function getTourRenderRunsSummary(
+  input: {
+    projectId: string;
+    userId: string;
+  },
+  options: RenderRunServiceOptions = {}
+): Promise<{
+  activeRun: TourRenderRun | null;
+  latestDownloadableRun: TourRenderRun | null;
+}> {
+  const repository = options.repository ?? (await createTourRenderRepository());
+  const [activeRuns, recentRuns] = await Promise.all([
+    repository.listActiveProjectRenderRuns(input),
+    repository.listRecentRenderRuns({
+      ...input,
+      limit: DOWNLOADABLE_RUN_LOOKBACK_LIMIT,
+    }),
+  ]);
+
+  return {
+    activeRun: activeRuns[0] ?? null,
+    latestDownloadableRun:
+      recentRuns.find(
+        (run) => run.status === "completed" && Boolean(run.resultAssetId),
+      ) ?? null,
+  };
 }
 
 export async function listTourRenderRunAssetsWithUrls(

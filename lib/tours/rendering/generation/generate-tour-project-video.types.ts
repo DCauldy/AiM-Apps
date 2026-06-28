@@ -5,7 +5,13 @@ import type {
   HeyGenAvatarStageOptions,
   HeyGenAvatarStageResult,
 } from "../avatars/tour-avatar";
-import type { FinalVideoRenderer } from "../final-render/final-render";
+import type {
+  FinalRenderAvatarOverlay,
+  FinalRenderSceneClip,
+  FinalRenderStageOptions,
+  FinalRenderStageResult,
+  FinalVideoRenderer,
+} from "../final-render/final-render";
 import type { preflightTourRender, TourRenderOptions } from "../preflight/preflight";
 import type {
   TourRenderAsset,
@@ -20,7 +26,7 @@ import type {
   SceneClipRenderer,
 } from "../scenes/scene-clips";
 import type { TourScriptPlanningProvider } from "./tour-script-planning";
-import type { TransitionDetectionProvider } from "../transitions/tour-transitions";
+import type { SceneBoundaryDetectionProvider } from "../transitions/scene-boundaries";
 import type { VoiceoverProvider } from "../voiceover/tour-voiceover";
 
 export type TourRenderProgressUpdate = {
@@ -46,10 +52,11 @@ export type GenerateTourProjectVideoOptions = {
   preflight?: typeof preflightTourRender;
   scriptPlanningProvider?: TourScriptPlanningProvider;
   voiceoverProvider?: VoiceoverProvider;
-  transitionDetectionProvider?: TransitionDetectionProvider;
+  transitionDetectionProvider?: SceneBoundaryDetectionProvider;
   sceneClipRenderer?: SceneClipRenderer;
   sceneClipBatchRunner?: SceneClipBatchRunner;
   mediaBatchRunner?: TourMediaBatchRunner;
+  finalRenderRunner?: TourFinalRenderRunner;
   finalVideoRenderer?: FinalVideoRenderer;
   imageToVideoProvider?: ImageToVideoProvider;
   avatarProvider?: HeyGenAvatarProvider;
@@ -78,3 +85,19 @@ export type TourMediaBatchRunner = (input: {
   sceneClips: SceneClipBatchResult[];
   avatar: TourAvatarBatchResult | null;
 }>;
+
+export type TourFinalRenderBatchItem = {
+  projectId: string;
+  userId: string;
+  runId: string;
+  clips: FinalRenderSceneClip[];
+  voiceoverAsset: TourRenderAsset | null;
+  avatarOverlay: FinalRenderAvatarOverlay | null;
+  options: FinalRenderStageOptions;
+};
+
+export type TourFinalRenderBatchResult = FinalRenderStageResult;
+
+export type TourFinalRenderRunner = (
+  input: TourFinalRenderBatchItem
+) => Promise<TourFinalRenderBatchResult>;

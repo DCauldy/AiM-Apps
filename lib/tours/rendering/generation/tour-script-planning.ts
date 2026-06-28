@@ -1,14 +1,20 @@
-import { createHash } from "node:crypto";
 import type {
   RenderableTourProject,
   RenderableTourScene,
   TourRenderAsset,
   TourRenderRepository,
 } from "../repositories/tour-render.repository";
+import { hashJsonFingerprint } from "../fingerprint";
 import {
   RESOLVED_TOUR_SCENE_CAMERA_MOTIONS,
   type ResolvedTourSceneCameraMotion,
 } from "@/lib/tours/scenes.core";
+import {
+  DEFAULT_SCENE_TRANSITION_EFFECT,
+  RESOLVED_SCENE_TRANSITION_EFFECTS,
+  type ResolvedSceneTransitionEffect,
+  type SceneTransitionEffect,
+} from "../transitions/scene-transition-effects";
 import {
   DEFAULT_TOUR_SCRIPT_PLANNING_MODEL,
   TOUR_SCRIPT_PLANNING_PROMPT_VERSION,
@@ -25,6 +31,7 @@ export type TourScriptSceneTiming = {
   voicePromptText?: string;
   deliveryTags?: string[];
   selectedCameraMotion?: ResolvedTourSceneCameraMotion;
+  selectedTransitionEffect?: ResolvedSceneTransitionEffect;
   /** @deprecated Use spokenText for clean narration and voicePromptText for ElevenLabs v3. */
   scriptText: string;
   durationSeconds: number;
@@ -54,6 +61,7 @@ export type TourScriptPlanningSceneInput = {
   title: string;
   sortOrder: number;
   cameraMotion: RenderableTourScene["cameraMotion"];
+  transitionEffect: SceneTransitionEffect;
   imageUrl: string;
   proofedFacts: Array<{
     id: string;
@@ -109,6 +117,7 @@ export type TourScriptPlanFingerprint = {
     sortOrder: number;
     title: string;
     cameraMotion: RenderableTourScene["cameraMotion"];
+    transitionEffect: SceneTransitionEffect;
     authoritativePhoto: {
       id: string;
       storagePath: string;
@@ -193,6 +202,7 @@ export function buildTourScriptPlanFingerprint(input: {
       sortOrder: scene.sortOrder,
       title: scene.title,
       cameraMotion: scene.cameraMotion,
+      transitionEffect: scene.transitionEffect ?? DEFAULT_SCENE_TRANSITION_EFFECT,
       authoritativePhoto: {
         id: scene.authoritativePhoto.id,
         storagePath: scene.authoritativePhoto.storagePath,
@@ -213,7 +223,7 @@ export function buildTourScriptPlanFingerprint(input: {
 }
 
 export function hashTourScriptPlanFingerprint(fingerprint: TourScriptPlanFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export function normalizeTourScriptPlan(input: {
@@ -243,6 +253,7 @@ export function normalizeTourScriptPlan(input: {
     const deliveryTags = normalizeDeliveryTags(timing?.deliveryTags);
     const voicePromptText = normalizeVoicePromptText(timing, spokenText, deliveryTags);
     const selectedCameraMotion = normalizeSelectedCameraMotion(timing, scene);
+    const selectedTransitionEffect = normalizeSelectedTransitionEffect(timing, scene);
 
     return {
       sceneId: scene.id,
@@ -250,6 +261,7 @@ export function normalizeTourScriptPlan(input: {
       voicePromptText,
       deliveryTags,
       selectedCameraMotion,
+      selectedTransitionEffect,
       scriptText: spokenText,
       durationSeconds: clampDuration(
         timing?.durationSeconds,
@@ -437,6 +449,7 @@ function buildScriptPlanningSceneInputs(
       title: scene.title,
       sortOrder: scene.sortOrder,
       cameraMotion: scene.cameraMotion,
+      transitionEffect: scene.transitionEffect ?? DEFAULT_SCENE_TRANSITION_EFFECT,
       imageUrl: imageUrl ?? "",
       proofedFacts: scene.proofedFacts.map((fact) => ({
         id: fact.id,
@@ -501,6 +514,27 @@ function normalizeSelectedCameraMotion(
   );
 }
 
+function normalizeSelectedTransitionEffect(
+  timing: Partial<TourScriptSceneTiming> | undefined,
+  scene: TourScriptPlanningSceneInput
+): ResolvedSceneTransitionEffect | undefined {
+  if (scene.transitionEffect !== "auto") {
+    return undefined;
+  }
+
+  if (
+    typeof timing?.selectedTransitionEffect === "string" &&
+    RESOLVED_SCENE_TRANSITION_EFFECTS.includes(timing.selectedTransitionEffect)
+  ) {
+    return timing.selectedTransitionEffect;
+  }
+
+  throw new TourScriptPlanningError(
+    `Script plan missing selectedTransitionEffect for auto transition scene "${scene.title}" (${scene.id}).`,
+    "PROVIDER_RESPONSE_INVALID"
+  );
+}
+
 function clampDuration(
   value: number | undefined,
   fallbackDurationSeconds: number,
@@ -513,24 +547,4 @@ function clampDuration(
     minDurationSeconds,
     Math.min(maxDurationSeconds, Math.round(duration * 2) / 2)
   );
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

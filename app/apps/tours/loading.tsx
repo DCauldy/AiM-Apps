@@ -1,6 +1,6 @@
 import { DashboardCard, PageFrame } from "@/components/app-shell/PagePrimitives";
 
-export default function ToursDashboardLoading() {
+export default function ToursLoading() {
   return (
     <PageFrame>
       <div>

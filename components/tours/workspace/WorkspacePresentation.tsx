@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -37,8 +36,13 @@ import type { TourProjectType } from "@/lib/tours/projects/project-types";
 import { getRequiredSettingsState } from "@/lib/tours/projects/project-configuration";
 import { ElevenLabsVoiceSelector } from "./ElevenLabsVoiceSelector";
 import { HeyGenAvatarSelector } from "./HeyGenAvatarSelector";
+import {
+  ImageOverlayIconButton,
+  ImageOverlayMenuContent,
+} from "./ImageOverlayControls";
 import type { HeyGenAvatarProjectPosition } from "./avatar-positioning";
 import { appendDownloadTitle } from "./TourRenderStatusPanel";
+import { useToast } from "@/components/ui/toast";
 
 export type ProjectDetailsForm = {
   name: string;
@@ -92,7 +96,9 @@ function FileDropzone({
     <div
       {...getRootProps({
         className: `flex aspect-[4/3] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed p-4 text-center transition-colors ${
-          isDragActive ? "border-primary bg-primary/10" : "border-border bg-muted/40 hover:bg-muted"
+          isDragActive
+            ? "border-primary bg-primary/10"
+            : "border-border bg-muted/40 hover:bg-muted"
         }`,
       })}
     >
@@ -100,14 +106,22 @@ function FileDropzone({
       {previewUrl ? (
         <img
           src={previewUrl}
-          alt={fileName ? `Selected listing photo ${fileName}` : "Selected listing photo preview"}
+          alt={
+            fileName
+              ? `Selected listing photo ${fileName}`
+              : "Selected listing photo preview"
+          }
           className="h-full w-full rounded-md object-cover"
         />
       ) : (
         <>
           <UploadCloud className="h-8 w-8 text-primary" />
-          <span className="mt-3 text-sm font-semibold text-foreground">{label}</span>
-          <span className="mt-1 text-xs text-muted-foreground">JPEG, PNG, or WebP</span>
+          <span className="mt-3 text-sm font-semibold text-foreground">
+            {label}
+          </span>
+          <span className="mt-1 text-xs text-muted-foreground">
+            JPEG, PNG, or WebP
+          </span>
         </>
       )}
     </div>
@@ -215,7 +229,10 @@ export function SceneImageRail({
     );
   }
 
-  const sourcePhotos = scene.sourcePhotos.length > 0 ? scene.sourcePhotos : [scene.authoritativePhoto];
+  const sourcePhotos =
+    scene.sourcePhotos.length > 0
+      ? scene.sourcePhotos
+      : [scene.authoritativePhoto];
 
   return (
     <div className="flex max-h-[260px] flex-col gap-2 overflow-y-auto lg:max-h-[calc(100vh-18rem)]">
@@ -225,7 +242,9 @@ export function SceneImageRail({
           type="button"
           onClick={() => onSelectPhoto(photo.id)}
           className={`h-[68px] w-[68px] overflow-hidden rounded-md border lg:h-[88px] lg:w-[88px] ${
-            photo.id === selectedPhotoId ? "border-primary ring-2 ring-primary/25" : "border-border hover:border-primary/60"
+            photo.id === selectedPhotoId
+              ? "border-primary ring-2 ring-primary/25"
+              : "border-border hover:border-primary/60"
           }`}
           aria-label={`View ${scene.title} image ${index + 1}`}
         >
@@ -246,7 +265,11 @@ export function SceneImageRail({
         <div className="relative h-[68px] w-[68px] overflow-hidden rounded-md border border-primary/60 bg-muted lg:h-[88px] lg:w-[88px]">
           <img
             src={pendingPhotoPreviewUrl}
-            alt={pendingPhotoName ? `Uploading ${pendingPhotoName}` : "Uploading listing photo"}
+            alt={
+              pendingPhotoName
+                ? `Uploading ${pendingPhotoName}`
+                : "Uploading listing photo"
+            }
             className="h-full w-full object-cover opacity-70"
           />
           <div className="absolute inset-0 flex items-center justify-center bg-background/45 backdrop-blur-[1px]">
@@ -258,7 +281,9 @@ export function SceneImageRail({
         {...getRootProps({
           type: "button",
           className: `flex h-[68px] w-[68px] items-center justify-center rounded-md border border-dashed text-muted-foreground transition-colors lg:h-[88px] lg:w-[88px] ${
-            isDragActive ? "border-primary bg-primary/10 text-foreground" : "border-border bg-muted/20 hover:bg-muted/40 hover:text-foreground"
+            isDragActive
+              ? "border-primary bg-primary/10 text-foreground"
+              : "border-border bg-muted/20 hover:bg-muted/40 hover:text-foreground"
           } ${isAddingPhoto ? "cursor-wait opacity-60" : ""}`,
           "aria-label": `Add photo to ${scene.title}`,
         })}
@@ -270,8 +295,8 @@ export function SceneImageRail({
   );
 }
 
-export function ProjectActionsMenu({
-  latestDownloadUrl,
+export function ProjectActionsMenuItems({
+  latestDownloadHref,
   renderingHref,
   downloadTitle,
   canGenerateReuseAssets = false,
@@ -280,7 +305,7 @@ export function ProjectActionsMenu({
   onEdit,
   onDelete,
 }: {
-  latestDownloadUrl?: string | null;
+  latestDownloadHref?: string | null;
   renderingHref: string;
   downloadTitle: string;
   canGenerateReuseAssets?: boolean;
@@ -289,59 +314,61 @@ export function ProjectActionsMenu({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const hasRenderActions = Boolean(onGenerateReuseAssets || latestDownloadUrl);
+  const { addToast } = useToast();
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Open project actions"
-      >
-        <EllipsisVertical className="h-4 w-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuItem onClick={onEdit}>
-          <Pencil className="mr-2 h-4 w-4" />
-          Edit details
+    <>
+      <DropdownMenuItem onClick={onEdit}>
+        <Pencil className="mr-2 h-4 w-4" />
+        Edit details
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      {onGenerateReuseAssets ? (
+        <DropdownMenuItem
+          disabled={!canGenerateReuseAssets || isGeneratingReuseAssets}
+          onClick={onGenerateReuseAssets}
+        >
+          <RefreshCw className="mr-2 h-4 w-4" />
+          {isGeneratingReuseAssets
+            ? "Starting render..."
+            : "Generate and reuse assets"}
         </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        {onGenerateReuseAssets ? (
-          <DropdownMenuItem
-            disabled={!canGenerateReuseAssets || isGeneratingReuseAssets}
-            onClick={onGenerateReuseAssets}
+      ) : null}
+      {latestDownloadHref ? (
+        <DropdownMenuItem asChild>
+          <a
+            href={appendDownloadTitle(latestDownloadHref, downloadTitle)}
+            target="_blank"
+            rel="noreferrer"
+            download
+            onClick={() => {
+              addToast({
+                title: "Preparing download",
+                description:
+                  "Generating the secure render link. This can take a moment.",
+              });
+            }}
           >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            {isGeneratingReuseAssets ? "Starting render..." : "Generate and reuse assets"}
-          </DropdownMenuItem>
-        ) : null}
-        {latestDownloadUrl ? (
-          <DropdownMenuItem asChild>
-            <a
-              href={appendDownloadTitle(latestDownloadUrl, downloadTitle)}
-              target="_blank"
-              rel="noreferrer"
-              download
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download render
-            </a>
-          </DropdownMenuItem>
-        ) : null}
-        {latestDownloadUrl ? (
-          <DropdownMenuItem asChild>
-            <Link href={renderingHref}>
-              <Images className="mr-2 h-4 w-4" />
-              View render assets
-            </Link>
-          </DropdownMenuItem>
-        ) : null}
-        {hasRenderActions ? <DropdownMenuSeparator /> : null}
-        <DropdownMenuItem className="text-destructive hover:text-destructive" onClick={onDelete}>
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete
+            <Download className="mr-2 h-4 w-4" />
+            Download render
+          </a>
         </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      ) : null}
+      <DropdownMenuItem asChild>
+        <Link href={renderingHref}>
+          <Images className="mr-2 h-4 w-4" />
+          View render assets
+        </Link>
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        className="text-destructive hover:text-destructive"
+        onClick={onDelete}
+      >
+        <Trash2 className="mr-2 h-4 w-4" />
+        Delete
+      </DropdownMenuItem>
+    </>
   );
 }
 
@@ -365,36 +392,36 @@ export function SceneActionsMenu({
   const canRemovePhoto = scene.sourcePhotos.length > 1;
   const selectedPhotoId = selectedPhoto?.id ?? scene.authoritativePhoto.id;
   const selectedPhotoLabel =
-    selectedPhotoId === scene.authoritativePhoto.id ? "primary photo" : "secondary photo";
+    selectedPhotoId === scene.authoritativePhoto.id
+      ? "primary photo"
+      : "secondary photo";
 
   return (
     <div className="absolute right-3 top-3 z-30">
       <DropdownMenu>
-        <DropdownMenuTrigger
-          className="flex h-9 w-9 items-center justify-center rounded-md bg-background/80 text-muted-foreground backdrop-blur transition-colors hover:bg-background hover:text-foreground"
+        <ImageOverlayIconButton
+          as={DropdownMenuTrigger}
           aria-label={`Open photo actions for ${scene.title}`}
           onPointerDown={(event) => event.stopPropagation()}
         >
           <EllipsisVertical className="h-4 w-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
+        </ImageOverlayIconButton>
+        <ImageOverlayMenuContent align="end" className="w-48">
           <DropdownMenuItem onClick={onReplacePhoto}>
             <ImagePlus className="mr-2 h-4 w-4" />
             Replace primary photo
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-destructive hover:text-destructive"
-            disabled={!canRemovePhoto || isRemovingPhoto}
-            title={
-              canRemovePhoto
-                ? `Removes the selected ${selectedPhotoLabel}.`
-                : "A scene needs at least one photo."
-            }
-            onClick={onRemovePhoto}
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            {isRemovingPhoto ? "Removing..." : `Remove ${selectedPhotoLabel}`}
-          </DropdownMenuItem>
+          {canRemovePhoto ? (
+            <DropdownMenuItem
+              className="text-destructive hover:text-destructive"
+              disabled={isRemovingPhoto}
+              title={`Removes the selected ${selectedPhotoLabel}.`}
+              onClick={onRemovePhoto}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isRemovingPhoto ? "Removing..." : `Remove ${selectedPhotoLabel}`}
+            </DropdownMenuItem>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive hover:text-destructive"
@@ -404,7 +431,7 @@ export function SceneActionsMenu({
             <Trash2 className="mr-2 h-4 w-4" />
             {isRemovingScene ? "Removing..." : "Remove scene"}
           </DropdownMenuItem>
-        </DropdownMenuContent>
+        </ImageOverlayMenuContent>
       </DropdownMenu>
     </div>
   );
@@ -435,15 +462,21 @@ export function ProjectDetailsDialog({
 }) {
   const effectiveTourType =
     tourType ??
-    (showAvatarSettings ? "tour_video_avatar" : showVoiceId ? "tour_video_voice_over" : "tour_video");
-  const { isVoiceSelectionMissing, isAvatarSelectionMissing } = getRequiredSettingsState({
-    tourType: effectiveTourType,
-    elevenLabsVoiceId: details.elevenLabsVoiceId,
-    heyGenAvatarId: details.heyGenAvatarId,
-    heyGenAvatarPlacement: details.heyGenAvatarPlacement,
-  });
+    (showAvatarSettings
+      ? "tour_video_avatar"
+      : showVoiceId
+        ? "tour_video_voice_over"
+        : "tour_video");
+  const { isVoiceSelectionMissing, isAvatarSelectionMissing } =
+    getRequiredSettingsState({
+      tourType: effectiveTourType,
+      elevenLabsVoiceId: details.elevenLabsVoiceId,
+      heyGenAvatarId: details.heyGenAvatarId,
+      heyGenAvatarPlacement: details.heyGenAvatarPlacement,
+    });
   const isVoiceSelectionRequired = showVoiceId && isVoiceSelectionMissing;
-  const isAvatarSelectionRequired = showAvatarSettings && isAvatarSelectionMissing;
+  const isAvatarSelectionRequired =
+    showAvatarSettings && isAvatarSelectionMissing;
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (isVoiceSelectionRequired || isAvatarSelectionRequired) {
       event.preventDefault();
@@ -466,7 +499,9 @@ export function ProjectDetailsDialog({
               <input
                 type="text"
                 value={details.name}
-                onChange={(event) => onChange({ ...details, name: event.target.value })}
+                onChange={(event) =>
+                  onChange({ ...details, name: event.target.value })
+                }
                 className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </label>
@@ -475,7 +510,9 @@ export function ProjectDetailsDialog({
               <input
                 type="text"
                 value={details.propertyAddress}
-                onChange={(event) => onChange({ ...details, propertyAddress: event.target.value })}
+                onChange={(event) =>
+                  onChange({ ...details, propertyAddress: event.target.value })
+                }
                 className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </label>
@@ -484,7 +521,9 @@ export function ProjectDetailsDialog({
               <input
                 type="url"
                 value={details.listingUrl}
-                onChange={(event) => onChange({ ...details, listingUrl: event.target.value })}
+                onChange={(event) =>
+                  onChange({ ...details, listingUrl: event.target.value })
+                }
                 className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </label>
@@ -495,7 +534,9 @@ export function ProjectDetailsDialog({
                   <ElevenLabsVoiceSelector
                     value={details.elevenLabsVoiceId}
                     disabled={isSaving}
-                    onChange={(voiceId) => onChange({ ...details, elevenLabsVoiceId: voiceId })}
+                    onChange={(voiceId) =>
+                      onChange({ ...details, elevenLabsVoiceId: voiceId })
+                    }
                   />
                 </div>
                 {isVoiceSelectionRequired ? (
@@ -532,10 +573,21 @@ export function ProjectDetailsDialog({
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSaving || isVoiceSelectionRequired || isAvatarSelectionRequired}>
+            <Button
+              type="submit"
+              disabled={
+                isSaving ||
+                isVoiceSelectionRequired ||
+                isAvatarSelectionRequired
+              }
+            >
               {isSaving ? "Saving..." : "Save details"}
             </Button>
           </DialogFooter>
@@ -573,7 +625,7 @@ export function SceneUploadDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={onSubmit}>
           <DialogHeader>
-            <DialogTitle>Add scene</DialogTitle>
+            <DialogTitle>Add Scene</DialogTitle>
             <DialogClose onClose={() => onOpenChange(false)} />
           </DialogHeader>
           <DialogBody className="space-y-4">
@@ -597,7 +649,11 @@ export function SceneUploadDialog({
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isSaving}>
@@ -642,7 +698,8 @@ export function ReplacePhotoDialog({
           <DialogBody className="space-y-4">
             {scene && (
               <p className="text-sm text-muted-foreground">
-                {scene.title}. This updates the primary listing photo; rail thumbnail selection only changes the displayed image.
+                {scene.title}. This updates the primary listing photo; rail
+                thumbnail selection only changes the displayed image.
               </p>
             )}
             <FileDropzone
@@ -655,7 +712,11 @@ export function ReplacePhotoDialog({
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isSaving || !scene}>
@@ -701,11 +762,20 @@ export function ConfirmDialog({
           {error && <ErrorMessage>{error.message}</ErrorMessage>}
         </DialogBody>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button type="button" variant="destructive" disabled={isPending} onClick={onConfirm}>
-            {isPending ? pendingText ?? "Deleting..." : confirmText}
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={isPending}
+            onClick={onConfirm}
+          >
+            {isPending ? (pendingText ?? "Deleting...") : confirmText}
           </Button>
         </DialogFooter>
       </DialogContent>

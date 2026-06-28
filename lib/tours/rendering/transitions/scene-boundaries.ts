@@ -1,12 +1,12 @@
-import { createHash } from "node:crypto";
 import type { RenderableTourProject, RenderableTourScene, TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
 import type { VoiceoverTranscript } from "../voiceover/tour-voiceover";
 import { openRouterApps } from "@/lib/openrouter/apps";
 import { createOpenRouterClient } from "@/lib/openrouter/client";
 import { isOpenRouterError } from "@/lib/openrouter/errors";
+import { hashJsonFingerprint } from "../fingerprint";
 
-export const DEFAULT_TOUR_TRANSITION_DETECTION_MODEL = "google/gemini-2.5-flash";
-export const TOUR_TRANSITION_DETECTION_PROMPT_VERSION = "tour-transition-detection-v1";
+export const DEFAULT_SCENE_BOUNDARY_DETECTION_MODEL = "google/gemini-2.5-flash";
+export const SCENE_BOUNDARY_DETECTION_PROMPT_VERSION = "tour-transition-detection-v1";
 
 export type TranscriptChunk = {
   id: number;
@@ -17,13 +17,13 @@ export type TranscriptChunk = {
   };
 };
 
-export type SceneTransition = {
+export type SceneBoundary = {
   sceneId: string;
   chunkId: number;
   text?: string;
 };
 
-export type SceneDuration = {
+export type SceneTiming = {
   sceneId: string;
   title: string;
   durationSeconds: number;
@@ -33,17 +33,17 @@ export type SceneDuration = {
   };
 };
 
-export type TransitionDurationSettings = {
+export type SceneTimingSettings = {
   minDurationSeconds?: number;
   roundingIncrementSeconds?: number;
 };
 
-export type TransitionDetectionOptions = TransitionDurationSettings & {
+export type SceneBoundaryDetectionOptions = SceneTimingSettings & {
   modelId?: string;
   reuseExistingAssets?: boolean;
 };
 
-export type TransitionDetectionSceneInput = {
+export type SceneBoundaryDetectionSceneInput = {
   id: string;
   title: string;
   sortOrder: number;
@@ -55,67 +55,67 @@ export type TransitionDetectionSceneInput = {
   }>;
 };
 
-export type TransitionDetectionProviderInput = {
+export type SceneBoundaryDetectionProviderInput = {
   transcriptChunks: TranscriptChunk[];
-  scenes: TransitionDetectionSceneInput[];
+  scenes: SceneBoundaryDetectionSceneInput[];
   modelId: string;
   promptVersion: string;
 };
 
-export type TransitionDetectionProvider = {
-  detectTransitions(input: TransitionDetectionProviderInput): Promise<unknown>;
+export type SceneBoundaryDetectionProvider = {
+  detectSceneBoundaries(input: SceneBoundaryDetectionProviderInput): Promise<unknown>;
 };
 
-export type SceneTransitionsAssetValue = {
-  transitions: SceneTransition[];
+export type SceneBoundariesAssetValue = {
+  transitions: SceneBoundary[];
   model: string;
   promptVersion: string;
   usage?: unknown;
 };
 
-export type SceneDurationsAssetValue = {
-  durations: SceneDuration[];
-  settings: Required<TransitionDurationSettings>;
+export type SceneTimingsAssetValue = {
+  durations: SceneTiming[];
+  settings: Required<SceneTimingSettings>;
 };
 
-export type TransitionDetectionResult =
+export type SceneBoundaryDetectionResult =
   | {
       reused: true;
       transitionsAsset: TourRenderAsset;
       durationsAsset: TourRenderAsset;
-      transitions: SceneTransition[];
-      durations: SceneDuration[];
+      transitions: SceneBoundary[];
+      durations: SceneTiming[];
       transitionFingerprintHash: string;
       durationFingerprintHash: string;
-      transitionFingerprint: SceneTransitionFingerprint;
-      durationFingerprint: SceneDurationFingerprint;
+      transitionFingerprint: SceneBoundaryFingerprint;
+      durationFingerprint: SceneTimingFingerprint;
     }
   | {
       reused: false;
       transitionsAsset: TourRenderAsset;
       durationsAsset: TourRenderAsset;
-      transitions: SceneTransition[];
-      durations: SceneDuration[];
+      transitions: SceneBoundary[];
+      durations: SceneTiming[];
       transitionFingerprintHash: string;
       durationFingerprintHash: string;
-      transitionFingerprint: SceneTransitionFingerprint;
-      durationFingerprint: SceneDurationFingerprint;
+      transitionFingerprint: SceneBoundaryFingerprint;
+      durationFingerprint: SceneTimingFingerprint;
     };
 
-export type SceneTransitionFingerprint = {
+export type SceneBoundaryFingerprint = {
   kind: "scene_transitions";
   version: 1;
   promptVersion: string;
   modelId: string;
   transcriptChunks: TranscriptChunk[];
-  scenes: TransitionDetectionSceneInput[];
+  scenes: SceneBoundaryDetectionSceneInput[];
 };
 
-export type SceneDurationFingerprint = {
+export type SceneTimingFingerprint = {
   kind: "scene_durations";
   version: 1;
   transitionFingerprintHash: string;
-  durationSettings: Required<TransitionDurationSettings>;
+  durationSettings: Required<SceneTimingSettings>;
   transcriptChunks: TranscriptChunk[];
   scenes: Array<{
     id: string;
@@ -124,7 +124,7 @@ export type SceneDurationFingerprint = {
   }>;
 };
 
-export class TourTransitionDetectionError extends Error {
+export class SceneBoundaryDetectionError extends Error {
   constructor(
     message: string,
     readonly code:
@@ -138,24 +138,24 @@ export class TourTransitionDetectionError extends Error {
       | "DURATIONS_ASSET_CREATE_FAILED"
   ) {
     super(message);
-    this.name = "TourTransitionDetectionError";
+    this.name = "SceneBoundaryDetectionError";
   }
 }
 
-const DEFAULT_DURATION_SETTINGS: Required<TransitionDurationSettings> = {
+const DEFAULT_DURATION_SETTINGS: Required<SceneTimingSettings> = {
   minDurationSeconds: 0.2,
   roundingIncrementSeconds: 0.001,
 };
 
-export function resolveTransitionDetectionOptions(
-  options: TransitionDetectionOptions = {}
+export function resolveSceneBoundaryDetectionOptions(
+  options: SceneBoundaryDetectionOptions = {}
 ): {
   modelId: string;
   reuseExistingAssets: boolean;
-  durationSettings: Required<TransitionDurationSettings>;
+  durationSettings: Required<SceneTimingSettings>;
 } {
   return {
-    modelId: options.modelId ?? DEFAULT_TOUR_TRANSITION_DETECTION_MODEL,
+    modelId: options.modelId ?? DEFAULT_SCENE_BOUNDARY_DETECTION_MODEL,
     reuseExistingAssets: options.reuseExistingAssets !== false,
     durationSettings: {
       minDurationSeconds: options.minDurationSeconds ?? DEFAULT_DURATION_SETTINGS.minDurationSeconds,
@@ -167,8 +167,8 @@ export function resolveTransitionDetectionOptions(
 
 export function buildTranscriptChunks(transcript: VoiceoverTranscript): TranscriptChunk[] {
   if (!Array.isArray(transcript) || transcript.length === 0) {
-    throw new TourTransitionDetectionError(
-      "Voiceover transcript is required for scene transition detection.",
+    throw new SceneBoundaryDetectionError(
+      "Voiceover transcript is required for scene boundary detection.",
       "TRANSCRIPT_INVALID"
     );
   }
@@ -188,8 +188,8 @@ export function buildTranscriptChunks(transcript: VoiceoverTranscript): Transcri
   }
 
   if (chunks.length === 0) {
-    throw new TourTransitionDetectionError(
-      "Voiceover transcript did not include any usable chunks for scene transition detection.",
+    throw new SceneBoundaryDetectionError(
+      "Voiceover transcript did not include any usable chunks for scene boundary detection.",
       "TRANSCRIPT_INVALID"
     );
   }
@@ -199,7 +199,7 @@ export function buildTranscriptChunks(transcript: VoiceoverTranscript): Transcri
 
 export function normalizeVoiceoverTranscript(value: unknown): VoiceoverTranscript {
   if (!Array.isArray(value)) {
-    throw new TourTransitionDetectionError(
+    throw new SceneBoundaryDetectionError(
       "Stored voiceover transcript asset was not a transcript array.",
       "TRANSCRIPT_INVALID"
     );
@@ -207,7 +207,7 @@ export function normalizeVoiceoverTranscript(value: unknown): VoiceoverTranscrip
 
   return value.map((item, index) => {
     if (!isRecord(item) || !isRecord(item.offsets)) {
-      throw new TourTransitionDetectionError(
+      throw new SceneBoundaryDetectionError(
         `Stored voiceover transcript item ${index} was invalid.`,
         "TRANSCRIPT_INVALID"
       );
@@ -223,28 +223,28 @@ export function normalizeVoiceoverTranscript(value: unknown): VoiceoverTranscrip
   });
 }
 
-export function buildSceneTransitionFingerprint(input: {
+export function buildSceneBoundaryFingerprint(input: {
   project: RenderableTourProject;
   transcriptChunks: TranscriptChunk[];
   modelId: string;
   promptVersion?: string;
-}): SceneTransitionFingerprint {
+}): SceneBoundaryFingerprint {
   return {
     kind: "scene_transitions",
     version: 1,
-    promptVersion: input.promptVersion ?? TOUR_TRANSITION_DETECTION_PROMPT_VERSION,
+    promptVersion: input.promptVersion ?? SCENE_BOUNDARY_DETECTION_PROMPT_VERSION,
     modelId: input.modelId,
     transcriptChunks: input.transcriptChunks,
-    scenes: buildTransitionSceneInputs(includedRenderableScenes(input.project)),
+    scenes: buildSceneBoundaryDetectionSceneInputs(includedRenderableScenes(input.project)),
   };
 }
 
-export function buildSceneDurationFingerprint(input: {
+export function buildSceneTimingFingerprint(input: {
   project: RenderableTourProject;
   transcriptChunks: TranscriptChunk[];
   transitionFingerprintHash: string;
-  durationSettings: Required<TransitionDurationSettings>;
-}): SceneDurationFingerprint {
+  durationSettings: Required<SceneTimingSettings>;
+}): SceneTimingFingerprint {
   return {
     kind: "scene_durations",
     version: 1,
@@ -259,24 +259,24 @@ export function buildSceneDurationFingerprint(input: {
   };
 }
 
-export function hashSceneTransitionFingerprint(fingerprint: SceneTransitionFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+export function hashSceneBoundaryFingerprint(fingerprint: SceneBoundaryFingerprint): string {
+  return hashJsonFingerprint(fingerprint);
 }
 
-export function hashSceneDurationFingerprint(fingerprint: SceneDurationFingerprint): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+export function hashSceneTimingFingerprint(fingerprint: SceneTimingFingerprint): string {
+  return hashJsonFingerprint(fingerprint);
 }
 
-export function normalizeSceneTransitions(input: {
+export function normalizeSceneBoundaries(input: {
   providerOutput: unknown;
-  scenes: TransitionDetectionSceneInput[];
+  scenes: SceneBoundaryDetectionSceneInput[];
   transcriptChunks: TranscriptChunk[];
-}): SceneTransition[] {
-  const parsed = parseTransitionProviderOutput(input.providerOutput);
+}): SceneBoundary[] {
+  const parsed = parseSceneBoundaryProviderOutput(input.providerOutput);
   const transitions = parsed.transitions.map((transition) => {
     if (!isRecord(transition)) {
-      throw new TourTransitionDetectionError(
-        "Scene transition response contained a non-object transition.",
+      throw new SceneBoundaryDetectionError(
+        "Scene boundary response contained a non-object boundary.",
         "PROVIDER_RESPONSE_INVALID"
       );
     }
@@ -288,12 +288,12 @@ export function normalizeSceneTransitions(input: {
     };
   });
 
-  const normalizedTransitions = anchorFirstTransitionToTranscriptStart(
+  const normalizedTransitions = anchorFirstBoundaryToTranscriptStart(
     transitions,
     input.transcriptChunks
   );
 
-  validateTransitionsInSceneOrder({
+  validateBoundariesInSceneOrder({
     transitions: normalizedTransitions,
     scenes: input.scenes,
     transcriptChunks: input.transcriptChunks,
@@ -302,12 +302,12 @@ export function normalizeSceneTransitions(input: {
   return normalizedTransitions;
 }
 
-export function deriveSceneDurations(input: {
-  transitions: SceneTransition[];
-  scenes: TransitionDetectionSceneInput[];
+export function deriveSceneTimings(input: {
+  transitions: SceneBoundary[];
+  scenes: SceneBoundaryDetectionSceneInput[];
   transcriptChunks: TranscriptChunk[];
-  settings?: TransitionDurationSettings;
-}): SceneDuration[] {
+  settings?: SceneTimingSettings;
+}): SceneTiming[] {
   const settings = {
     ...DEFAULT_DURATION_SETTINGS,
     ...(input.settings ?? {}),
@@ -323,7 +323,7 @@ export function deriveSceneDurations(input: {
       nextTransition === undefined ? undefined : chunkById.get(nextTransition.chunkId);
     const lastChunk = input.transcriptChunks[input.transcriptChunks.length - 1];
     if (!scene || !currentChunk || !lastChunk) {
-      throw new TourTransitionDetectionError(
+      throw new SceneBoundaryDetectionError(
         "Scene transition timing could not be mapped to scenes and transcript chunks.",
         "TRANSITION_TIMING_INVALID"
       );
@@ -333,7 +333,7 @@ export function deriveSceneDurations(input: {
     const to = nextChunk?.offsets.from ?? lastChunk.offsets.to;
     const durationSeconds = roundDuration((to - from) / 1000, settings.roundingIncrementSeconds);
     if (to <= from || durationSeconds < settings.minDurationSeconds) {
-      throw new TourTransitionDetectionError(
+      throw new SceneBoundaryDetectionError(
         `Scene "${scene.title}" has invalid transition timing.`,
         "TRANSITION_TIMING_INVALID"
       );
@@ -348,39 +348,39 @@ export function deriveSceneDurations(input: {
   });
 }
 
-export async function detectTransitionsAndDurationsStage(input: {
+export async function detectSceneBoundariesAndTimingsStage(input: {
   project: RenderableTourProject;
   repository: TourRenderRepository;
   runId: string;
   userId: string;
   transcript: VoiceoverTranscript;
-  provider: TransitionDetectionProvider;
-  options?: TransitionDetectionOptions;
-}): Promise<TransitionDetectionResult> {
-  const resolvedOptions = resolveTransitionDetectionOptions(input.options);
+  provider: SceneBoundaryDetectionProvider;
+  options?: SceneBoundaryDetectionOptions;
+}): Promise<SceneBoundaryDetectionResult> {
+  const resolvedOptions = resolveSceneBoundaryDetectionOptions(input.options);
   const includedScenes = includedRenderableScenes(input.project);
   if (includedScenes.length === 0) {
-    throw new TourTransitionDetectionError(
-      "Tour render needs at least one included scene for transition detection.",
+    throw new SceneBoundaryDetectionError(
+      "Tour render needs at least one included scene for scene boundary detection.",
       "PROJECT_HAS_NO_INCLUDED_SCENES"
     );
   }
 
-  const scenes = buildTransitionSceneInputs(includedScenes);
+  const scenes = buildSceneBoundaryDetectionSceneInputs(includedScenes);
   const transcriptChunks = buildTranscriptChunks(input.transcript);
-  const transitionFingerprint = buildSceneTransitionFingerprint({
+  const transitionFingerprint = buildSceneBoundaryFingerprint({
     project: input.project,
     transcriptChunks,
     modelId: resolvedOptions.modelId,
   });
-  const transitionFingerprintHash = hashSceneTransitionFingerprint(transitionFingerprint);
-  const durationFingerprint = buildSceneDurationFingerprint({
+  const transitionFingerprintHash = hashSceneBoundaryFingerprint(transitionFingerprint);
+  const durationFingerprint = buildSceneTimingFingerprint({
     project: input.project,
     transcriptChunks,
     transitionFingerprintHash,
     durationSettings: resolvedOptions.durationSettings,
   });
-  const durationFingerprintHash = hashSceneDurationFingerprint(durationFingerprint);
+  const durationFingerprintHash = hashSceneTimingFingerprint(durationFingerprint);
 
   if (resolvedOptions.reuseExistingAssets) {
     const [transitionsAsset, durationsAsset] = await Promise.all([
@@ -403,8 +403,8 @@ export async function detectTransitionsAndDurationsStage(input: {
         downloadAssetJson(input.repository, transitionsAsset),
         downloadAssetJson(input.repository, durationsAsset),
       ]);
-      const transitions = normalizeStoredTransitions(transitionValue, scenes, transcriptChunks);
-      const durations = normalizeStoredDurations(durationValue, scenes, transcriptChunks);
+      const transitions = normalizeStoredBoundaries(transitionValue, scenes, transcriptChunks);
+      const durations = normalizeStoredTimings(durationValue, scenes, transcriptChunks);
 
       await input.repository.recordRunAssetUsage({
         runId: input.runId,
@@ -431,18 +431,18 @@ export async function detectTransitionsAndDurationsStage(input: {
     }
   }
 
-  const providerOutput = await input.provider.detectTransitions({
+  const providerOutput = await input.provider.detectSceneBoundaries({
     transcriptChunks,
     scenes,
     modelId: resolvedOptions.modelId,
-    promptVersion: TOUR_TRANSITION_DETECTION_PROMPT_VERSION,
+    promptVersion: SCENE_BOUNDARY_DETECTION_PROMPT_VERSION,
   });
-  const transitions = normalizeSceneTransitions({
+  const transitions = normalizeSceneBoundaries({
     providerOutput,
     scenes,
     transcriptChunks,
   });
-  const durations = deriveSceneDurations({
+  const durations = deriveSceneTimings({
     transitions,
     scenes,
     transcriptChunks,
@@ -457,11 +457,11 @@ export async function detectTransitionsAndDurationsStage(input: {
     value: {
       transitions,
       model: resolvedOptions.modelId,
-      promptVersion: TOUR_TRANSITION_DETECTION_PROMPT_VERSION,
-    } satisfies SceneTransitionsAssetValue,
+      promptVersion: SCENE_BOUNDARY_DETECTION_PROMPT_VERSION,
+    } satisfies SceneBoundariesAssetValue,
   });
   if (!transitionsUpload) {
-    throw new TourTransitionDetectionError(
+    throw new SceneBoundaryDetectionError(
       "Could not upload scene transitions asset.",
       "TRANSITIONS_UPLOAD_FAILED"
     );
@@ -475,10 +475,10 @@ export async function detectTransitionsAndDurationsStage(input: {
     value: {
       durations,
       settings: resolvedOptions.durationSettings,
-    } satisfies SceneDurationsAssetValue,
+    } satisfies SceneTimingsAssetValue,
   });
   if (!durationsUpload) {
-    throw new TourTransitionDetectionError(
+    throw new SceneBoundaryDetectionError(
       "Could not upload scene durations asset.",
       "DURATIONS_UPLOAD_FAILED"
     );
@@ -496,12 +496,12 @@ export async function detectTransitionsAndDurationsStage(input: {
     reusable: true,
     metadata: {
       model: resolvedOptions.modelId,
-      promptVersion: TOUR_TRANSITION_DETECTION_PROMPT_VERSION,
+      promptVersion: SCENE_BOUNDARY_DETECTION_PROMPT_VERSION,
       sceneCount: transitions.length,
     },
   });
   if (!transitionsAsset) {
-    throw new TourTransitionDetectionError(
+    throw new SceneBoundaryDetectionError(
       "Could not create scene transitions asset record.",
       "TRANSITIONS_ASSET_CREATE_FAILED"
     );
@@ -526,7 +526,7 @@ export async function detectTransitionsAndDurationsStage(input: {
     },
   });
   if (!durationsAsset) {
-    throw new TourTransitionDetectionError(
+    throw new SceneBoundaryDetectionError(
       "Could not create scene durations asset record.",
       "DURATIONS_ASSET_CREATE_FAILED"
     );
@@ -556,14 +556,14 @@ export async function detectTransitionsAndDurationsStage(input: {
   };
 }
 
-export function createOpenRouterTransitionDetectionProvider(options: {
+export function createOpenRouterSceneBoundaryDetectionProvider(options: {
   apiKey: string;
   fetcher?: typeof fetch;
   appInfo?: {
     referer?: string;
     title?: string;
   };
-}): TransitionDetectionProvider {
+}): SceneBoundaryDetectionProvider {
   const client = createOpenRouterClient({
     apiKey: options.apiKey,
     fetcher: options.fetcher,
@@ -574,10 +574,10 @@ export function createOpenRouterTransitionDetectionProvider(options: {
   });
 
   return {
-    async detectTransitions(input) {
+    async detectSceneBoundaries(input) {
       if (!options.apiKey) {
-        throw new TourTransitionDetectionError(
-          "OpenRouter API key is required for transition detection.",
+        throw new SceneBoundaryDetectionError(
+          "OpenRouter API key is required for scene boundary detection.",
           "PROVIDER_RESPONSE_INVALID"
         );
       }
@@ -621,10 +621,10 @@ export function createOpenRouterTransitionDetectionProvider(options: {
           usage: result.usage,
         };
       } catch (error) {
-        throw new TourTransitionDetectionError(
+        throw new SceneBoundaryDetectionError(
           isOpenRouterError(error)
             ? error.message
-            : "OpenRouter transition detection failed.",
+            : "OpenRouter scene boundary detection failed.",
           "PROVIDER_RESPONSE_INVALID"
         );
       }
@@ -632,21 +632,21 @@ export function createOpenRouterTransitionDetectionProvider(options: {
   };
 }
 
-function parseTransitionProviderOutput(value: unknown): { transitions: unknown[] } {
+function parseSceneBoundaryProviderOutput(value: unknown): { transitions: unknown[] } {
   if (typeof value === "string") {
     try {
-      return parseTransitionProviderOutput(JSON.parse(value));
+      return parseSceneBoundaryProviderOutput(JSON.parse(value));
     } catch {
-      throw new TourTransitionDetectionError(
-        "Scene transition response was not valid JSON.",
+      throw new SceneBoundaryDetectionError(
+        "Scene boundary response was not valid JSON.",
         "PROVIDER_RESPONSE_INVALID"
       );
     }
   }
 
   if (!isRecord(value) || !Array.isArray(value.transitions)) {
-    throw new TourTransitionDetectionError(
-      "Scene transition response missing transitions array.",
+    throw new SceneBoundaryDetectionError(
+      "Scene boundary response missing transitions array.",
       "PROVIDER_RESPONSE_INVALID"
     );
   }
@@ -654,14 +654,14 @@ function parseTransitionProviderOutput(value: unknown): { transitions: unknown[]
   return { transitions: value.transitions };
 }
 
-function validateTransitionsInSceneOrder(input: {
-  transitions: SceneTransition[];
-  scenes: TransitionDetectionSceneInput[];
+function validateBoundariesInSceneOrder(input: {
+  transitions: SceneBoundary[];
+  scenes: SceneBoundaryDetectionSceneInput[];
   transcriptChunks: TranscriptChunk[];
 }): void {
   if (input.transitions.length !== input.scenes.length) {
-    throw new TourTransitionDetectionError(
-      `Scene transition response returned ${input.transitions.length} transitions for ${input.scenes.length} scenes.`,
+    throw new SceneBoundaryDetectionError(
+      `Scene boundary response returned ${input.transitions.length} transitions for ${input.scenes.length} scenes.`,
       "PROVIDER_RESPONSE_INVALID"
     );
   }
@@ -670,38 +670,38 @@ function validateTransitionsInSceneOrder(input: {
   for (const [index, scene] of input.scenes.entries()) {
     const transition = input.transitions[index];
     if (transition.sceneId !== scene.id) {
-      throw new TourTransitionDetectionError(
+      throw new SceneBoundaryDetectionError(
         `Scene transition ${index} maps to ${transition.sceneId}, expected ${scene.id}.`,
         "PROVIDER_RESPONSE_INVALID"
       );
     }
     if (!chunkIds.has(transition.chunkId)) {
-      throw new TourTransitionDetectionError(
-        `Scene transition for ${scene.id} points at missing transcript chunk ${transition.chunkId}.`,
+      throw new SceneBoundaryDetectionError(
+        `Scene boundary for ${scene.id} points at missing transcript chunk ${transition.chunkId}.`,
         "TRANSITION_TIMING_INVALID"
       );
     }
     if (index === 0 && transition.chunkId !== input.transcriptChunks[0]?.id) {
-      throw new TourTransitionDetectionError(
-        "First scene transition must start at the first transcript chunk.",
+      throw new SceneBoundaryDetectionError(
+        "First scene boundary must start at the first transcript chunk.",
         "TRANSITION_TIMING_INVALID"
       );
     }
 
     const previous = input.transitions[index - 1];
     if (previous && transition.chunkId <= previous.chunkId) {
-      throw new TourTransitionDetectionError(
-        "Scene transitions must use strictly increasing transcript chunks.",
+      throw new SceneBoundaryDetectionError(
+        "Scene boundaries must use strictly increasing transcript chunks.",
         "TRANSITION_TIMING_INVALID"
       );
     }
   }
 }
 
-function anchorFirstTransitionToTranscriptStart(
-  transitions: SceneTransition[],
+function anchorFirstBoundaryToTranscriptStart(
+  transitions: SceneBoundary[],
   transcriptChunks: TranscriptChunk[]
-): SceneTransition[] {
+): SceneBoundary[] {
   const firstChunk = transcriptChunks[0];
   const firstTransition = transitions[0];
   if (!firstChunk || !firstTransition || firstTransition.chunkId === firstChunk.id) {
@@ -717,26 +717,26 @@ function anchorFirstTransitionToTranscriptStart(
   ];
 }
 
-function normalizeStoredTransitions(
+function normalizeStoredBoundaries(
   value: unknown,
-  scenes: TransitionDetectionSceneInput[],
+  scenes: SceneBoundaryDetectionSceneInput[],
   transcriptChunks: TranscriptChunk[]
-): SceneTransition[] {
+): SceneBoundary[] {
   const transitionsValue = isRecord(value) ? value.transitions : undefined;
-  return normalizeSceneTransitions({
+  return normalizeSceneBoundaries({
     providerOutput: { transitions: transitionsValue },
     scenes,
     transcriptChunks,
   });
 }
 
-function normalizeStoredDurations(
+function normalizeStoredTimings(
   value: unknown,
-  scenes: TransitionDetectionSceneInput[],
+  scenes: SceneBoundaryDetectionSceneInput[],
   transcriptChunks: TranscriptChunk[]
-): SceneDuration[] {
+): SceneTiming[] {
   if (!isRecord(value) || !Array.isArray(value.durations)) {
-    throw new TourTransitionDetectionError(
+    throw new SceneBoundaryDetectionError(
       "Stored scene duration asset did not include durations.",
       "TRANSITION_TIMING_INVALID"
     );
@@ -745,7 +745,7 @@ function normalizeStoredDurations(
   const sceneById = new Map(scenes.map((scene) => [scene.id, scene]));
   return value.durations.map((duration, index) => {
     if (!isRecord(duration) || !isRecord(duration.offsets)) {
-      throw new TourTransitionDetectionError(
+      throw new SceneBoundaryDetectionError(
         `Stored scene duration ${index} was invalid.`,
         "TRANSITION_TIMING_INVALID"
       );
@@ -757,7 +757,7 @@ function normalizeStoredDurations(
     const durationSeconds = Number(duration.durationSeconds);
     const startsAtKnownChunk = transcriptChunks.some((chunk) => chunk.offsets.from === from);
     if (!scene || !Number.isFinite(durationSeconds) || !startsAtKnownChunk || to <= from) {
-      throw new TourTransitionDetectionError(
+      throw new SceneBoundaryDetectionError(
         `Stored scene duration ${index} could not be validated.`,
         "TRANSITION_TIMING_INVALID"
       );
@@ -789,9 +789,9 @@ function includedRenderableScenes(project: RenderableTourProject): RenderableTou
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
 }
 
-function buildTransitionSceneInputs(
+function buildSceneBoundaryDetectionSceneInputs(
   includedScenes: RenderableTourScene[]
-): TransitionDetectionSceneInput[] {
+): SceneBoundaryDetectionSceneInput[] {
   return includedScenes.map((scene) => ({
     id: scene.id,
     title: scene.title,
@@ -813,24 +813,4 @@ function roundDuration(durationSeconds: number, incrementSeconds: number): numbe
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }

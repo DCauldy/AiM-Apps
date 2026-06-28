@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   TourProjectWorkspaceViewModel,
   TourScene,
@@ -11,26 +11,32 @@ import {
   deleteSceneFact,
   updateSceneFact,
 } from "@/components/tours/tours-api-client";
+import {
+  removeTourSceneFact,
+  updateTourWorkspaceCache,
+  upsertTourSceneFact,
+} from "./tourWorkspaceCache";
 import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
 import { useTourSceneMutations } from "./useTourSceneMutations";
 
 export function useTourProjectScenesWorkspace({
   viewModel,
-  invalidateWorkspace,
   initialSceneId,
   onActiveSceneIdChange,
 }: {
   viewModel: TourProjectWorkspaceViewModel;
-  invalidateWorkspace: () => void;
   initialSceneId?: string | null;
   onActiveSceneIdChange?: (sceneId: string | null) => void;
 }) {
+  const queryClient = useQueryClient();
   const [activeSceneId, setActiveSceneId] = useState<string | null>(
     initialSceneId ?? viewModel.tourScenes[0]?.id ?? null,
   );
   const [pendingActiveSceneId, setPendingActiveSceneId] = useState<
     string | null
   >(null);
+  const [isReturningToProjectGrid, setIsReturningToProjectGrid] =
+    useState(false);
   const [isAddSceneOpen, setIsAddSceneOpen] = useState(false);
   const [sceneToDelete, setSceneToDelete] = useState<TourScene | null>(null);
   const [sceneToReplacePhoto, setSceneToReplacePhoto] =
@@ -56,8 +62,10 @@ export function useTourProjectScenesWorkspace({
           hasProofedContext:
             scene.hasProofedContext || payload.fact.proofStatus === "proofed",
         }));
+        updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+          upsertTourSceneFact(workspace, variables.sceneId, payload.fact)
+        );
       }
-      invalidateWorkspace();
     },
   });
   const updateSceneFactMutation = useMutation({
@@ -83,8 +91,10 @@ export function useTourProjectScenesWorkspace({
               : fact.proofStatus === "proofed",
           ),
         }));
+        updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+          upsertTourSceneFact(workspace, variables.sceneId, payload.fact)
+        );
       }
-      invalidateWorkspace();
     },
   });
   const deleteSceneFactMutation = useMutation({
@@ -103,7 +113,9 @@ export function useTourProjectScenesWorkspace({
           ),
         };
       });
-      invalidateWorkspace();
+      updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+        removeTourSceneFact(workspace, variables.sceneId, variables.factId)
+      );
     },
   });
 
@@ -140,11 +152,18 @@ export function useTourProjectScenesWorkspace({
     : null;
 
   const activateScene = useCallback((sceneId: string | null) => {
+    if (sceneId) {
+      setIsReturningToProjectGrid(false);
+    }
     setActiveSceneId(sceneId);
     onActiveSceneIdChange?.(sceneId);
   }, [onActiveSceneIdChange]);
 
   useEffect(() => {
+    if (isReturningToProjectGrid) {
+      return;
+    }
+
     if (tourScenes.items.length === 0) {
       if (!pendingActiveSceneId) {
         activateScene(null);
@@ -166,7 +185,13 @@ export function useTourProjectScenesWorkspace({
     ) {
       activateScene(tourScenes.items[0].id);
     }
-  }, [activateScene, activeSceneId, pendingActiveSceneId, tourScenes.items]);
+  }, [
+    activateScene,
+    activeSceneId,
+    isReturningToProjectGrid,
+    pendingActiveSceneId,
+    tourScenes.items,
+  ]);
 
   useEffect(() => {
     if (!scenePhoto) {
@@ -231,8 +256,6 @@ export function useTourProjectScenesWorkspace({
     }
 
     const deletedSceneId = sceneToDelete.id;
-    const nextActiveSceneId =
-      tourScenes.items.find((scene) => scene.id !== deletedSceneId)?.id ?? null;
 
     sceneMutations
       .deleteScene(deletedSceneId)
@@ -240,7 +263,8 @@ export function useTourProjectScenesWorkspace({
         tourScenes.setItems(
           tourScenes.items.filter((scene) => scene.id !== deletedSceneId),
         );
-        activateScene(nextActiveSceneId);
+        setIsReturningToProjectGrid(true);
+        activateScene(null);
         setSceneToDelete(null);
       })
       .catch(() => undefined);
@@ -281,8 +305,10 @@ export function useTourProjectScenesWorkspace({
     reorderScenesMutation: sceneMutations.mutations.reorderScenes,
     toggleSceneInclusionMutation: sceneMutations.mutations.toggleSceneInclusion,
     updateSceneCameraMotionMutation: sceneMutations.mutations.updateSceneCameraMotion,
+    updateSceneTransitionEffectMutation: sceneMutations.mutations.updateSceneTransitionEffect,
     deleteSceneMutation: sceneMutations.mutations.deleteScene,
     updateCameraMotion: sceneMutations.updateCameraMotion,
+    updateTransitionEffect: sceneMutations.updateTransitionEffect,
     handleCreateScene,
     handleReplaceScenePhoto,
     handleAddScenePhoto,

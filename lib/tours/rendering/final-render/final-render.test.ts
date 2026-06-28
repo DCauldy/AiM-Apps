@@ -13,7 +13,7 @@ import {
 } from "./final-render";
 import type { HeyGenAvatarMetadata } from "../avatars/tour-avatar";
 import type { TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
-import { resolveTourSceneTransitionSettings } from "../transitions/render-transitions";
+import { resolveSceneTransitionEffectSettings } from "../transitions/scene-transition-effects";
 
 const sceneClipAsset1: TourRenderAsset = {
   id: "asset-clip-1",
@@ -470,13 +470,16 @@ describe("renderFinalVideoStage", () => {
     expect(renderer.muxFinalVideo).toHaveBeenCalled();
   });
 
-  it("keeps a hard-cut join path available when scene transitions are disabled", async () => {
+  it("uses transition settings when joining multiple scene clips", async () => {
     const repository = createRepository();
     const renderer = createRenderer({
       joinSceneClips: vi.fn(async (input) => {
-        expect(input.transitionSettings.enabled).toBe(false);
-        await writeFile(input.joinedScenesPath, Buffer.from("joined-hard-cut-mp4"));
-        return { metadata: { joiner: "hard-cut-test" } };
+        expect(input.transitionSettings).toMatchObject({
+          durationSeconds: 0.5,
+          effect: "swipe-on-top",
+        });
+        await writeFile(input.joinedScenesPath, Buffer.from("joined-transition-mp4"));
+        return { metadata: { joiner: "transition-test" } };
       }),
     });
 
@@ -488,10 +491,20 @@ describe("renderFinalVideoStage", () => {
       clips: [finalSceneClip1, finalSceneClip2],
       voiceoverAsset,
       renderer,
-      options: { sceneTransitions: { enabled: false } },
     });
 
-    expect(result.joinedScenesFingerprint.transitionSettings.enabled).toBe(false);
+    expect(result.joinedScenesFingerprint.transitionSettings).toMatchObject({
+      durationSeconds: 0.5,
+      effect: "swipe-on-top",
+    });
+    expect(result.joinedScenesFingerprint.boundaryTransitionEffects).toEqual([
+      {
+        fromSceneId: "scene-1",
+        toSceneId: "scene-2",
+        effect: "swipe-on-top",
+        durationSeconds: 0.5,
+      },
+    ]);
     expect(renderer.joinSceneClips).toHaveBeenCalled();
   });
 
@@ -645,10 +658,13 @@ describe("final render fingerprints", () => {
     const joined = buildJoinedScenesFingerprint({
       clips: [
         finalSceneClip1,
-        finalSceneClip2,
+        {
+          ...finalSceneClip2,
+          transitionEffect: "cross-blur",
+        },
       ],
       concatSettings: { safe: 0, copyCodec: true },
-      transitionSettings: resolveTourSceneTransitionSettings(),
+      transitionSettings: resolveSceneTransitionEffectSettings(),
     });
     const final = buildFinalVideoFingerprint({
       joinedScenesFingerprintHash: "joined-hash",
@@ -682,10 +698,17 @@ describe("final render fingerprints", () => {
       avatarOverlay: { assetId: "asset-avatar", metadataAssetId: "asset-avatar-metadata" },
     });
     expect(joined.transitionSettings).toMatchObject({
-      enabled: true,
       durationSeconds: 0.5,
       effect: "swipe-on-top",
     });
+    expect(joined.boundaryTransitionEffects).toEqual([
+      {
+        fromSceneId: "scene-1",
+        toSceneId: "scene-2",
+        effect: "cross-blur",
+        durationSeconds: 0.5,
+      },
+    ]);
     expect(joined.expectedDurationSeconds).toBe(8);
     expect(joined.clipHandlePlans).toEqual([
       expect.objectContaining({ sceneId: "scene-1", requestedDurationSeconds: 4 }),

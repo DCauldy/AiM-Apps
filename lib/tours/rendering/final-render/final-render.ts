@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,19 +5,21 @@ import { spawn } from "node:child_process";
 import type { TourRenderAsset, TourRenderRepository } from "../repositories/tour-render.repository";
 import type { HeyGenAvatarMetadata } from "../avatars/tour-avatar";
 import {
-  buildSwipeOnTopJoinArgs,
+  buildSceneTransitionJoinArgs,
   expectedJoinedScenesDurationSeconds,
-  joinedSceneTransitionSegments,
-  resolveTourSceneTransitionSettings,
+  joinedSceneTransitionEffectSegments,
+  resolveSceneTransitionEffectSettings,
   type SceneClipHandlePlan,
-  type TourSceneTransitionSettings,
-} from "../transitions/render-transitions";
+  type ResolvedSceneTransitionEffect,
+  type SceneTransitionEffectSettings,
+} from "../transitions/scene-transition-effects";
 import {
   assertVideoDurationAtLeast,
   assertVideoDurationClose,
   probeVideoDurationSeconds,
   type VideoDurationProbe,
 } from "./video-duration";
+import { hashJsonFingerprint } from "../fingerprint";
 
 export const FINAL_RENDERER_VERSION = "ffmpeg-final-render-v1";
 
@@ -43,7 +44,7 @@ export type FinalRenderStageOptions = {
   muxSettings?: FinalRenderSettings;
   outputPreset?: "vertical_1080p_h264_aac";
   sceneTransitions?: {
-    enabled?: boolean;
+    effect?: ResolvedSceneTransitionEffect;
   };
 };
 
@@ -52,6 +53,7 @@ export type FinalRenderSceneClip = {
   durationSeconds: number;
   requestedDurationSeconds: number;
   handlePlan: SceneClipHandlePlan;
+  transitionEffect?: ResolvedSceneTransitionEffect;
   asset: TourRenderAsset;
   fingerprintHash: string;
 };
@@ -75,9 +77,15 @@ export type JoinedScenesFingerprint = {
     safe: 0 | 1;
     copyCodec: boolean;
   };
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
+  boundaryTransitionEffects: Array<{
+    fromSceneId: string;
+    toSceneId: string;
+    effect: ResolvedSceneTransitionEffect;
+    durationSeconds: number;
+  }>;
   expectedDurationSeconds: number;
-  clipHandlePlans: ReturnType<typeof joinedSceneTransitionSegments>;
+  clipHandlePlans: ReturnType<typeof joinedSceneTransitionEffectSegments>;
 };
 
 export type FinalVideoAvatarOverlayFingerprint = {
@@ -116,7 +124,7 @@ export type FinalVideoRendererInput = {
   avatarVideoPath?: string;
   avatarOverlay?: HeyGenAvatarMetadata["overlay"];
   settings: ResolvedFinalRenderSettings;
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
   expectedJoinedDurationSeconds: number;
   ffmpegPath: string;
 };
@@ -182,16 +190,22 @@ export function resolveFinalRenderStageOptions(options: FinalRenderStageOptions 
       ...(options.muxSettings ?? {}),
     },
     outputPreset: options.outputPreset ?? "vertical_1080p_h264_aac",
-    sceneTransitions: resolveTourSceneTransitionSettings(options.sceneTransitions),
+    sceneTransitions: resolveSceneTransitionEffectSettings(options.sceneTransitions),
   } as const;
 }
 
 export function buildJoinedScenesFingerprint(input: {
   clips: FinalRenderSceneClip[];
   concatSettings: JoinedScenesFingerprint["concatSettings"];
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
 }): JoinedScenesFingerprint {
   const handlePlans = input.clips.map((clip) => clip.handlePlan);
+  const boundaryTransitionEffects = input.clips.slice(1).map((clip, index) => ({
+    fromSceneId: input.clips[index]?.sceneId ?? "",
+    toSceneId: clip.sceneId,
+    effect: clip.transitionEffect ?? input.transitionSettings.effect,
+    durationSeconds: input.transitionSettings.durationSeconds,
+  }));
   return {
     kind: "joined_scenes",
     version: 1,
@@ -203,8 +217,9 @@ export function buildJoinedScenesFingerprint(input: {
     })),
     concatSettings: input.concatSettings,
     transitionSettings: input.transitionSettings,
+    boundaryTransitionEffects,
     expectedDurationSeconds: expectedJoinedScenesDurationSeconds(handlePlans),
-    clipHandlePlans: joinedSceneTransitionSegments(handlePlans),
+    clipHandlePlans: joinedSceneTransitionEffectSegments(handlePlans),
   };
 }
 
@@ -245,7 +260,7 @@ export function buildFinalVideoFingerprint(input: {
 export function hashFinalRenderFingerprint(
   fingerprint: JoinedScenesFingerprint | FinalVideoFingerprint
 ): string {
-  return createHash("sha256").update(stableStringify(fingerprint)).digest("hex");
+  return hashJsonFingerprint(fingerprint);
 }
 
 export async function renderFinalVideoStage(input: {
@@ -410,8 +425,11 @@ export async function renderFinalVideoStage(input: {
         expectedJoinedDurationSeconds: joinedScenesFingerprint.expectedDurationSeconds,
         ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
       });
-    } catch {
-      throw new TourFinalRenderError("Final video mux failed.", "MUX_FAILED");
+    } catch (error) {
+      throw new TourFinalRenderError(
+        appendCauseMessage("Final video mux failed.", error),
+        "MUX_FAILED"
+      );
     }
 
     const finalUpload = await input.repository.uploadRenderAssetBytes({
@@ -475,7 +493,10 @@ export async function renderFinalVideoStage(input: {
     if (error instanceof TourFinalRenderError) {
       throw error;
     }
-    throw new TourFinalRenderError("Final video mux failed.", "MUX_FAILED");
+    throw new TourFinalRenderError(
+      appendCauseMessage("Final video mux failed.", error),
+      "MUX_FAILED"
+    );
   } finally {
     await rm(scratchDir, { recursive: true, force: true });
   }
@@ -484,12 +505,15 @@ export async function renderFinalVideoStage(input: {
 export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
   return {
     async joinSceneClips(input) {
-      if (input.transitionSettings.enabled && input.sceneClipPaths.length > 1) {
+      if (input.sceneClipPaths.length > 1) {
         await runProcess(
           input.ffmpegPath,
-          buildSwipeOnTopJoinArgs({
+          buildSceneTransitionJoinArgs({
             sceneClipPaths: input.sceneClipPaths,
             handlePlans: input.clips.map((clip) => clip.handlePlan),
+            sceneTransitionEffects: input.clips.map(
+              (clip) => clip.transitionEffect ?? input.transitionSettings.effect
+            ),
             transitionSettings: input.transitionSettings,
             width: input.settings.width,
             height: input.settings.height,
@@ -502,8 +526,13 @@ export function createFfmpegFinalVideoRenderer(): FinalVideoRenderer {
         );
         return {
           metadata: {
-            renderer: "ffmpeg_swipe_on_top_transition",
+            renderer: "ffmpeg_scene_transition",
             transitionSettings: input.transitionSettings,
+            boundaryTransitionEffects: input.clips.slice(1).map((clip, index) => ({
+              fromSceneId: input.clips[index]?.sceneId ?? "",
+              toSceneId: clip.sceneId,
+              effect: clip.transitionEffect ?? input.transitionSettings.effect,
+            })),
             expectedDurationSeconds: input.expectedJoinedDurationSeconds,
           },
         };
@@ -639,7 +668,7 @@ async function joinOrReuseJoinedScenes(input: {
   avatarVideoPath?: string;
   avatarOverlay?: HeyGenAvatarMetadata["overlay"];
   settings: ResolvedFinalRenderSettings;
-  transitionSettings: TourSceneTransitionSettings;
+  transitionSettings: SceneTransitionEffectSettings;
   fingerprint: JoinedScenesFingerprint;
   fingerprintHash: string;
   reuseExistingAssets: boolean;
@@ -663,8 +692,11 @@ async function joinOrReuseJoinedScenes(input: {
       expectedJoinedDurationSeconds: input.fingerprint.expectedDurationSeconds,
       ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
     });
-  } catch {
-    throw new TourFinalRenderError("Scene clip concat failed.", "CONCAT_FAILED");
+  } catch (error) {
+    throw new TourFinalRenderError(
+      appendCauseMessage("Scene clip concat failed.", error),
+      "CONCAT_FAILED"
+    );
   }
 
   const joinedUpload = await input.repository.uploadRenderAssetBytes({
@@ -927,38 +959,41 @@ async function validateJoinedScenesDuration(input: {
 
 async function runProcess(command: string, args: string[]): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "ignore" });
+    let stderr = "";
+    const child = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"] });
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      stderr = truncateProcessOutput(`${stderr}${chunk}`);
+    });
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
         return;
       }
-      reject(new Error(`${command} exited with code ${code ?? "unknown"}`));
+      const detail = stderr.trim();
+      reject(
+        new Error(
+          detail
+            ? `${command} exited with code ${code ?? "unknown"}: ${detail}`
+            : `${command} exited with code ${code ?? "unknown"}`
+        )
+      );
     });
   });
 }
 
+function appendCauseMessage(message: string, error: unknown): string {
+  if (!(error instanceof Error) || !error.message.trim()) {
+    return message;
+  }
+  return `${message} ${truncateProcessOutput(error.message, 1600)}`;
+}
+
+function truncateProcessOutput(value: string, maxLength = 4000): string {
+  return value.length > maxLength ? value.slice(value.length - maxLength) : value;
+}
+
 function escapeConcatPath(filePath: string): string {
   return filePath.replaceAll("'", "'\\''");
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(sortJsonValue(value));
-}
-
-function sortJsonValue(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJsonValue);
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
-        .map(([key, nestedValue]) => [key, sortJsonValue(nestedValue)])
-    );
-  }
-
-  return value;
 }
