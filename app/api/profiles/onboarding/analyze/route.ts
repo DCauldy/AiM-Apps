@@ -1,26 +1,21 @@
+import { tasks } from "@trigger.dev/sdk/v3";
 import { createClient } from "@/lib/supabase/server";
-import {
-  analyzeWebsite,
-  refineDraft,
-  WebsiteAnalysisError,
-  type MagicProfileDraft,
-} from "@/lib/profiles/website-analysis";
+import { refineDraft, type MagicProfileDraft } from "@/lib/profiles/website-analysis";
+import type { analyzeProfileTask } from "@/triggers/profile-analyze";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// Deep crawl + a strong model can take a while; give it room.
-export const maxDuration = 120;
 
 /**
  * POST /api/profiles/onboarding/analyze
  *
- * Two actions, distinguished by body shape:
- *   { url }                     → deep website analysis → profile draft
- *   { current, instruction }    → apply a free-text correction to a draft
- *
- * AI Magic onboarding: the user gives us their website and we hand back a
- * fully pre-filled, verifiable profile draft (incl. brand visuals).
+ * Two actions, by body shape:
+ *   { url }                  → kicks off the background analysis task and
+ *                              returns { runId }; the client streams real
+ *                              progress from /analyze/stream?runId=…
+ *   { current, instruction } → applies a free-text correction to a draft
+ *                              (fast, single model call — stays synchronous)
  */
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -37,16 +32,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Refine an existing draft from a correction.
     if (body.current && typeof body.instruction === "string") {
       const draft = await refineDraft(body.current, body.instruction);
       return Response.json({ draft });
     }
 
-    // Fresh analysis from a URL.
     if (typeof body.url === "string") {
-      const result = await analyzeWebsite(body.url);
-      return Response.json(result);
+      const handle = await tasks.trigger<typeof analyzeProfileTask>(
+        "profile-analyze",
+        { url: body.url, userId: user.id },
+      );
+      return Response.json({ runId: handle.id });
     }
 
     return Response.json(
@@ -54,13 +50,9 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   } catch (err) {
-    // WebsiteAnalysisError carries user-friendly copy; anything else is a 500.
-    if (err instanceof WebsiteAnalysisError) {
-      return Response.json({ error: err.message }, { status: 422 });
-    }
     console.error("Profile magic analyze error:", err);
     return Response.json(
-      { error: "Something went sideways analyzing your site. Try again in a moment." },
+      { error: "Couldn't start the analysis. Try again in a moment." },
       { status: 500 },
     );
   }

@@ -162,6 +162,16 @@ export function getProfileMagicModel() {
   return getProfileSetupProvider().chat(slug);
 }
 
+/**
+ * Vision model for reading brand colors straight off a logo image — far
+ * more reliable than scraping stray hex codes out of site CSS. GPT-4o has
+ * solid, cheap vision + reliable JSON-ish output.
+ */
+export function getProfileVisionModel() {
+  if (!useOpenRouter) return getDirectOpenAI().chat("gpt-4o");
+  return getProfileSetupProvider().chat("openai/gpt-4o");
+}
+
 // ---------------------------------------------------------------------------
 // Hyperlocal — email composition
 // ---------------------------------------------------------------------------
