@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2, Pencil } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { clearDraft } from "@/lib/profiles/onboarding-draft";
 
 export interface ProfileDraft {
   full_name: string;
@@ -17,13 +18,32 @@ export interface ProfileDraft {
   // Optional fields populated by AI Magic mode (website analysis). Control
   // Freak mode leaves these undefined, so the card just hides them.
   title?: string | null;
+  country?: string | null;
+  counties?: string[];
+  neighborhoods?: string[];
+  specializations?: string[];
+  target_clients?: string[];
+  property_types?: string[];
   phone?: string | null;
+  reply_to_email?: string | null;
+  physical_address?: string | null;
+  sign_off?: string | null;
+  license_number?: string | null;
+  license_info?: string | null;
+  regulatory_body?: string | null;
+  compliance_notes?: string | null;
+  legal_disclaimer?: string | null;
   website_url?: string | null;
+  blog_url?: string | null;
+  seo_keywords?: string[];
   primary_color?: string | null;
   secondary_color?: string | null;
   accent_color?: string | null;
+  heading_font?: string | null;
+  body_font?: string | null;
   logo_url?: string | null;
   headshot_url?: string | null;
+  brokerage_badge_url?: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -37,8 +57,6 @@ const ROLE_LABELS: Record<string, string> = {
 
 interface ProfileSummaryCardProps {
   draft: ProfileDraft;
-  /** Tells the parent chat to keep going (user wants to tweak something). */
-  onEdit: () => void;
 }
 
 /**
@@ -47,7 +65,7 @@ interface ProfileSummaryCardProps {
  * (which auto-marks the first profile as default + active), dismisses the
  * welcome modal, and routes the user back to /apps.
  */
-export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
+export function ProfileSummaryCard({ draft }: ProfileSummaryCardProps) {
   const router = useRouter();
   const { addToast } = useToast();
   const [creating, setCreating] = useState(false);
@@ -63,20 +81,42 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
       const display_name = `${draft.full_name} — ${draft.brokerage}`;
       // Only send keys that are actually set — undefined optional fields
       // (Control Freak mode) simply fall through to the schema defaults.
+      // Empty arrays are dropped too so we don't clobber schema defaults.
+      const optionalKeys = [
+        "title",
+        "country",
+        "counties",
+        "neighborhoods",
+        "specializations",
+        "target_clients",
+        "property_types",
+        "phone",
+        "reply_to_email",
+        "physical_address",
+        "sign_off",
+        "license_number",
+        "license_info",
+        "regulatory_body",
+        "compliance_notes",
+        "legal_disclaimer",
+        "website_url",
+        "blog_url",
+        "seo_keywords",
+        "primary_color",
+        "secondary_color",
+        "accent_color",
+        "heading_font",
+        "body_font",
+        "logo_url",
+        "headshot_url",
+        "brokerage_badge_url",
+      ] as const;
       const optional = Object.fromEntries(
-        (
-          [
-            "title",
-            "phone",
-            "website_url",
-            "primary_color",
-            "secondary_color",
-            "accent_color",
-            "logo_url",
-            "headshot_url",
-          ] as const
-        )
-          .filter((k) => draft[k] != null)
+        optionalKeys
+          .filter((k) => {
+            const v = draft[k];
+            return Array.isArray(v) ? v.length > 0 : v != null;
+          })
           .map((k) => [k, draft[k]]),
       );
       const res = await fetch("/api/profiles", {
@@ -101,6 +141,8 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
       // active_profile_id is set, but stamping the dismiss timestamp
       // keeps the trigger consistent across all paths.
       await fetch("/api/welcome/dismiss", { method: "POST" });
+      // Profile created — the in-progress onboarding draft is no longer needed.
+      await clearDraft();
       setCreatedAt(Date.now());
       router.push("/apps");
     } catch (err: unknown) {
@@ -121,6 +163,24 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
     draft.accent_color,
   ].filter((c): c is string => !!c);
   const hasBrand = !!draft.logo_url || !!draft.headshot_url || brandColors.length > 0;
+
+  const list = (a?: string[]) => (a && a.length ? a.join(", ") : null);
+  const extraPairs: [string, string | null | undefined][] = [
+    ["Title", draft.title],
+    ["Email", draft.reply_to_email],
+    ["Address", draft.physical_address],
+    ["License #", draft.license_number],
+    ["Regulator", draft.regulatory_body],
+    ["Counties", list(draft.counties)],
+    ["Areas", list(draft.neighborhoods)],
+    ["Focus", list(draft.specializations)],
+    ["Property", list(draft.property_types)],
+    ["Clients", list(draft.target_clients)],
+    ["Blog", draft.blog_url],
+  ];
+  const extras = extraPairs
+    .filter((e): e is [string, string] => !!e[1])
+    .map(([label, value]) => ({ label, value }));
 
   return (
     <div className="glass-card rounded-xl p-5 space-y-4 max-w-md">
@@ -169,11 +229,24 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
         </div>
       ) : null}
 
-      <div className="flex gap-2 pt-1">
+      {extras.length > 0 ? (
+        <div className="pt-1 border-t border-white/10 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Also captured
+          </p>
+          <dl className="space-y-1.5">
+            {extras.map((e) => (
+              <Row key={e.label} label={e.label} value={e.value} multiline />
+            ))}
+          </dl>
+        </div>
+      ) : null}
+
+      <div className="pt-1 space-y-2">
         <Button
           onClick={handleCreate}
           disabled={creating || createdAt !== null}
-          className="flex-1 text-white border-0 h-10 rounded-lg font-semibold hover:opacity-95 transition-opacity"
+          className="w-full text-white dark:text-white border border-white/30 h-10 rounded-lg font-semibold shadow-lg hover:opacity-95 hover:border-white/50 transition-all"
           style={{
             background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)",
           }}
@@ -189,16 +262,9 @@ export function ProfileSummaryCard({ draft, onEdit }: ProfileSummaryCardProps) {
             "Create my profile"
           )}
         </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onEdit}
-          disabled={creating}
-          className="h-10 w-10 rounded-lg border-white/15 hover:bg-white/5"
-          aria-label="Change something"
-        >
-          <Pencil className="h-4 w-4" />
-        </Button>
+        <p className="text-center text-[11px] text-muted-foreground">
+          Need to change something? Just type it below — I&apos;ll update it.
+        </p>
       </div>
     </div>
   );

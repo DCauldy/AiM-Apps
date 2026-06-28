@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { TextStreamChatTransport } from "ai";
-import { Bot, Loader2, Send, Sparkles, User } from "lucide-react";
+import { ArrowLeft, Bot, Loader2, Send, User } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Circuitry } from "@/components/decor/Circuitry";
+import { NerdIcon } from "@/components/icons/NerdIcon";
+import { useDraftAutosave } from "@/lib/profiles/onboarding-draft";
+import { AutosaveBadge } from "./AutosaveBadge";
 import { ProfileSummaryCard, type ProfileDraft } from "./ProfileSummaryCard";
 
 // ============================================================
@@ -63,18 +66,36 @@ function parseProfileBlock(
   return { draft: null, textWithoutBlock: text };
 }
 
-const SEED_MESSAGE: UIMessage = {
-  id: "seed-welcome",
-  role: "assistant",
-  parts: [
-    {
-      type: "text" as const,
-      text: "Beep boop! 🤖 - Hey, welcome to AiM Automations. I'll ask you a few quick questions and we'll have your profile set up in just a couple of minutes.\n\nFirst things first: **what's your full name?**",
-    },
-  ],
-};
+const SEED_MESSAGES: UIMessage[] = [
+  {
+    id: "seed-welcome",
+    role: "assistant",
+    parts: [
+      {
+        type: "text" as const,
+        text: "Beep boop! 🤖 - Hey, welcome to AiM Automations. I'll ask you a few quick questions and we'll have your profile set up in just a couple of minutes.",
+      },
+    ],
+  },
+  {
+    id: "seed-first-question",
+    role: "assistant",
+    parts: [
+      {
+        type: "text" as const,
+        text: "First things first: **what's your full name?**",
+      },
+    ],
+  },
+];
 
-export function ProfileOnboardingChat() {
+export function ProfileOnboardingChat({
+  onBack,
+  initialMessages,
+}: {
+  onBack: () => void;
+  initialMessages?: UIMessage[];
+}) {
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -89,8 +110,20 @@ export function ProfileOnboardingChat() {
 
   const { messages, sendMessage, status, error } = useChat({
     transport,
-    messages: [SEED_MESSAGE],
+    // Resume from a saved transcript if provided, else the fresh seed.
+    messages:
+      initialMessages && initialMessages.length > 0
+        ? initialMessages
+        : SEED_MESSAGES,
   });
+
+  // Autosave the transcript once the user has actually answered something, so
+  // they can leave and pick up where they left off.
+  const saveStatus = useDraftAutosave(
+    "control",
+    { messages },
+    messages.some((m) => m.role === "user"),
+  );
 
   const isLoading = status === "submitted" || status === "streaming";
 
@@ -118,23 +151,11 @@ export function ProfileOnboardingChat() {
     }
   };
 
-  const handleEditDraft = async () => {
-    inputRef.current?.focus();
-    await sendMessage({ text: "Actually, I want to change something." });
-  };
-
   return (
     <div className="relative max-w-2xl mx-auto px-4 py-8 sm:py-12">
       {/* Header */}
       <div className="text-center mb-6 space-y-2">
-        <div
-          className="inline-flex items-center justify-center w-11 h-11 rounded-xl shadow-lg mb-1"
-          style={{
-            background: "linear-gradient(135deg, #1C4C8A 0%, #31DBA5 100%)",
-          }}
-        >
-          <Sparkles className="h-5 w-5 text-white" />
-        </div>
+        <NerdIcon className="block h-14 w-14 mx-auto mb-1 text-white/85" />
         <h1 className="text-2xl font-bold text-foreground">
           Let&apos;s build your profile
         </h1>
@@ -143,6 +164,9 @@ export function ProfileOnboardingChat() {
           your blogs, campaigns, and outreach to your brand, market, and voice.
           Answer a few quick questions and you&apos;re ready to launch.
         </p>
+        <div className="flex justify-center pt-1">
+          <AutosaveBadge status={saveStatus} />
+        </div>
       </div>
 
       {/* Chat surface — glassmorphic card carrying the AiM teal-blue brand
@@ -213,12 +237,7 @@ export function ProfileOnboardingChat() {
                         <FormattedText text={textWithoutBlock} />
                       </div>
                     )}
-                    {draft && (
-                      <ProfileSummaryCard
-                        draft={draft}
-                        onEdit={handleEditDraft}
-                      />
-                    )}
+                    {draft && <ProfileSummaryCard draft={draft} />}
                   </div>
                 </div>
               </div>
@@ -284,6 +303,16 @@ export function ProfileOnboardingChat() {
           </div>
         </div>
       </div>
+
+      {/* Back to mode picker — under the chatbox. */}
+      <button
+        type="button"
+        onClick={onBack}
+        className="mt-4 mx-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back to setup options
+      </button>
     </div>
   );
 }

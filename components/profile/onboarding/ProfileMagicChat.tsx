@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bot, Globe, Loader2, Send, Sparkles, ArrowLeft } from "lucide-react";
+import { Bot, Globe, Loader2, Send, Sparkles, ArrowLeft, MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Circuitry } from "@/components/decor/Circuitry";
+import { useDraftAutosave } from "@/lib/profiles/onboarding-draft";
+import { AutosaveBadge } from "./AutosaveBadge";
 import { ProfileSummaryCard, type ProfileDraft } from "./ProfileSummaryCard";
 
 // ============================================================
@@ -16,46 +18,91 @@ import { ProfileSummaryCard, type ProfileDraft } from "./ProfileSummaryCard";
 
 type Phase = "url" | "analyzing" | "review" | "error";
 
-// Faux-progress narration shown during the single analyze call. Cycling
-// these makes the wait feel alive and magical instead of a dead spinner.
-const ANALYZING_STEPS = [
-  "Opening your website…",
-  "Reading your homepage…",
-  "Studying your About & Team pages…",
-  "Figuring out your market…",
-  "Pulling your brand colors…",
-  "Finding your logo & headshot…",
-  "Writing your bio in your voice…",
-  "Polishing your profile…",
-];
+/** Saved snapshot for resume (mirrors what we autosave). */
+export interface MagicResume {
+  draft: ProfileDraft;
+  found?: string[];
+  lowConfidence?: string[];
+  url?: string;
+}
 
-export function ProfileMagicChat({ onBack }: { onBack: () => void }) {
-  const [phase, setPhase] = useState<Phase>("url");
-  const [url, setUrl] = useState("");
-  const [draft, setDraft] = useState<ProfileDraft | null>(null);
-  const [found, setFound] = useState<string[]>([]);
-  const [lowConfidence, setLowConfidence] = useState<string[]>([]);
+export function ProfileMagicChat({
+  onBack,
+  resume,
+}: {
+  onBack: () => void;
+  resume?: MagicResume | null;
+}) {
+  const [phase, setPhase] = useState<Phase>(resume?.draft ? "review" : "url");
+  const [url, setUrl] = useState(resume?.url ?? "");
+  const [draft, setDraft] = useState<ProfileDraft | null>(resume?.draft ?? null);
+  const [found, setFound] = useState<string[]>(resume?.found ?? []);
+  const [lowConfidence, setLowConfidence] = useState<string[]>(
+    resume?.lowConfidence ?? [],
+  );
   const [error, setError] = useState<string | null>(null);
-  const [stepIdx, setStepIdx] = useState(0);
+
+  // Autosave the draft once we have one to review, so the user can leave and
+  // come back. (We don't save during URL entry / analysis — nothing useful yet.)
+  const saveStatus = useDraftAutosave(
+    "magic",
+    { draft, found, lowConfidence, url },
+    phase === "review" && !!draft,
+  );
+  // Progress is REAL — driven by milestones the background task reports.
+  // `progress` is what we render; `progressTarget` is the latest milestone;
+  // the easing effect glides between them so it feels live, not steppy.
+  const [progress, setProgress] = useState(0);
+  const [progressTarget, setProgressTarget] = useState(0);
+  const [stepText, setStepText] = useState("Starting…");
 
   const [correction, setCorrection] = useState("");
   const [refining, setRefining] = useState(false);
   const correctionRef = useRef<HTMLInputElement>(null);
+  const esRef = useRef<EventSource | null>(null);
+  const settledRef = useRef(false);
 
-  // Drive the analyzing narration while the request is in flight.
+  // Critical fields the site often doesn't expose — we ask for these.
+  const gaps: string[] = draft
+    ? ([
+        ["physical_address", "office mailing address"],
+        ["reply_to_email", "reply-to email"],
+      ] as const)
+        .filter(([key]) => !draft[key as keyof typeof draft])
+        .map(([, label]) => label)
+    : [];
+
+  // Glide the rendered bar toward the latest real milestone. A small forward
+  // creep past the target (capped at 96%) keeps it moving during the long
+  // AI step so it never sits dead-still; only the real "done" reaches 100%.
   useEffect(() => {
     if (phase !== "analyzing") return;
-    setStepIdx(0);
     const id = setInterval(() => {
-      setStepIdx((i) => Math.min(i + 1, ANALYZING_STEPS.length - 1));
-    }, 1400);
+      setProgress((p) => {
+        const ceil = progressTarget >= 100 ? 100 : Math.min(progressTarget + 8, 96);
+        if (p >= ceil) return p;
+        return p + (ceil - p) * 0.08 + 0.2;
+      });
+    }, 120);
     return () => clearInterval(id);
-  }, [phase]);
+  }, [phase, progressTarget]);
+
+  // Tear down the stream if the component unmounts mid-analysis.
+  useEffect(() => {
+    return () => {
+      esRef.current?.close();
+      esRef.current = null;
+    };
+  }, []);
 
   const analyze = async () => {
     const value = url.trim();
     if (!value) return;
+    settledRef.current = false;
     setError(null);
+    setStepText("Starting…");
+    setProgress(0);
+    setProgressTarget(4);
     setPhase("analyzing");
     try {
       const res = await fetch("/api/profiles/onboarding/analyze", {
@@ -64,11 +111,58 @@ export function ProfileMagicChat({ onBack }: { onBack: () => void }) {
         body: JSON.stringify({ url: value }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Analysis failed");
-      setDraft(data.draft as ProfileDraft);
-      setFound(Array.isArray(data.found) ? data.found : []);
-      setLowConfidence(Array.isArray(data.lowConfidence) ? data.lowConfidence : []);
-      setPhase("review");
+      if (!res.ok || !data.runId) throw new Error(data.error || "Couldn't start the analysis.");
+
+      const es = new EventSource(
+        `/api/profiles/onboarding/analyze/stream?runId=${encodeURIComponent(data.runId)}`,
+      );
+      esRef.current = es;
+
+      es.onmessage = (ev) => {
+        let msg: {
+          type: string;
+          progress?: number;
+          step?: string;
+          message?: string;
+          draft?: ProfileDraft;
+          found?: string[];
+          lowConfidence?: string[];
+        };
+        try {
+          msg = JSON.parse(ev.data);
+        } catch {
+          return;
+        }
+        if (msg.type === "progress") {
+          if (typeof msg.progress === "number") setProgressTarget(msg.progress);
+          if (msg.step) setStepText(msg.step);
+        } else if (msg.type === "done" && msg.draft) {
+          settledRef.current = true;
+          es.close();
+          esRef.current = null;
+          setProgressTarget(100);
+          setProgress(100);
+          setDraft(msg.draft);
+          setFound(msg.found ?? []);
+          setLowConfidence(msg.lowConfidence ?? []);
+          setTimeout(() => setPhase("review"), 400);
+        } else if (msg.type === "error") {
+          settledRef.current = true;
+          es.close();
+          esRef.current = null;
+          setError(msg.message || "Something went wrong.");
+          setPhase("error");
+        }
+      };
+
+      es.onerror = () => {
+        if (settledRef.current) return; // normal close after done
+        settledRef.current = true;
+        es.close();
+        esRef.current = null;
+        setError("Lost the connection while analyzing. Please try again.");
+        setPhase("error");
+      };
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setPhase("error");
@@ -108,6 +202,9 @@ export function ProfileMagicChat({ onBack }: { onBack: () => void }) {
           Give me your website and I&apos;ll build your whole profile from it —
           brand, market, bio, the works. Sit back, this is the fun part.
         </p>
+        <div className="flex justify-center pt-1">
+          <AutosaveBadge status={saveStatus} />
+        </div>
       </div>
 
       <div
@@ -131,13 +228,21 @@ export function ProfileMagicChat({ onBack }: { onBack: () => void }) {
         <div className="relative z-10 flex-1 overflow-y-auto px-4 py-6 space-y-4">
           {/* Opening bot message */}
           <BotBubble>
-            Beep boop! 🤖 — drop your website below and I&apos;ll build your
-            entire profile from it.
-            <br />
-            No forms, no 20 questions. Just paste the link.
+            <span className="block font-semibold text-white">
+              Beep boop! 🤖
+            </span>
+            <span className="mt-1 block">
+              Drop your website below and I&apos;ll build your entire profile
+              from it — brand, market, bio, the works.
+            </span>
+            <span className="mt-2 block text-[13px] text-white/70">
+              No forms. No 20 questions. Just paste the link. ✨
+            </span>
           </BotBubble>
 
-          {phase === "analyzing" && <AnalyzingBubble step={ANALYZING_STEPS[stepIdx]} />}
+          {phase === "analyzing" && (
+            <AnalyzingBubble step={stepText} progress={progress} />
+          )}
 
           {phase === "error" && (
             <div className="mx-auto max-w-md rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
@@ -175,35 +280,54 @@ export function ProfileMagicChat({ onBack }: { onBack: () => void }) {
               <div className="flex justify-start">
                 <div className="flex items-start gap-2 w-full max-w-[95%]">
                   <Avatar />
-                  <ProfileSummaryCard
-                    draft={draft}
-                    onEdit={() => correctionRef.current?.focus()}
-                  />
+                  <ProfileSummaryCard draft={draft} />
                 </div>
               </div>
+
+              {gaps.length > 0 && (
+                <BotBubble>
+                  <span className="font-semibold">
+                    Couple things I couldn&apos;t find on your site —
+                  </span>{" "}
+                  what&apos;s your {gaps.join(" and ")}? Just type it below (these
+                  keep your emails compliant).
+                </BotBubble>
+              )}
             </>
           )}
         </div>
 
         {/* Input area — swaps based on phase */}
-        <div className="relative z-10 border-t border-white/10 p-3 bg-white/[0.02]">
+        <div className="relative z-10 border-t-2 border-[#31DBA5]/30 p-3.5 bg-black/20">
           {phase === "review" ? (
-            <div className="flex gap-2">
-              <input
-                ref={correctionRef}
-                value={correction}
-                onChange={(e) => setCorrection(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && refine()}
-                placeholder="Tell me what to tweak… (e.g. 'I'm with eXp now')"
-                disabled={refining}
-                className="flex-1 rounded-lg border border-white/15 bg-white/[0.04] px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#31DBA5]/40"
-              />
-              <SendButton onClick={refine} disabled={refining || !correction.trim()} loading={refining} />
-            </div>
+            <>
+              <div className="flex items-center gap-1.5 mb-2 px-0.5">
+                <MessageSquare className="h-3.5 w-3.5 text-[#31DBA5]" />
+                <span className="text-xs font-semibold text-white/90">
+                  Chat with the AI to make changes
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  ref={correctionRef}
+                  value={correction}
+                  onChange={(e) => setCorrection(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && refine()}
+                  placeholder={
+                    gaps.length > 0
+                      ? `Add your ${gaps[0]}… or tell me what to tweak`
+                      : "Tell me what to tweak… (e.g. 'I'm with eXp now')"
+                  }
+                  disabled={refining}
+                  className="flex-1 rounded-xl border-2 border-white/25 bg-white/[0.10] px-4 py-3 text-[15px] text-white placeholder:text-white/55 shadow-inner focus:outline-none focus:ring-2 focus:ring-[#31DBA5]/60 focus:border-[#31DBA5]/60 transition-colors"
+                />
+                <SendButton onClick={refine} disabled={refining || !correction.trim()} loading={refining} />
+              </div>
+            </>
           ) : (
             <div className="flex gap-2">
               <div className="relative flex-1">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60" />
                 <input
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
@@ -211,7 +335,7 @@ export function ProfileMagicChat({ onBack }: { onBack: () => void }) {
                   placeholder="yourwebsite.com"
                   disabled={phase === "analyzing"}
                   autoFocus
-                  className="w-full rounded-lg border border-white/15 bg-white/[0.04] pl-9 pr-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#31DBA5]/40 disabled:opacity-50"
+                  className="w-full rounded-xl border-2 border-white/25 bg-white/[0.10] pl-10 pr-3 py-3 text-[15px] text-white placeholder:text-white/55 shadow-inner focus:outline-none focus:ring-2 focus:ring-[#31DBA5]/60 focus:border-[#31DBA5]/60 disabled:opacity-50 transition-colors"
                 />
               </div>
               <SendButton
@@ -224,7 +348,7 @@ export function ProfileMagicChat({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      {/* Footer: back to mode picker / fallback */}
+      {/* Back to mode picker — under the chatbox. */}
       <button
         type="button"
         onClick={onBack}
@@ -258,17 +382,27 @@ function BotBubble({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AnalyzingBubble({ step }: { step: string }) {
+function AnalyzingBubble({ step, progress }: { step: string; progress: number }) {
   return (
     <div className="flex justify-start">
-      <div className="flex items-start gap-2 max-w-[85%]">
+      <div className="flex items-start gap-2 max-w-[85%] w-full">
         <Avatar />
-        <div className="rounded-2xl rounded-tl-sm px-4 py-3 bg-white/[0.06] border border-white/10 text-sm text-foreground">
+        <div className="flex-1 rounded-2xl rounded-tl-sm px-4 py-3 bg-white/[0.06] border border-white/10 text-sm text-foreground">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[#31DBA5] animate-twinkle shrink-0" />
             <span className="bg-gradient-to-r from-white/60 via-white to-white/60 bg-[length:200%_100%] bg-clip-text text-transparent animate-[shimmer_2s_linear_infinite]">
               {step}
             </span>
+          </div>
+          {/* Eased progress bar — climbs toward ~95% then snaps to 100%. */}
+          <div className="mt-2.5 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-[width] duration-200 ease-out"
+              style={{
+                width: `${Math.round(progress)}%`,
+                background: "linear-gradient(90deg, #1C4C8A 0%, #31DBA5 100%)",
+              }}
+            />
           </div>
         </div>
       </div>
@@ -291,7 +425,7 @@ function SendButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex items-center justify-center w-10 h-10 rounded-lg shrink-0 transition-opacity bg-white text-[#1C4C8A] shadow-sm",
+        "flex items-center justify-center w-11 h-11 self-end rounded-xl shrink-0 transition-opacity bg-white text-[#1C4C8A] shadow-sm",
         "disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90",
       )}
     >

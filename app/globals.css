@@ -891,6 +891,158 @@ pre code {
   100% { background-position: -200% 0; }
 }
 
+/* ── AiM Magic card — animated blue→green gradient border + glow ──
+   Draws the eye to the recommended AI Magic Mode option. The ::before is a
+   masked gradient ring (only the 2px border shows); ::after is a soft pulsing
+   brand-color glow. Both are transparent over the card content. */
+/* Animated angle so the conic gradient can spin seamlessly (0deg === 360deg,
+   so the loop has no visible snap — it just keeps rotating clockwise). */
+@property --aim-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.aim-magic-card {
+  position: relative;
+}
+/* Drop glass-card's own 1px border so the animated gradient ring is the only
+   outline (otherwise the ring sits inside the border → two concentric lines). */
+.aim-magic-card.glass-card {
+  border: 0;
+}
+.aim-magic-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--aim-angle),
+    #1C4C8A,
+    #31DBA5,
+    #5ef0c0,
+    #31DBA5,
+    #1C4C8A
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: aimBorderSpin 4s linear infinite;
+  pointer-events: none;
+}
+.aim-magic-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  /* Pure blur, NO spread — a 2px spread paints a crisp green ring at the edge
+     that reads as a second outline next to the gradient border. */
+  box-shadow: 0 0 26px 0 rgba(49, 219, 165, 0.45);
+  animation: aimGlowPulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes aimBorderSpin {
+  to { --aim-angle: 360deg; }
+}
+@keyframes aimGlowPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.85; }
+}
+
+/* Playful one-shot hover gestures for the onboarding mode cards. */
+@keyframes magicPop {
+  0% { transform: scale(1) rotate(0deg); }
+  45% { transform: scale(1.35) rotate(18deg); }
+  70% { transform: scale(0.95) rotate(-6deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+/* Chat-bubble tail for the banter bubbles — a small triangle "tag" at the
+   bottom so the quip reads like an iMessage. Colour matches the bubble via
+   the --tail-color custom property set inline. */
+.chat-tail::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  right: 16px;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 9px solid var(--tail-color, #3c4250);
+}
+
+/* Pixie dust drifting off the Magic icon on hover — little sparkles rising
+   and fading, like the magic is leaking out. */
+@keyframes pixieFloat {
+  0%   { transform: translate(0, 4px) scale(0.3); opacity: 0; }
+  25%  { opacity: 1; }
+  100% { transform: translate(var(--pixie-x, 6px), -26px) scale(1); opacity: 0; }
+}
+
+/* Control Freak "checks its own work" — each item's checkmark pops in, a
+   strike-through sweeps across, then it all undoes and re-does on a loop,
+   because it didn't trust the first pass. Per-item animation-delay staggers
+   them; same timing drives the matching strike line. */
+/* Most items just check once and stay checked. */
+@keyframes selfCheckHold {
+  0%   { opacity: 0; transform: scale(0.2); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes selfStrikeHold {
+  0%   { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+/* …except the one it doesn't trust: checks in, then keeps blinking off and
+   re-checking itself forever. */
+/* The obsessive item: briefly checked, then unchecks FAST (14%), waits while
+   "fixing…" is slowly written, and only re-checks (70%) once the word is done. */
+@keyframes obsessiveCheck {
+  0%        { opacity: 0; transform: scale(0.2); }   /* ticks in with the rest */
+  4%, 14%   { opacity: 1; transform: scale(1); }      /* checked; holds until the last box is done */
+  19%, 68%  { opacity: 0; transform: scale(0.3); }    /* THEN unchecks, stays off while writing */
+  76%, 100% { opacity: 1; transform: scale(1); }      /* re-checks once "fixing" is written */
+}
+@keyframes obsessiveStrike {
+  0%        { transform: scaleX(0); }
+  4%, 14%   { transform: scaleX(1); }
+  19%, 68%  { transform: scaleX(0); }
+  76%, 100% { transform: scaleX(1); }
+}
+/* "fixing…" scrawled in by hand (left-to-right reveal) while the box is
+   unchecked, finishing right before it re-checks. */
+@keyframes fixingWrite {
+  0%, 22%   { clip-path: inset(0 100% 0 0); opacity: 0; }
+  26%       { clip-path: inset(0 100% 0 0); opacity: 1; }
+  60%, 66%  { clip-path: inset(0 0 0 0); opacity: 1; }
+  72%, 100% { clip-path: inset(0 0 0 0); opacity: 0; }
+}
+
+/* Magic Mode "conjure" reveal — profile pieces materialize out of a blur,
+   one by one, shimmering, then fade and re-summon on a loop. */
+@keyframes conjure {
+  0%   { opacity: 0; transform: translateY(7px) scale(0.96); filter: blur(3px); }
+  18%  { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  82%  { opacity: 1; }
+  100% { opacity: 0; filter: blur(2px); }
+}
+
+/* The nerd "pushes glasses up the nose" nudge — a double bob, then a beat,
+   looped so it keeps fidgeting the whole time you hover. */
+@keyframes glassesPush {
+  0%  { transform: translateY(0) rotate(0deg); }
+  10% { transform: translateY(-5px) rotate(-4deg); }
+  20% { transform: translateY(0) rotate(0deg); }
+  30% { transform: translateY(-3px) rotate(2deg); }
+  40% { transform: translateY(0) rotate(0deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aim-magic-card::before { animation: none; }
+  .aim-magic-card::after { animation: none; opacity: 0.55; }
+}
+
 /* Respect users who prefer reduced motion — hold the glow, drop the movement. */
 @media (prefers-reduced-motion: reduce) {
   .animate-twinkle {
