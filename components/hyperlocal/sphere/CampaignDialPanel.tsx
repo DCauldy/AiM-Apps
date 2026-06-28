@@ -141,7 +141,10 @@ export function CampaignDialPanel({
   const angleIndex = ANGLE_STOPS.findIndex((s) => s.lens === lens);
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
+    <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card p-4">
+      {/* Scrollable body — dials. Launch is pinned below so the panel bottom
+          lines up with the map even when the dials don't fill the height. */}
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
       {/* Header */}
       <div className="flex items-baseline justify-between gap-3">
         <div>
@@ -303,8 +306,11 @@ export function CampaignDialPanel({
         )}
       </div>
 
-      {/* Launch — single CTA per mode (the mode was chosen at the picker). */}
-      <div className="pt-1">
+      </div>
+      {/* end scrollable body */}
+
+      {/* Launch — pinned to the bottom so the panel bottom aligns with the map. */}
+      <div className="mt-3 shrink-0 border-t border-border pt-3">
         <button
           type="button"
           disabled={launching || recipientCount === 0}

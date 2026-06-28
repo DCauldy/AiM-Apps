@@ -328,13 +328,13 @@ export function SphereMapClient() {
           />
         </div>
 
-        {/* Control rail */}
+        {/* Control rail — fixed to the map height so the bottoms line up. */}
         <div
-          className="flex w-full shrink-0 flex-col gap-2 overflow-y-auto lg:w-[360px]"
-          style={{ maxHeight: MAP_HEIGHT }}
+          className="flex w-full shrink-0 flex-col gap-2 lg:w-[360px]"
+          style={{ height: MAP_HEIGHT }}
         >
           {suggestion && mode === "magic" && (
-            <div className="rounded-xl border border-[#F43F5E]/30 bg-[#F43F5E]/10 px-3 py-2 text-xs text-foreground">
+            <div className="shrink-0 rounded-xl border border-[#F43F5E]/30 bg-[#F43F5E]/10 px-3 py-2 text-xs text-foreground">
               <span className="mr-1">✨</span>
               {suggestion.rationale} Tweak it or just hit Send.
             </div>
@@ -359,7 +359,7 @@ export function SphereMapClient() {
               }
             />
           ) : (
-            <div className="rounded-2xl border border-dashed border-border bg-card/50 p-6 text-center">
+            <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card/50 p-6 text-center">
               <p className="text-2xl">🗺️</p>
               <p className="mt-2 text-sm font-medium">Pick your neighborhoods</p>
               <p className="mt-1 text-xs text-muted-foreground">
