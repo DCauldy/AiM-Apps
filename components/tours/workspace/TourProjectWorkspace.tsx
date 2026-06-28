@@ -201,7 +201,7 @@ export function TourProjectWorkspace() {
             className="mt-4"
             onClick={() => setIsCreateSceneOpen(true)}
           >
-            Add scene
+            Add Scene
             <Plus />
           </Button>
         </div>
@@ -230,7 +230,7 @@ export function TourProjectWorkspace() {
           variant="outline"
           onClick={() => setIsCreateSceneOpen((open) => !open)}
         >
-          {isCreateSceneOpen ? "Close" : "Add scene"}
+          {isCreateSceneOpen ? "Close" : "Add Scene"}
           {isCreateSceneOpen ? <X /> : <Plus />}
         </Button>
       </header>
@@ -650,7 +650,7 @@ const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
             }
           >
             <Link href={`/apps/tours/projects/${projectId}/${scene.id}`}>
-              Open scene
+              Open Scene
             </Link>
           </SplitActionMenuButton>
         </div>

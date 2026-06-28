@@ -47,7 +47,7 @@ export const SplitActionMenuButton = forwardRef<
   const Action = asChild ? Slot : "button";
 
   return (
-    <div className="inline-flex shrink-0 items-center">
+    <DropdownMenu className="inline-flex shrink-0 items-center">
       <Action
         ref={ref}
         className={cn(
@@ -58,25 +58,23 @@ export const SplitActionMenuButton = forwardRef<
       >
         {children}
       </Action>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className={cn(
-            "inline-flex h-9 w-9 items-center justify-center rounded-l-none rounded-r-md border border-border bg-background text-muted-foreground ring-offset-background transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-            triggerClassName,
-          )}
-          aria-label={menuAriaLabel}
-          disabled={menuDisabled}
-        >
-          <EllipsisVertical className="h-4 w-4" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align={menuAlign}
-          side={menuSide}
-          className={menuContentClassName}
-        >
-          {menuContent}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+      <DropdownMenuTrigger
+        className={cn(
+          "inline-flex h-9 w-9 items-center justify-center rounded-l-none rounded-r-md border border-border bg-background text-muted-foreground ring-offset-background transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+          triggerClassName,
+        )}
+        aria-label={menuAriaLabel}
+        disabled={menuDisabled}
+      >
+        <EllipsisVertical className="h-4 w-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align={menuAlign}
+        side={menuSide}
+        className={menuContentClassName}
+      >
+        {menuContent}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 });

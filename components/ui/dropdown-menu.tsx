@@ -8,7 +8,13 @@ interface DropdownMenuContextValue {
 
 const DropdownMenuContext = React.createContext<DropdownMenuContextValue | undefined>(undefined);
 
-const DropdownMenu = ({ children }: { children: React.ReactNode }) => {
+const DropdownMenu = ({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => {
   const [open, setOpen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
@@ -34,7 +40,9 @@ const DropdownMenu = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <DropdownMenuContext.Provider value={{ open, setOpen }}>
-      <div ref={containerRef} className="relative">{children}</div>
+      <div ref={containerRef} className={cn("relative", className)}>
+        {children}
+      </div>
     </DropdownMenuContext.Provider>
   );
 };

@@ -221,7 +221,8 @@ function TourProjectRenderActions({
       <SplitActionMenuButton
         asChild
         menuAriaLabel="Open project actions"
-        menuContentClassName="w-56"
+        menuAlign="center"
+        menuContentClassName="w-56 sm:left-auto sm:right-0 sm:translate-x-0"
         menuContent={projectActions}
       >
         <Link href={renderingHref}>
@@ -237,7 +238,8 @@ function TourProjectRenderActions({
       type="button"
       disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun}
       menuAriaLabel="Open project actions"
-      menuContentClassName="w-56"
+      menuAlign="center"
+      menuContentClassName="w-56 sm:left-auto sm:right-0 sm:translate-x-0"
       menuContent={projectActions}
       onClick={() => {
         renderRuns.createFreshRenderRun();

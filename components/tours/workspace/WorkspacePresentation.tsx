@@ -95,7 +95,9 @@ function FileDropzone({
     <div
       {...getRootProps({
         className: `flex aspect-[4/3] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed p-4 text-center transition-colors ${
-          isDragActive ? "border-primary bg-primary/10" : "border-border bg-muted/40 hover:bg-muted"
+          isDragActive
+            ? "border-primary bg-primary/10"
+            : "border-border bg-muted/40 hover:bg-muted"
         }`,
       })}
     >
@@ -103,14 +105,22 @@ function FileDropzone({
       {previewUrl ? (
         <img
           src={previewUrl}
-          alt={fileName ? `Selected listing photo ${fileName}` : "Selected listing photo preview"}
+          alt={
+            fileName
+              ? `Selected listing photo ${fileName}`
+              : "Selected listing photo preview"
+          }
           className="h-full w-full rounded-md object-cover"
         />
       ) : (
         <>
           <UploadCloud className="h-8 w-8 text-primary" />
-          <span className="mt-3 text-sm font-semibold text-foreground">{label}</span>
-          <span className="mt-1 text-xs text-muted-foreground">JPEG, PNG, or WebP</span>
+          <span className="mt-3 text-sm font-semibold text-foreground">
+            {label}
+          </span>
+          <span className="mt-1 text-xs text-muted-foreground">
+            JPEG, PNG, or WebP
+          </span>
         </>
       )}
     </div>
@@ -218,7 +228,10 @@ export function SceneImageRail({
     );
   }
 
-  const sourcePhotos = scene.sourcePhotos.length > 0 ? scene.sourcePhotos : [scene.authoritativePhoto];
+  const sourcePhotos =
+    scene.sourcePhotos.length > 0
+      ? scene.sourcePhotos
+      : [scene.authoritativePhoto];
 
   return (
     <div className="flex max-h-[260px] flex-col gap-2 overflow-y-auto lg:max-h-[calc(100vh-18rem)]">
@@ -228,7 +241,9 @@ export function SceneImageRail({
           type="button"
           onClick={() => onSelectPhoto(photo.id)}
           className={`h-[68px] w-[68px] overflow-hidden rounded-md border lg:h-[88px] lg:w-[88px] ${
-            photo.id === selectedPhotoId ? "border-primary ring-2 ring-primary/25" : "border-border hover:border-primary/60"
+            photo.id === selectedPhotoId
+              ? "border-primary ring-2 ring-primary/25"
+              : "border-border hover:border-primary/60"
           }`}
           aria-label={`View ${scene.title} image ${index + 1}`}
         >
@@ -249,7 +264,11 @@ export function SceneImageRail({
         <div className="relative h-[68px] w-[68px] overflow-hidden rounded-md border border-primary/60 bg-muted lg:h-[88px] lg:w-[88px]">
           <img
             src={pendingPhotoPreviewUrl}
-            alt={pendingPhotoName ? `Uploading ${pendingPhotoName}` : "Uploading listing photo"}
+            alt={
+              pendingPhotoName
+                ? `Uploading ${pendingPhotoName}`
+                : "Uploading listing photo"
+            }
             className="h-full w-full object-cover opacity-70"
           />
           <div className="absolute inset-0 flex items-center justify-center bg-background/45 backdrop-blur-[1px]">
@@ -261,7 +280,9 @@ export function SceneImageRail({
         {...getRootProps({
           type: "button",
           className: `flex h-[68px] w-[68px] items-center justify-center rounded-md border border-dashed text-muted-foreground transition-colors lg:h-[88px] lg:w-[88px] ${
-            isDragActive ? "border-primary bg-primary/10 text-foreground" : "border-border bg-muted/20 hover:bg-muted/40 hover:text-foreground"
+            isDragActive
+              ? "border-primary bg-primary/10 text-foreground"
+              : "border-border bg-muted/20 hover:bg-muted/40 hover:text-foreground"
           } ${isAddingPhoto ? "cursor-wait opacity-60" : ""}`,
           "aria-label": `Add photo to ${scene.title}`,
         })}
@@ -365,7 +386,9 @@ export function SceneActionsMenu({
   const canRemovePhoto = scene.sourcePhotos.length > 1;
   const selectedPhotoId = selectedPhoto?.id ?? scene.authoritativePhoto.id;
   const selectedPhotoLabel =
-    selectedPhotoId === scene.authoritativePhoto.id ? "primary photo" : "secondary photo";
+    selectedPhotoId === scene.authoritativePhoto.id
+      ? "primary photo"
+      : "secondary photo";
 
   return (
     <div className="absolute right-3 top-3 z-30">
@@ -433,15 +456,21 @@ export function ProjectDetailsDialog({
 }) {
   const effectiveTourType =
     tourType ??
-    (showAvatarSettings ? "tour_video_avatar" : showVoiceId ? "tour_video_voice_over" : "tour_video");
-  const { isVoiceSelectionMissing, isAvatarSelectionMissing } = getRequiredSettingsState({
-    tourType: effectiveTourType,
-    elevenLabsVoiceId: details.elevenLabsVoiceId,
-    heyGenAvatarId: details.heyGenAvatarId,
-    heyGenAvatarPlacement: details.heyGenAvatarPlacement,
-  });
+    (showAvatarSettings
+      ? "tour_video_avatar"
+      : showVoiceId
+        ? "tour_video_voice_over"
+        : "tour_video");
+  const { isVoiceSelectionMissing, isAvatarSelectionMissing } =
+    getRequiredSettingsState({
+      tourType: effectiveTourType,
+      elevenLabsVoiceId: details.elevenLabsVoiceId,
+      heyGenAvatarId: details.heyGenAvatarId,
+      heyGenAvatarPlacement: details.heyGenAvatarPlacement,
+    });
   const isVoiceSelectionRequired = showVoiceId && isVoiceSelectionMissing;
-  const isAvatarSelectionRequired = showAvatarSettings && isAvatarSelectionMissing;
+  const isAvatarSelectionRequired =
+    showAvatarSettings && isAvatarSelectionMissing;
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     if (isVoiceSelectionRequired || isAvatarSelectionRequired) {
       event.preventDefault();
@@ -464,7 +493,9 @@ export function ProjectDetailsDialog({
               <input
                 type="text"
                 value={details.name}
-                onChange={(event) => onChange({ ...details, name: event.target.value })}
+                onChange={(event) =>
+                  onChange({ ...details, name: event.target.value })
+                }
                 className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </label>
@@ -473,7 +504,9 @@ export function ProjectDetailsDialog({
               <input
                 type="text"
                 value={details.propertyAddress}
-                onChange={(event) => onChange({ ...details, propertyAddress: event.target.value })}
+                onChange={(event) =>
+                  onChange({ ...details, propertyAddress: event.target.value })
+                }
                 className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </label>
@@ -482,7 +515,9 @@ export function ProjectDetailsDialog({
               <input
                 type="url"
                 value={details.listingUrl}
-                onChange={(event) => onChange({ ...details, listingUrl: event.target.value })}
+                onChange={(event) =>
+                  onChange({ ...details, listingUrl: event.target.value })
+                }
                 className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </label>
@@ -493,7 +528,9 @@ export function ProjectDetailsDialog({
                   <ElevenLabsVoiceSelector
                     value={details.elevenLabsVoiceId}
                     disabled={isSaving}
-                    onChange={(voiceId) => onChange({ ...details, elevenLabsVoiceId: voiceId })}
+                    onChange={(voiceId) =>
+                      onChange({ ...details, elevenLabsVoiceId: voiceId })
+                    }
                   />
                 </div>
                 {isVoiceSelectionRequired ? (
@@ -530,10 +567,21 @@ export function ProjectDetailsDialog({
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSaving || isVoiceSelectionRequired || isAvatarSelectionRequired}>
+            <Button
+              type="submit"
+              disabled={
+                isSaving ||
+                isVoiceSelectionRequired ||
+                isAvatarSelectionRequired
+              }
+            >
               {isSaving ? "Saving..." : "Save details"}
             </Button>
           </DialogFooter>
@@ -571,7 +619,7 @@ export function SceneUploadDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={onSubmit}>
           <DialogHeader>
-            <DialogTitle>Add scene</DialogTitle>
+            <DialogTitle>Add Scene</DialogTitle>
             <DialogClose onClose={() => onOpenChange(false)} />
           </DialogHeader>
           <DialogBody className="space-y-4">
@@ -595,7 +643,11 @@ export function SceneUploadDialog({
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isSaving}>
@@ -640,7 +692,8 @@ export function ReplacePhotoDialog({
           <DialogBody className="space-y-4">
             {scene && (
               <p className="text-sm text-muted-foreground">
-                {scene.title}. This updates the primary listing photo; rail thumbnail selection only changes the displayed image.
+                {scene.title}. This updates the primary listing photo; rail
+                thumbnail selection only changes the displayed image.
               </p>
             )}
             <FileDropzone
@@ -653,7 +706,11 @@ export function ReplacePhotoDialog({
             {error && <ErrorMessage>{error.message}</ErrorMessage>}
           </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isSaving || !scene}>
@@ -699,11 +756,20 @@ export function ConfirmDialog({
           {error && <ErrorMessage>{error.message}</ErrorMessage>}
         </DialogBody>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
-          <Button type="button" variant="destructive" disabled={isPending} onClick={onConfirm}>
-            {isPending ? pendingText ?? "Deleting..." : confirmText}
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={isPending}
+            onClick={onConfirm}
+          >
+            {isPending ? (pendingText ?? "Deleting...") : confirmText}
           </Button>
         </DialogFooter>
       </DialogContent>
