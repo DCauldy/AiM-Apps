@@ -17,7 +17,7 @@ export function TourProjectSceneWorkspace({
   initialSceneId?: string | null;
 }) {
   const router = useRouter();
-  const { viewModel, acknowledgementMutation, invalidateWorkspace } = useTourProjectWorkspace();
+  const { viewModel, acknowledgementMutation } = useTourProjectWorkspace();
 
   const authorization = viewModel.listingMediaAuthorization;
   const canUseSceneMediaTools = authorization.hasAcknowledged;
@@ -72,7 +72,6 @@ export function TourProjectSceneWorkspace({
     confirmSceneDelete,
   } = useTourProjectScenesWorkspace({
     viewModel,
-    invalidateWorkspace,
     initialSceneId,
     onActiveSceneIdChange: handleActiveSceneIdChange,
   });

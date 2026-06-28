@@ -9,10 +9,11 @@ import {
   getDeleteAuthoritativeSourcePhotoRpcArgs,
   mapDeleteAuthoritativeSourcePhotoError,
 } from "@/lib/tours/source-photo-contract.core";
+import { getSignedTourSceneSourcePhoto } from "@/lib/tours/workspace";
 
 export const dynamic = "force-dynamic";
 
-const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion, created_at, updated_at";
+const SCENE_SELECT = "id, project_id, title, sort_order, included, camera_motion, transition_effect, created_at, updated_at";
 const SOURCE_PHOTO_SELECT =
   "id, project_id, scene_id, storage_path, file_name, content_type, byte_size, width, height, priority, created_at";
 
@@ -121,7 +122,14 @@ export async function POST(
     .eq("project_id", projectId)
     .eq("id", sceneId);
 
-  return Response.json({ scene, sourcePhoto: createdPhoto }, { status: 201 });
+  const signedSourcePhoto = await getSignedTourSceneSourcePhoto(access.supabase, {
+    id: createdPhoto.id,
+    fileName: createdPhoto.file_name,
+    storagePath: createdPhoto.storage_path,
+    contentType: createdPhoto.content_type,
+  });
+
+  return Response.json({ scene, sourcePhoto: signedSourcePhoto }, { status: 201 });
 }
 
 export async function PATCH(
@@ -228,7 +236,14 @@ export async function PATCH(
     .eq("id", sceneId);
   await access.supabase.storage.from(LISTING_MEDIA_BUCKET).remove([currentPhoto.storage_path]);
 
-  return Response.json({ scene, authoritativePhoto: updatedPhoto });
+  const signedAuthoritativePhoto = await getSignedTourSceneSourcePhoto(access.supabase, {
+    id: updatedPhoto.id,
+    fileName: updatedPhoto.file_name,
+    storagePath: updatedPhoto.storage_path,
+    contentType: updatedPhoto.content_type,
+  });
+
+  return Response.json({ scene, authoritativePhoto: signedAuthoritativePhoto });
 }
 
 export async function DELETE(

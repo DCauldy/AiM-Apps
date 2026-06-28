@@ -6,6 +6,7 @@ import {
   getListingMediaStoragePath,
   validateListingMediaFile,
 } from "@/lib/tours/listing-media/listing-media-upload";
+import { mapTourSceneToWorkspaceScene } from "@/lib/tours/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -76,5 +77,10 @@ export async function POST(
     return Response.json({ error: result.error }, { status: 400 });
   }
 
-  return Response.json({ scene: result.scene }, { status: 201 });
+  const workspaceScene = await mapTourSceneToWorkspaceScene({
+    supabase: access.supabase,
+    scene: result.scene,
+  });
+
+  return Response.json({ scene: workspaceScene }, { status: 201 });
 }

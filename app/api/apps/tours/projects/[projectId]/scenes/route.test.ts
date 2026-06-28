@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   validateListingMediaFile: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
+
 vi.mock("@/lib/tours/access/access.server", () => ({
   requireToursAccess: mocks.requireToursAccess,
   toursAccessErrorResponse: mocks.toursAccessErrorResponse,
@@ -55,7 +57,11 @@ import { POST as createScene } from "./route";
 import { PATCH as reorderScenes } from "./reorder/route";
 import { DELETE as deleteScene, PATCH as updateScene } from "./[sceneId]/route";
 import { PATCH as toggleSceneInclusion } from "./[sceneId]/inclusion/route";
-import { DELETE as deleteAuthoritativePhoto } from "./[sceneId]/photo/route";
+import {
+  DELETE as deleteAuthoritativePhoto,
+  PATCH as replaceAuthoritativePhoto,
+  POST as addScenePhoto,
+} from "./[sceneId]/photo/route";
 import { GET as listSceneFacts, POST as createSceneFact } from "./[sceneId]/facts/route";
 import {
   DELETE as deleteSceneFact,
@@ -86,6 +92,10 @@ function createStorageClient() {
   const bucket = {
     upload: vi.fn().mockResolvedValue({ error: null }),
     remove: vi.fn().mockResolvedValue({ error: null }),
+    createSignedUrl: vi.fn().mockResolvedValue({
+      data: { signedUrl: "https://signed.example/kitchen.jpg" },
+      error: null,
+    }),
   };
   const supabase = {
     storage: {
@@ -93,6 +103,158 @@ function createStorageClient() {
     },
   };
   return { bucket, supabase };
+}
+
+function sceneModel(overrides = {}) {
+  return {
+    id: "scene-1",
+    projectId: "project-1",
+    title: "Kitchen",
+    sortOrder: 0,
+    included: true,
+    cameraMotion: "auto",
+    transitionEffect: "auto",
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+    authoritativePhoto: {
+      id: "photo-1",
+      projectId: "project-1",
+      sceneId: "scene-1",
+      storagePath: "user-1/project-1/kitchen.jpg",
+      fileName: "kitchen.jpg",
+      contentType: "image/jpeg",
+      byteSize: 5,
+      width: null,
+      height: null,
+      priority: 0,
+      createdAt: "2026-06-01T00:00:00.000Z",
+    },
+    sourcePhotos: [
+      {
+        id: "photo-1",
+        projectId: "project-1",
+        sceneId: "scene-1",
+        storagePath: "user-1/project-1/kitchen.jpg",
+        fileName: "kitchen.jpg",
+        contentType: "image/jpeg",
+        byteSize: 5,
+        width: null,
+        height: null,
+        priority: 0,
+        createdAt: "2026-06-01T00:00:00.000Z",
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function sceneRow(overrides = {}) {
+  return {
+    id: "scene-1",
+    project_id: "project-1",
+    title: "Kitchen",
+    sort_order: 0,
+    included: true,
+    camera_motion: "auto",
+    transition_effect: "auto",
+    created_at: "2026-06-01T00:00:00.000Z",
+    updated_at: "2026-06-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function sourcePhotoRow(overrides = {}) {
+  return {
+    id: "photo-1",
+    project_id: "project-1",
+    scene_id: "scene-1",
+    storage_path: "user-1/project-1/kitchen.jpg",
+    file_name: "kitchen.jpg",
+    content_type: "image/jpeg",
+    byte_size: 5,
+    width: null,
+    height: null,
+    priority: 0,
+    created_at: "2026-06-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function createPhotoRouteSupabase({
+  scene,
+  lastPhoto,
+  createdPhoto,
+  currentPhoto,
+  updatedPhoto,
+}: {
+  scene?: unknown;
+  lastPhoto?: unknown;
+  createdPhoto?: unknown;
+  currentPhoto?: unknown;
+  updatedPhoto?: unknown;
+}) {
+  const { bucket, supabase } = createStorageClient();
+  const sceneSelectQuery = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: scene ?? sceneRow(), error: null }),
+  };
+  const sceneUpdateQuery = {
+    update: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+  };
+  const lastPhotoQuery = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    order: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: lastPhoto ?? { priority: 0 }, error: null }),
+  };
+  const createPhotoQuery = {
+    insert: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    single: vi.fn().mockResolvedValue({
+      data: createdPhoto ?? sourcePhotoRow({ id: "photo-2", storage_path: "user-1/project-1/kitchen-secondary.jpg" }),
+      error: null,
+    }),
+  };
+  const currentPhotoQuery = {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: currentPhoto ?? sourcePhotoRow({ id: "photo-1", storage_path: "user-1/project-1/old-kitchen.jpg" }),
+      error: null,
+    }),
+  };
+  const updatePhotoQuery = {
+    update: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: updatedPhoto ?? sourcePhotoRow({ id: "photo-1", storage_path: "user-1/project-1/kitchen.jpg" }),
+      error: null,
+    }),
+  };
+  const sourcePhotoQueries =
+    currentPhoto || updatedPhoto
+      ? [currentPhotoQuery, updatePhotoQuery]
+      : [lastPhotoQuery, createPhotoQuery];
+  const tableQueries = new Map<string, unknown[]>([
+    ["tour_scenes", [sceneSelectQuery, sceneUpdateQuery]],
+    ["tour_scene_source_photos", sourcePhotoQueries],
+  ]);
+
+  return {
+    bucket,
+    supabase: {
+      ...supabase,
+      from: vi.fn((table: string) => tableQueries.get(table)?.shift()),
+    },
+    queries: {
+      createPhotoQuery,
+      updatePhotoQuery,
+    },
+  };
 }
 
 function allowAccess(supabase: unknown = createStorageClient().supabase) {
@@ -159,14 +321,40 @@ test("create TourScene uploads source photo and delegates scene creation", async
   allowAccess(supabase);
   mocks.createTourSceneFromAuthoritativePhoto.mockResolvedValue({
     ok: true,
-    scene: { id: "scene-1", title: "Kitchen" },
+    scene: sceneModel(),
   });
 
   const response = await createScene(formRequest(), params);
 
   expect(response.status).toBe(201);
   await expect(response.json()).resolves.toEqual({
-    scene: { id: "scene-1", title: "Kitchen" },
+    scene: {
+      id: "scene-1",
+      title: "Kitchen",
+      sortOrder: 0,
+      included: true,
+      cameraMotion: "auto",
+      transitionEffect: "auto",
+      authoritativePhoto: {
+        id: "photo-1",
+        fileName: "kitchen.jpg",
+        storagePath: "user-1/project-1/kitchen.jpg",
+        contentType: "image/jpeg",
+        previewUrl: "https://signed.example/kitchen.jpg",
+      },
+      sourcePhotos: [
+        {
+          id: "photo-1",
+          fileName: "kitchen.jpg",
+          storagePath: "user-1/project-1/kitchen.jpg",
+          contentType: "image/jpeg",
+          previewUrl: "https://signed.example/kitchen.jpg",
+        },
+      ],
+      facts: [],
+      hasProofedContext: false,
+      status: "ready",
+    },
   });
   expect(supabase.storage.from).toHaveBeenCalledWith("tours-listing-media");
   expect(bucket.upload).toHaveBeenCalledWith(
@@ -184,6 +372,7 @@ test("create TourScene uploads source photo and delegates scene creation", async
       byteSize: 5,
     },
   });
+  expect(bucket.createSignedUrl).toHaveBeenCalledWith("user-1/project-1/kitchen.jpg", 60 * 60);
 });
 
 test("create TourScene removes uploaded source photo when scene creation fails", async () => {
@@ -199,6 +388,89 @@ test("create TourScene removes uploaded source photo when scene creation fails",
   expect(response.status).toBe(400);
   await expect(response.json()).resolves.toEqual({ error: "Could not create the TourScene." });
   expect(bucket.remove).toHaveBeenCalledWith(["user-1/project-1/kitchen.jpg"]);
+});
+
+test("add scene photo returns a signed workspace source photo", async () => {
+  const { bucket, supabase, queries } = createPhotoRouteSupabase({
+    createdPhoto: sourcePhotoRow({
+      id: "photo-2",
+      storage_path: "user-1/project-1/kitchen-secondary.jpg",
+      file_name: "kitchen-secondary.jpg",
+      priority: 1,
+    }),
+  });
+  allowAccess(supabase);
+  mocks.getListingMediaStoragePath.mockReturnValue("user-1/project-1/kitchen-secondary.jpg");
+  bucket.createSignedUrl.mockResolvedValue({
+    data: { signedUrl: "https://signed.example/kitchen-secondary.jpg" },
+    error: null,
+  });
+
+  const response = await addScenePhoto(formRequest(), sceneParams);
+
+  expect(response.status).toBe(201);
+  await expect(response.json()).resolves.toEqual({
+    scene: sceneRow(),
+    sourcePhoto: {
+      id: "photo-2",
+      fileName: "kitchen-secondary.jpg",
+      storagePath: "user-1/project-1/kitchen-secondary.jpg",
+      contentType: "image/jpeg",
+      previewUrl: "https://signed.example/kitchen-secondary.jpg",
+    },
+  });
+  expect(queries.createPhotoQuery.insert).toHaveBeenCalledWith({
+    project_id: "project-1",
+    scene_id: "scene-1",
+    storage_path: "user-1/project-1/kitchen-secondary.jpg",
+    file_name: "kitchen.jpg",
+    content_type: "image/jpeg",
+    byte_size: 5,
+    width: null,
+    height: null,
+    priority: 1,
+  });
+  expect(bucket.createSignedUrl).toHaveBeenCalledWith("user-1/project-1/kitchen-secondary.jpg", 60 * 60);
+});
+
+test("replace authoritative scene photo returns a signed workspace photo", async () => {
+  const { bucket, supabase, queries } = createPhotoRouteSupabase({
+    updatedPhoto: sourcePhotoRow({
+      id: "photo-1",
+      storage_path: "user-1/project-1/replacement.jpg",
+      file_name: "replacement.jpg",
+    }),
+  });
+  allowAccess(supabase);
+  mocks.getListingMediaStoragePath.mockReturnValue("user-1/project-1/replacement.jpg");
+  bucket.createSignedUrl.mockResolvedValue({
+    data: { signedUrl: "https://signed.example/replacement.jpg" },
+    error: null,
+  });
+
+  const response = await replaceAuthoritativePhoto(formRequest(), sceneParams);
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({
+    scene: sceneRow(),
+    authoritativePhoto: {
+      id: "photo-1",
+      fileName: "replacement.jpg",
+      storagePath: "user-1/project-1/replacement.jpg",
+      contentType: "image/jpeg",
+      previewUrl: "https://signed.example/replacement.jpg",
+    },
+  });
+  expect(queries.updatePhotoQuery.update).toHaveBeenCalledWith({
+    storage_path: "user-1/project-1/replacement.jpg",
+    file_name: "kitchen.jpg",
+    content_type: "image/jpeg",
+    byte_size: 5,
+    width: null,
+    height: null,
+  });
+  expect(bucket.remove).toHaveBeenCalledWith(["user-1/project-1/old-kitchen.jpg"]);
+  expect(bucket.createSignedUrl).toHaveBeenCalledWith("user-1/project-1/replacement.jpg", 60 * 60);
 });
 
 test("reorder TourScenes validates request body before service delegation", async () => {

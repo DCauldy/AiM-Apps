@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   TourProjectWorkspaceViewModel,
   TourScene,
@@ -11,20 +11,24 @@ import {
   deleteSceneFact,
   updateSceneFact,
 } from "@/components/tours/tours-api-client";
+import {
+  removeTourSceneFact,
+  updateTourWorkspaceCache,
+  upsertTourSceneFact,
+} from "./tourWorkspaceCache";
 import { useSourcePhotoSelection } from "./useSourcePhotoSelection";
 import { useTourSceneMutations } from "./useTourSceneMutations";
 
 export function useTourProjectScenesWorkspace({
   viewModel,
-  invalidateWorkspace,
   initialSceneId,
   onActiveSceneIdChange,
 }: {
   viewModel: TourProjectWorkspaceViewModel;
-  invalidateWorkspace: () => void;
   initialSceneId?: string | null;
   onActiveSceneIdChange?: (sceneId: string | null) => void;
 }) {
+  const queryClient = useQueryClient();
   const [activeSceneId, setActiveSceneId] = useState<string | null>(
     initialSceneId ?? viewModel.tourScenes[0]?.id ?? null,
   );
@@ -58,8 +62,10 @@ export function useTourProjectScenesWorkspace({
           hasProofedContext:
             scene.hasProofedContext || payload.fact.proofStatus === "proofed",
         }));
+        updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+          upsertTourSceneFact(workspace, variables.sceneId, payload.fact)
+        );
       }
-      invalidateWorkspace();
     },
   });
   const updateSceneFactMutation = useMutation({
@@ -85,8 +91,10 @@ export function useTourProjectScenesWorkspace({
               : fact.proofStatus === "proofed",
           ),
         }));
+        updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+          upsertTourSceneFact(workspace, variables.sceneId, payload.fact)
+        );
       }
-      invalidateWorkspace();
     },
   });
   const deleteSceneFactMutation = useMutation({
@@ -105,7 +113,9 @@ export function useTourProjectScenesWorkspace({
           ),
         };
       });
-      invalidateWorkspace();
+      updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+        removeTourSceneFact(workspace, variables.sceneId, variables.factId)
+      );
     },
   });
 

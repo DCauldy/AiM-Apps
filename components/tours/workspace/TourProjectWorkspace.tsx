@@ -39,6 +39,7 @@ import {
   useState,
 } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useOptimisticSortableList,
   type OptimisticSortableId,
@@ -52,6 +53,13 @@ import {
   replaceAuthoritativeSceneListingPhoto,
 } from "@/components/tours/tours-api-client";
 import { useTourProjectWorkspace } from "./useTourProjectWorkspace";
+import {
+  appendTourScene,
+  applyTourSceneOrder,
+  removeTourScene,
+  replaceTourSceneAuthoritativePhoto,
+  updateTourWorkspaceCache,
+} from "./tourWorkspaceCache";
 import {
   ConfirmDialog,
   ErrorMessage,
@@ -68,6 +76,7 @@ import { SplitActionMenuButton } from "./SplitActionMenuButton";
 export function TourProjectWorkspace() {
   const { viewModel, acknowledgementMutation, invalidateWorkspace } =
     useTourProjectWorkspace();
+  const queryClient = useQueryClient();
   const [isCreateSceneOpen, setIsCreateSceneOpen] = useState(false);
   const [sceneToReplacePhoto, setSceneToReplacePhoto] =
     useState<TourScene | null>(null);
@@ -84,14 +93,20 @@ export function TourProjectWorkspace() {
   const scenes = viewModel.tourScenes;
   const persistSceneOrder = useCallback(
     async (orderedSceneIds: string[]) => {
-      await reorderTourScenes(
+      const payload = await reorderTourScenes(
         viewModel.project.id,
         orderedSceneIds,
         "Could not save the scene order.",
       );
-      invalidateWorkspace();
+      if (payload.scenes) {
+        updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+          applyTourSceneOrder(workspace, payload.scenes ?? [])
+        );
+      } else {
+        invalidateWorkspace();
+      }
     },
-    [invalidateWorkspace, viewModel.project.id],
+    [invalidateWorkspace, queryClient, viewModel.project.id],
   );
   const sortableScenes = useOptimisticSortableList({
     items: scenes,
@@ -118,22 +133,36 @@ export function TourProjectWorkspace() {
         viewModel.project.id,
         sceneId,
         formData,
-      ),
-    onSuccess: () => {
+    ),
+    onSuccess: (payload, variables) => {
+      const authoritativePhoto = payload.authoritativePhoto;
       setReplacementPhoto(null);
       setSceneToReplacePhoto(null);
-      invalidateWorkspace();
+      if (authoritativePhoto) {
+        updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+          replaceTourSceneAuthoritativePhoto(
+            workspace,
+            variables.sceneId,
+            authoritativePhoto,
+            payload.scene
+          )
+        );
+      } else {
+        invalidateWorkspace();
+      }
     },
   });
   const deleteSceneMutation = useMutation({
     mutationFn: (sceneId: string) =>
       deleteTourScene(viewModel.project.id, sceneId),
-    onSuccess: (_payload, deletedSceneId) => {
+    onSuccess: (payload, deletedSceneId) => {
       sortableScenes.setItems(
         sortableScenes.items.filter((scene) => scene.id !== deletedSceneId),
       );
       setSceneToDelete(null);
-      invalidateWorkspace();
+      updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+        removeTourScene(workspace, payload.removedSceneId ?? deletedSceneId)
+      );
     },
   });
   const authorization = viewModel.listingMediaAuthorization;
@@ -349,6 +378,7 @@ function useCreateSceneForm({
   onCreated: () => void;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [sceneTitle, setSceneTitle] = useState("");
   const [scenePhoto, setScenePhoto] = useState<File | null>(null);
   const [scenePhotoPreviewUrl, setScenePhotoPreviewUrl] = useState<
@@ -362,11 +392,17 @@ function useCreateSceneForm({
         "Could not create the scene.",
       ),
     onSuccess: (payload) => {
-      const sceneId =
-        typeof payload.scene?.id === "string" ? payload.scene.id : null;
+      const createdScene = payload.scene;
+      const sceneId = typeof createdScene?.id === "string" ? createdScene.id : null;
       setSceneTitle("");
       setScenePhoto(null);
-      invalidateWorkspace();
+      if (createdScene) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          appendTourScene(workspace, createdScene)
+        );
+      } else {
+        invalidateWorkspace();
+      }
       onCreated();
       if (sceneId) {
         router.push(`/apps/tours/projects/${projectId}/${sceneId}`);

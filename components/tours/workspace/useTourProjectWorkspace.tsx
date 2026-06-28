@@ -12,6 +12,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
+import type { UpdateTourProjectResponse } from "@/lib/tours/projects/project-api-contracts";
 import {
   acknowledgeListingMediaAuthorization,
   archiveTourProject,
@@ -20,6 +21,10 @@ import {
   updateTourProjectDetails,
 } from "@/components/tours/tours-api-client";
 import type { ProjectDetailsForm } from "./WorkspacePresentation";
+import {
+  applyTourProjectDetails,
+  updateTourWorkspaceCache,
+} from "./tourWorkspaceCache";
 
 type TourProjectWorkspaceContextValue = {
   viewModel: TourProjectWorkspaceViewModel;
@@ -103,7 +108,7 @@ function useUpdateTourProjectMutation({
   onSuccess,
 }: {
   projectId: string;
-  onSuccess: () => void;
+  onSuccess: (payload: UpdateTourProjectResponse) => void;
 }) {
   return useMutation({
     mutationFn: (details: ProjectDetailsForm) => updateTourProjectDetails(projectId, details),
@@ -184,9 +189,12 @@ export function TourProjectWorkspaceProvider({
   });
   const updateProjectMutation = useUpdateTourProjectMutation({
     projectId: viewModel.project.id,
-    onSuccess: () => {
+    onSuccess: (payload) => {
+      updateTourWorkspaceCache(queryClient, viewModel.project.id, (workspace) =>
+        payload.project ? applyTourProjectDetails(workspace, payload.project) : workspace
+      );
+      queryClient.invalidateQueries({ queryKey: tourQueryKeys.openProjects() });
       setIsProjectDetailsOpen(false);
-      invalidateWorkspace();
     },
   });
   const archiveProjectMutation = useArchiveTourProjectMutation(viewModel.project.id);

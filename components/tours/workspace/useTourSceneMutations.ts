@@ -18,6 +18,16 @@ import {
   updateSceneCameraMotion,
   updateSceneTransitionEffect,
 } from "@/components/tours/tours-api-client";
+import {
+  addTourScenePhoto,
+  appendTourScene,
+  applyTourSceneOrder,
+  applyTourScenePatch,
+  removeTourScene,
+  removeTourScenePhoto,
+  replaceTourSceneAuthoritativePhoto,
+  updateTourWorkspaceCache,
+} from "./tourWorkspaceCache";
 
 export function useTourSceneMutations({
   projectId,
@@ -43,32 +53,88 @@ export function useTourSceneMutations({
   const createSceneMutation = useMutation({
     mutationFn: (formData: FormData) => createSceneFromListingPhoto(projectId, formData),
     onSuccess: (payload) => {
-      onSceneCreated(typeof payload?.scene?.id === "string" ? payload.scene.id : null);
-      invalidateWorkspace();
+      const createdScene = payload?.scene;
+      if (createdScene) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          appendTourScene(workspace, createdScene)
+        );
+      } else {
+        invalidateWorkspace();
+      }
+      onSceneCreated(typeof createdScene?.id === "string" ? createdScene.id : null);
     },
   });
   const replacePhotoMutation = useMutation({
     mutationFn: ({ sceneId, formData }: { sceneId: string; formData: FormData }) =>
       replaceAuthoritativeSceneListingPhoto(projectId, sceneId, formData),
-    onSuccess: () => {
+    onSuccess: (payload, variables) => {
+      const authoritativePhoto = payload.authoritativePhoto;
+      const scene = payload.scene;
       onScenePhotoReplaced();
-      invalidateWorkspace();
+      if (authoritativePhoto) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          replaceTourSceneAuthoritativePhoto(
+            workspace,
+            variables.sceneId,
+            authoritativePhoto,
+            scene
+          )
+        );
+      } else if (scene) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          applyTourScenePatch(workspace, scene)
+        );
+      } else {
+        invalidateWorkspace();
+      }
     },
   });
   const addPhotoMutation = useMutation({
     mutationFn: ({ sceneId, formData }: { sceneId: string; formData: FormData }) =>
       addSceneListingPhoto(projectId, sceneId, formData),
-    onSuccess: invalidateWorkspace,
+    onSuccess: (payload, variables) => {
+      const sourcePhoto = payload.sourcePhoto;
+      const scene = payload.scene;
+      if (sourcePhoto) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          addTourScenePhoto(workspace, variables.sceneId, sourcePhoto, scene)
+        );
+      } else if (scene) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          applyTourScenePatch(workspace, scene)
+        );
+      } else {
+        invalidateWorkspace();
+      }
+    },
     onSettled: onAddPhotoSettled,
   });
   const removePhotoMutation = useMutation({
     mutationFn: ({ sceneId, sourcePhotoId }: { sceneId: string; sourcePhotoId: string | null }) =>
       removeSceneListingPhoto(projectId, sceneId, sourcePhotoId),
-    onSuccess: invalidateWorkspace,
+    onSuccess: (payload, variables) => {
+      const removedPhotoId = payload.removedPhotoId;
+      if (removedPhotoId) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          removeTourScenePhoto(workspace, variables.sceneId, removedPhotoId)
+        );
+      } else {
+        invalidateWorkspace();
+      }
+    },
   });
   const reorderScenesMutation = useMutation({
     mutationFn: (orderedSceneIds: string[]) => reorderTourScenes(projectId, orderedSceneIds),
-    onSuccess: invalidateWorkspace,
+    onSuccess: (payload) => {
+      const orderedScenes = payload.scenes;
+      if (orderedScenes) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          applyTourSceneOrder(workspace, orderedScenes)
+        );
+      } else {
+        invalidateWorkspace();
+      }
+    },
   });
   const persistSceneOrder = useCallback(
     (orderedSceneIds: string[]) => reorderScenesMutation.mutateAsync(orderedSceneIds),
@@ -88,12 +154,30 @@ export function useTourSceneMutations({
   const toggleSceneInclusionMutation = useMutation({
     mutationFn: ({ sceneId, included }: { sceneId: string; included: boolean }) =>
       toggleSceneInclusion(projectId, sceneId, included),
-    onSuccess: invalidateWorkspace,
+    onSuccess: (payload) => {
+      const scene = payload.scene;
+      if (scene) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          applyTourScenePatch(workspace, scene)
+        );
+      } else {
+        invalidateWorkspace();
+      }
+    },
   });
   const updateSceneCameraMotionMutation = useMutation({
     mutationFn: ({ sceneId, cameraMotion }: { sceneId: string; cameraMotion: TourSceneCameraMotion }) =>
       updateSceneCameraMotion(projectId, sceneId, cameraMotion),
-    onSuccess: invalidateWorkspace,
+    onSuccess: (payload) => {
+      const scene = payload.scene;
+      if (scene) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          applyTourScenePatch(workspace, scene)
+        );
+      } else {
+        invalidateWorkspace();
+      }
+    },
   });
   const updateSceneTransitionEffectMutation = useMutation({
     mutationFn: ({
@@ -103,11 +187,24 @@ export function useTourSceneMutations({
       sceneId: string;
       transitionEffect: SceneTransitionEffect;
     }) => updateSceneTransitionEffect(projectId, sceneId, transitionEffect),
-    onSuccess: invalidateWorkspace,
+    onSuccess: (payload) => {
+      const scene = payload.scene;
+      if (scene) {
+        updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+          applyTourScenePatch(workspace, scene)
+        );
+      } else {
+        invalidateWorkspace();
+      }
+    },
   });
   const deleteSceneMutation = useMutation({
     mutationFn: (sceneId: string) => deleteTourScene(projectId, sceneId),
-    onSuccess: invalidateWorkspace,
+    onSuccess: (payload, sceneId) => {
+      updateTourWorkspaceCache(queryClient, projectId, (workspace) =>
+        removeTourScene(workspace, payload.removedSceneId ?? sceneId)
+      );
+    },
   });
 
   const toggleInclusion = useCallback(
