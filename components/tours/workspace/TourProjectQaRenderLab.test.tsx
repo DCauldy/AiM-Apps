@@ -214,7 +214,7 @@ test("renders a compact launcher with current estimated cost and dev-only popove
   );
   assert.ok(
     screen.getByText(
-      "OpenRouter provider image-to-video is not expected because Ken Burns local rendering is selected.",
+      "OpenRouter provider image-to-video is not expected because scene-clip reuse is requested.",
     ),
   );
   assert.ok(
@@ -378,7 +378,7 @@ test("submits advanced options through the provided dev-tool callback", async ()
 
   assert.equal(onSubmitOptions.mock.calls.length, 1);
   assert.deepEqual(onSubmitOptions.mock.calls[0]?.[0], {
-    renderMode: "ken_burns_ffmpeg",
+    renderMode: "provider_image_to_video",
     reuseExistingAssets: true,
     reuse: {
       scriptPlan: true,
@@ -532,6 +532,12 @@ test("shows an unavailable image-to-video prompt state until provider mode is se
   renderQaRenderLab();
 
   await user.click(screen.getByRole("button", { name: /QA Render Lab/ }));
+  await user.click(screen.getByRole("combobox", { name: "Render preset" }));
+  await user.click(
+    screen.getByRole("option", {
+      name: "Cheap Ken Burns UX test",
+    }),
+  );
   await user.click(screen.getByRole("tab", { name: "Prompts" }));
   await user.click(
     screen.getByRole("button", { name: "View Image to Video Prompt" }),

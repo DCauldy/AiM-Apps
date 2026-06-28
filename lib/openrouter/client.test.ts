@@ -29,7 +29,7 @@ describe("createOpenRouterClient", () => {
     const headers = fetcher.mock.calls[0]?.[1]?.headers as Headers;
     expect(fetcher.mock.calls[0]?.[0]).toBe("https://openrouter.ai/api/v1/chat/completions");
     expect(headers.get("Authorization")).toBe("Bearer openrouter-key");
-    expect(headers.get("HTTP-Referer")).toBe("https://apps.aimarketingacademy.com");
+    expect(headers.get("HTTP-Referer")).toBe("https://tours.aimarketingacademy.com");
     expect(headers.get("X-OpenRouter-Title")).toBe("AiM Tours");
     expect(headers.get("X-Title")).toBe("AiM Tours");
   });
