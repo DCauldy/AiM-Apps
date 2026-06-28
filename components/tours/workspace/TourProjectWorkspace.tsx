@@ -18,7 +18,16 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowRight, GripVertical, Plus, ShieldCheck, X } from "lucide-react";
+import {
+  ArrowRight,
+  EllipsisVertical,
+  GripVertical,
+  ImagePlus,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -36,14 +45,32 @@ import type { TourScene } from "@/lib/tours/workspace";
 import { getTourSceneCameraMotionLabel } from "@/lib/tours/scenes.core";
 import {
   createSceneFromListingPhoto,
+  deleteTourScene,
   reorderTourScenes,
+  replaceAuthoritativeSceneListingPhoto,
 } from "@/components/tours/tours-api-client";
 import { useTourProjectWorkspace } from "./useTourProjectWorkspace";
-import { ErrorMessage, SceneUploadDialog } from "./WorkspacePresentation";
+import {
+  ConfirmDialog,
+  ErrorMessage,
+  ReplacePhotoDialog,
+  SceneUploadDialog,
+} from "./WorkspacePresentation";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function TourProjectWorkspace() {
   const { viewModel, acknowledgementMutation, invalidateWorkspace } = useTourProjectWorkspace();
   const [isCreateSceneOpen, setIsCreateSceneOpen] = useState(false);
+  const [sceneToReplacePhoto, setSceneToReplacePhoto] = useState<TourScene | null>(null);
+  const [replacementPhoto, setReplacementPhoto] = useState<File | null>(null);
+  const [replacementPhotoPreviewUrl, setReplacementPhotoPreviewUrl] = useState<string | null>(null);
+  const [sceneToDelete, setSceneToDelete] = useState<TourScene | null>(null);
   const createSceneForm = useCreateSceneForm({
     projectId: viewModel.project.id,
     invalidateWorkspace,
@@ -74,7 +101,62 @@ export function TourProjectWorkspace() {
   const handleSceneDragEnd = useSceneCardDragEnd({
     reorderById: sortableScenes.reorderById,
   });
+  const replacePhotoMutation = useMutation({
+    mutationFn: ({ sceneId, formData }: { sceneId: string; formData: FormData }) =>
+      replaceAuthoritativeSceneListingPhoto(viewModel.project.id, sceneId, formData),
+    onSuccess: () => {
+      setReplacementPhoto(null);
+      setSceneToReplacePhoto(null);
+      invalidateWorkspace();
+    },
+  });
+  const deleteSceneMutation = useMutation({
+    mutationFn: (sceneId: string) => deleteTourScene(viewModel.project.id, sceneId),
+    onSuccess: (_payload, deletedSceneId) => {
+      sortableScenes.setItems(
+        sortableScenes.items.filter((scene) => scene.id !== deletedSceneId)
+      );
+      setSceneToDelete(null);
+      invalidateWorkspace();
+    },
+  });
   const authorization = viewModel.listingMediaAuthorization;
+
+  useEffect(() => {
+    if (!replacementPhoto) {
+      setReplacementPhotoPreviewUrl(null);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(replacementPhoto);
+    setReplacementPhotoPreviewUrl(previewUrl);
+
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [replacementPhoto]);
+
+  function handleReplaceScenePhoto(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!sceneToReplacePhoto) {
+      return;
+    }
+
+    const formData = new FormData();
+    if (replacementPhoto) {
+      formData.set("photo", replacementPhoto);
+    }
+    replacePhotoMutation.mutate({
+      sceneId: sceneToReplacePhoto.id,
+      formData,
+    });
+  }
+
+  function confirmSceneDelete() {
+    if (!sceneToDelete) {
+      return;
+    }
+
+    deleteSceneMutation.mutate(sceneToDelete.id);
+  }
 
   if (!authorization.hasAcknowledged) {
     return (
@@ -151,7 +233,11 @@ export function TourProjectWorkspace() {
         itemIds={sortableScenes.itemIds}
         projectId={viewModel.project.id}
         isReordering={sortableScenes.isPending}
+        isReplacingPhoto={replacePhotoMutation.isPending}
+        isDeletingScene={deleteSceneMutation.isPending}
         onAddScene={() => setIsCreateSceneOpen(true)}
+        onReplaceScenePhoto={setSceneToReplacePhoto}
+        onRemoveScene={setSceneToDelete}
         onDragEnd={handleSceneDragEnd}
       />
       {sortableScenes.error ? (
@@ -159,6 +245,37 @@ export function TourProjectWorkspace() {
           <ErrorMessage>{sortableScenes.error.message}</ErrorMessage>
         </div>
       ) : null}
+      <ReplacePhotoDialog
+        open={Boolean(sceneToReplacePhoto)}
+        scene={sceneToReplacePhoto}
+        photoPreviewUrl={replacementPhotoPreviewUrl}
+        photoName={replacementPhoto?.name ?? null}
+        error={replacePhotoMutation.error}
+        isSaving={replacePhotoMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReplacementPhoto(null);
+            setSceneToReplacePhoto(null);
+          }
+        }}
+        onPhotoChange={setReplacementPhoto}
+        onSubmit={handleReplaceScenePhoto}
+      />
+      <ConfirmDialog
+        open={Boolean(sceneToDelete)}
+        title="Remove scene?"
+        body="This permanently removes the scene, its listing photos, and its proofed facts from this Tour Project."
+        confirmText="Remove scene"
+        pendingText="Removing..."
+        error={deleteSceneMutation.error}
+        isPending={deleteSceneMutation.isPending}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSceneToDelete(null);
+          }
+        }}
+        onConfirm={confirmSceneDelete}
+      />
     </>
   );
 }
@@ -285,14 +402,22 @@ function SortableSceneGrid({
   itemIds,
   projectId,
   isReordering,
+  isReplacingPhoto,
+  isDeletingScene,
   onAddScene,
+  onReplaceScenePhoto,
+  onRemoveScene,
   onDragEnd,
 }: {
   scenes: TourScene[];
   itemIds: string[];
   projectId: string;
   isReordering: boolean;
+  isReplacingPhoto: boolean;
+  isDeletingScene: boolean;
   onAddScene: () => void;
+  onReplaceScenePhoto: (scene: TourScene) => void;
+  onRemoveScene: (scene: TourScene) => void;
   onDragEnd: (event: DragEndEvent) => void;
 }) {
   const sensors = useSensors(
@@ -312,6 +437,10 @@ function SortableSceneGrid({
               scene={scene}
               index={index}
               isReordering={isReordering}
+              isReplacingPhoto={isReplacingPhoto}
+              isDeletingScene={isDeletingScene}
+              onReplacePhoto={() => onReplaceScenePhoto(scene)}
+              onRemoveScene={() => onRemoveScene(scene)}
             />
           ))}
           <AddSceneCard onAddScene={onAddScene} />
@@ -339,11 +468,19 @@ function SortableSceneCard({
   projectId,
   index,
   isReordering,
+  isReplacingPhoto,
+  isDeletingScene,
+  onReplacePhoto,
+  onRemoveScene,
 }: {
   scene: TourScene;
   projectId: string;
   index: number;
   isReordering: boolean;
+  isReplacingPhoto: boolean;
+  isDeletingScene: boolean;
+  onReplacePhoto: () => void;
+  onRemoveScene: () => void;
 }) {
   const {
     attributes,
@@ -370,6 +507,10 @@ function SortableSceneCard({
       projectId={projectId}
       index={index}
       isDragging={isDragging}
+      isReplacingPhoto={isReplacingPhoto}
+      isDeletingScene={isDeletingScene}
+      onReplacePhoto={onReplacePhoto}
+      onRemoveScene={onRemoveScene}
       dragHandleProps={{
         ref: setActivatorNodeRef,
         disabled: isReordering,
@@ -385,25 +526,40 @@ type SceneCardProps = {
   projectId: string;
   index: number;
   isDragging?: boolean;
+  isReplacingPhoto?: boolean;
+  isDeletingScene?: boolean;
   style?: CSSProperties;
+  onReplacePhoto: () => void;
+  onRemoveScene: () => void;
   dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement> & {
     ref: (element: HTMLButtonElement | null) => void;
   };
 };
 
 const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
-  { scene, projectId, index, isDragging = false, style, dragHandleProps },
+  {
+    scene,
+    projectId,
+    index,
+    isDragging = false,
+    isReplacingPhoto = false,
+    isDeletingScene = false,
+    style,
+    onReplacePhoto,
+    onRemoveScene,
+    dragHandleProps,
+  },
   ref
 ) {
   return (
     <article
       ref={ref}
       style={style}
-      className={`overflow-hidden rounded-md border border-border bg-card transition-shadow ${
+      className={`rounded-md border border-border bg-card transition-shadow ${
         isDragging ? "z-10 shadow-lg ring-2 ring-primary/25" : ""
       }`}
     >
-      <div className="relative aspect-video bg-muted">
+      <div className="relative aspect-video overflow-hidden rounded-t-md bg-muted">
         <Link
           href={`/apps/tours/projects/${projectId}/${scene.id}`}
           aria-label={`Open ${scene.title}`}
@@ -441,19 +597,65 @@ const SceneCard = forwardRef<HTMLElement, SceneCardProps>(function SceneCard(
             {getTourSceneCameraMotionLabel(scene.cameraMotion)}
           </p>
         </div>
-        <Button
-          asChild
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0"
-        >
-          <Link href={`/apps/tours/projects/${projectId}/${scene.id}`}>
-            Open scene
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            asChild
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+          >
+            <Link href={`/apps/tours/projects/${projectId}/${scene.id}`}>
+              Open scene
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+          <SceneCardActionsMenu
+            sceneTitle={scene.title}
+            disabled={isReplacingPhoto || isDeletingScene}
+            onReplacePhoto={onReplacePhoto}
+            onRemoveScene={onRemoveScene}
+          />
+        </div>
       </div>
     </article>
   );
 });
+
+function SceneCardActionsMenu({
+  sceneTitle,
+  disabled,
+  onReplacePhoto,
+  onRemoveScene,
+}: {
+  sceneTitle: string;
+  disabled: boolean;
+  onReplacePhoto: () => void;
+  onRemoveScene: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+        aria-label={`Open scene actions for ${sceneTitle}`}
+        disabled={disabled}
+      >
+        <EllipsisVertical className="h-4 w-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
+        <DropdownMenuItem onClick={onReplacePhoto}>
+          <ImagePlus className="mr-2 h-4 w-4" />
+          Replace primary photo
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive hover:text-destructive"
+          onClick={onRemoveScene}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Remove scene
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

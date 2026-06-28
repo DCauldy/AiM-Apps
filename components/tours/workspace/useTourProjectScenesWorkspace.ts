@@ -31,6 +31,8 @@ export function useTourProjectScenesWorkspace({
   const [pendingActiveSceneId, setPendingActiveSceneId] = useState<
     string | null
   >(null);
+  const [isReturningToProjectGrid, setIsReturningToProjectGrid] =
+    useState(false);
   const [isAddSceneOpen, setIsAddSceneOpen] = useState(false);
   const [sceneToDelete, setSceneToDelete] = useState<TourScene | null>(null);
   const [sceneToReplacePhoto, setSceneToReplacePhoto] =
@@ -140,11 +142,18 @@ export function useTourProjectScenesWorkspace({
     : null;
 
   const activateScene = useCallback((sceneId: string | null) => {
+    if (sceneId) {
+      setIsReturningToProjectGrid(false);
+    }
     setActiveSceneId(sceneId);
     onActiveSceneIdChange?.(sceneId);
   }, [onActiveSceneIdChange]);
 
   useEffect(() => {
+    if (isReturningToProjectGrid) {
+      return;
+    }
+
     if (tourScenes.items.length === 0) {
       if (!pendingActiveSceneId) {
         activateScene(null);
@@ -166,7 +175,13 @@ export function useTourProjectScenesWorkspace({
     ) {
       activateScene(tourScenes.items[0].id);
     }
-  }, [activateScene, activeSceneId, pendingActiveSceneId, tourScenes.items]);
+  }, [
+    activateScene,
+    activeSceneId,
+    isReturningToProjectGrid,
+    pendingActiveSceneId,
+    tourScenes.items,
+  ]);
 
   useEffect(() => {
     if (!scenePhoto) {
@@ -231,8 +246,6 @@ export function useTourProjectScenesWorkspace({
     }
 
     const deletedSceneId = sceneToDelete.id;
-    const nextActiveSceneId =
-      tourScenes.items.find((scene) => scene.id !== deletedSceneId)?.id ?? null;
 
     sceneMutations
       .deleteScene(deletedSceneId)
@@ -240,7 +253,8 @@ export function useTourProjectScenesWorkspace({
         tourScenes.setItems(
           tourScenes.items.filter((scene) => scene.id !== deletedSceneId),
         );
-        activateScene(nextActiveSceneId);
+        setIsReturningToProjectGrid(true);
+        activateScene(null);
         setSceneToDelete(null);
       })
       .catch(() => undefined);

@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { SceneDetailsPanel } from "./SceneDetailsPanel";
 import { SceneStrip, useSceneStripDragEnd } from "./SceneStripDrag";
@@ -15,6 +16,7 @@ export function TourProjectSceneWorkspace({
 }: {
   initialSceneId?: string | null;
 }) {
+  const router = useRouter();
   const { viewModel, acknowledgementMutation, invalidateWorkspace } = useTourProjectWorkspace();
 
   const authorization = viewModel.listingMediaAuthorization;
@@ -22,9 +24,9 @@ export function TourProjectSceneWorkspace({
   const handleActiveSceneIdChange = useCallback(
     (sceneId: string | null) => {
       const projectPath = `/apps/tours/projects/${viewModel.project.id}`;
-      window.history.pushState(null, "", sceneId ? `${projectPath}/${sceneId}` : projectPath);
+      router.push(sceneId ? `${projectPath}/${sceneId}` : projectPath);
     },
-    [viewModel.project.id]
+    [router, viewModel.project.id]
   );
 
   const {
