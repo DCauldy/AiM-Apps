@@ -308,35 +308,39 @@ export function SphereMapClient() {
         </p>
       )}
 
-      <div className="relative">
-        <HyperlocalMap
-          segments={segments}
-          selectedZips={selected}
-          onToggleZip={toggleZip}
-          pulseZips={
-            suggestion ? new Set(suggestion.zips) : undefined
-          }
-          focusZips={
-            suggestion ? new Set(suggestion.zips) : undefined
-          }
-          focusNonce={panelKey}
-          height="calc(100vh - 230px)"
-          overlayChip={
-            hasSelection
-              ? `${selected.size} selected`
-              : "Click neighborhoods to build a campaign"
-          }
-        />
+      {/* Map + control rail, side by side. The rail gives the dials full
+          height to breathe instead of floating a tall card over the map. */}
+      <div className="flex flex-col gap-4 lg:flex-row">
+        <div className="min-w-0 flex-1">
+          <HyperlocalMap
+            segments={segments}
+            selectedZips={selected}
+            onToggleZip={toggleZip}
+            pulseZips={suggestion ? new Set(suggestion.zips) : undefined}
+            focusZips={suggestion ? new Set(suggestion.zips) : undefined}
+            focusNonce={panelKey}
+            height={MAP_HEIGHT}
+            overlayChip={
+              hasSelection
+                ? `${selected.size} selected`
+                : "Click neighborhoods to build a campaign"
+            }
+          />
+        </div>
 
-        {/* Dial panel floats over the map's bottom-right when a selection exists */}
-        {hasSelection && (
-          <div className="absolute bottom-4 right-4 z-20 w-[340px] max-w-[calc(100%-2rem)] space-y-2">
-            {suggestion && mode === "magic" && (
-              <div className="rounded-xl border border-[#F43F5E]/30 bg-[#F43F5E]/10 px-3 py-2 text-xs text-foreground backdrop-blur">
-                <span className="mr-1">✨</span>
-                {suggestion.rationale} Tweak it or just hit Send.
-              </div>
-            )}
+        {/* Control rail */}
+        <div
+          className="flex w-full shrink-0 flex-col gap-2 overflow-y-auto lg:w-[360px]"
+          style={{ maxHeight: MAP_HEIGHT }}
+        >
+          {suggestion && mode === "magic" && (
+            <div className="rounded-xl border border-[#F43F5E]/30 bg-[#F43F5E]/10 px-3 py-2 text-xs text-foreground">
+              <span className="mr-1">✨</span>
+              {suggestion.rationale} Tweak it or just hit Send.
+            </div>
+          )}
+
+          {hasSelection ? (
             <CampaignDialPanel
               key={panelKey}
               mode={mode}
@@ -354,9 +358,21 @@ export function SphereMapClient() {
                   : undefined
               }
             />
-          </div>
-        )}
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border bg-card/50 p-6 text-center">
+              <p className="text-2xl">🗺️</p>
+              <p className="mt-2 text-sm font-medium">Pick your neighborhoods</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Click the ZIPs on the map you want to reach. Your campaign
+                controls appear here as you go.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
+// Shared height for the map + control rail so they line up.
+const MAP_HEIGHT = "calc(100vh - 230px)";

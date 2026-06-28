@@ -110,7 +110,8 @@ export function CampaignDialPanel({
   );
   const [priceMin, setPriceMin] = useState<number>(initial?.priceMin ?? PRICE_MIN);
   const [priceMax, setPriceMax] = useState<number>(initial?.priceMax ?? PRICE_MAX);
-  const [scopeOpen, setScopeOpen] = useState(false);
+  // Open by default so the price band + home type are visible without hunting.
+  const [scopeOpen, setScopeOpen] = useState(true);
 
   const selectedSet = useMemo(() => new Set(selectedZips), [selectedZips]);
   const selected = useMemo(
@@ -140,7 +141,7 @@ export function CampaignDialPanel({
   const angleIndex = ANGLE_STOPS.findIndex((s) => s.lens === lens);
 
   return (
-    <div className="rounded-2xl border border-border bg-background/95 backdrop-blur-xl shadow-2xl p-5 space-y-5">
+    <div className="rounded-2xl border border-border bg-card p-4 space-y-4">
       {/* Header */}
       <div className="flex items-baseline justify-between gap-3">
         <div>
