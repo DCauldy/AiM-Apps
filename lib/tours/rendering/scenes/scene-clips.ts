@@ -14,12 +14,12 @@ import { getDefaultTourRenderMode, type TourRenderMode } from "../preflight/pref
 import { TourSceneClipRenderError } from "./scene-clip-errors";
 import {
   buildSceneClipTransitionEffectFingerprint,
-  isSceneTransitionEffect,
+  isResolvedSceneTransitionEffect,
   planSceneClipTransitionHandles,
   resolveSceneTransitionEffectSettings,
   type SceneClipHandlePlan,
   type SceneClipTransitionEffectFingerprint,
-  type SceneTransitionEffect,
+  type ResolvedSceneTransitionEffect,
   type SceneTransitionEffectSettings,
 } from "../transitions/scene-transition-effects";
 import {
@@ -54,7 +54,7 @@ export type SceneClipStageOptions = {
   renderSettings?: SceneClipRenderSettings;
   concurrencyLimit?: number;
   sceneTransitions?: {
-    effect?: SceneTransitionEffect;
+    effect?: ResolvedSceneTransitionEffect;
   };
 };
 
@@ -113,7 +113,7 @@ export type SceneClipStageResult = {
     fingerprint: SceneClipFingerprint;
     requestedDurationSeconds: number;
     handlePlan: SceneClipHandlePlan;
-    transitionEffect?: SceneTransitionEffect;
+    transitionEffect?: ResolvedSceneTransitionEffect;
   }>;
   completedCount: number;
   totalCount: number;
@@ -126,7 +126,7 @@ export type SceneClipBatchItem = {
   scene: RenderableTourScene;
   duration: SceneTiming;
   handlePlan: SceneClipHandlePlan;
-  transitionEffect: SceneTransitionEffect;
+  transitionEffect: ResolvedSceneTransitionEffect;
   projectId: string;
   runId: string;
   userId: string;
@@ -419,7 +419,7 @@ async function renderOrReuseSceneClip(input: {
   scene: RenderableTourScene;
   duration: SceneTiming;
   handlePlan: SceneClipHandlePlan;
-  transitionEffect: SceneTransitionEffect;
+  transitionEffect: ResolvedSceneTransitionEffect;
   projectId: string;
   repository: TourRenderRepository;
   runId: string;
@@ -925,9 +925,9 @@ function includedRenderableScenes(project: RenderableTourProject): RenderableTou
 
 function resolveSceneTransitionEffectForScene(
   scene: RenderableTourScene,
-  fallback: SceneTransitionEffect
-): SceneTransitionEffect {
-  return isSceneTransitionEffect(scene.transitionEffect) ? scene.transitionEffect : fallback;
+  fallback: ResolvedSceneTransitionEffect
+): ResolvedSceneTransitionEffect {
+  return isResolvedSceneTransitionEffect(scene.transitionEffect) ? scene.transitionEffect : fallback;
 }
 
 function getSecondarySourcePhotos(scene: RenderableTourScene): RenderableTourSceneSourcePhoto[] {

@@ -52,9 +52,9 @@ import type {
   TourRenderOptions,
 } from "@/lib/tours/rendering/preflight/preflight";
 import {
-  SCENE_TRANSITION_EFFECT_OPTIONS,
+  RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS,
   getSceneTransitionEffectLabel,
-  isSceneTransitionEffect,
+  isResolvedSceneTransitionEffect,
 } from "@/lib/tours/rendering/transitions/scene-transition-effects";
 import type { TourProjectType } from "@/lib/tours/projects/project-types";
 
@@ -438,7 +438,7 @@ export function TourProjectQaRenderLab({
                     <Select
                       value={controls.sceneTransitionEffect}
                       onValueChange={(value) => {
-                        if (!isSceneTransitionEffect(value)) {
+                        if (!isResolvedSceneTransitionEffect(value)) {
                           return;
                         }
                         updateControls((current) => ({
@@ -459,7 +459,7 @@ export function TourProjectQaRenderLab({
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => (
+                        {RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label} ({option.value})
                           </SelectItem>

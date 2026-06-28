@@ -23,6 +23,10 @@ export const sceneTransitionEffects = Object.fromEntries(
     effect,
     {
       effect,
+      label: "Iris",
+      description:
+        "A circular reveal opens from the center until Scene B fills the frame.",
+      useCase: "Highlighting a focal detail such as a fireplace, pool, island, or fixture.",
       buildSceneJoinArgs: buildIrisSceneJoinArgs,
     } satisfies SceneTransitionEffectDefinition,
   ])

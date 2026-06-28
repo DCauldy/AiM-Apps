@@ -245,6 +245,7 @@ function TourProjectLayoutContent({
             sortOrder: scene.sortOrder,
             included: scene.included,
             cameraMotion: scene.cameraMotion,
+            transitionEffect: scene.transitionEffect,
             authoritativePhoto: {
               id: scene.authoritativePhoto.id,
               previewUrl: scene.authoritativePhoto.previewUrl,

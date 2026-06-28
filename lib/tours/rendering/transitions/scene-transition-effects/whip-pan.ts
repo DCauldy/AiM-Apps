@@ -22,6 +22,10 @@ export const sceneTransitionEffects = Object.fromEntries(
     effect,
     {
       effect,
+      label: "Whip pan",
+      description:
+        "The image streaks sideways with directional blur, then lands quickly on the next scene.",
+      useCase: "Fast social-preview pacing when the tour needs a punchier hook.",
       buildSceneJoinArgs: buildWhipPanSceneJoinArgs,
     } satisfies SceneTransitionEffectDefinition,
   ])

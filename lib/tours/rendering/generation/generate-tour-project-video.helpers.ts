@@ -193,6 +193,35 @@ export function applyScriptPlannedCameraMotions(
   };
 }
 
+export function applyScriptPlannedTransitionEffects(
+  project: RenderableTourProject,
+  scriptPlan: TourScriptPlan
+): RenderableTourProject {
+  const selectedTransitionBySceneId = new Map(
+    scriptPlan.sceneTimings
+      .filter((timing) => timing.selectedTransitionEffect)
+      .map((timing) => [timing.sceneId, timing.selectedTransitionEffect!])
+  );
+
+  return {
+    ...project,
+    scenes: project.scenes.map((scene) => {
+      const transitionEffect = scene.transitionEffect ?? "auto";
+      if (transitionEffect !== "auto") {
+        return scene;
+      }
+
+      const selectedTransitionEffect = selectedTransitionBySceneId.get(scene.id);
+      return selectedTransitionEffect
+        ? {
+            ...scene,
+            transitionEffect: selectedTransitionEffect,
+          }
+        : scene;
+    }),
+  };
+}
+
 export function summarizeSceneCameraMotions(project: RenderableTourProject): Array<{
   sceneId: string;
   title: string;
@@ -207,6 +236,24 @@ export function summarizeSceneCameraMotions(project: RenderableTourProject): Arr
       sortOrder: scene.sortOrder,
       included: scene.included,
       cameraMotion: scene.cameraMotion,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.sceneId.localeCompare(b.sceneId));
+}
+
+export function summarizeSceneTransitionEffects(project: RenderableTourProject): Array<{
+  sceneId: string;
+  title: string;
+  sortOrder: number;
+  included: boolean;
+  transitionEffect: string;
+}> {
+  return project.scenes
+    .map((scene) => ({
+      sceneId: scene.id,
+      title: scene.title,
+      sortOrder: scene.sortOrder,
+      included: scene.included,
+      transitionEffect: scene.transitionEffect ?? "auto",
     }))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.sceneId.localeCompare(b.sceneId));
 }

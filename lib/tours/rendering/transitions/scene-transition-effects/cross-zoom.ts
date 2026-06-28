@@ -18,6 +18,10 @@ const CROSS_ZOOM_MAX_SCALE = 1.08;
 export const sceneTransitionEffects = {
   "cross-zoom": {
     effect: "cross-zoom",
+    label: "Cross zoom",
+    description:
+      "The view subtly pushes through Scene A and resolves into Scene B with a continuous zoom feel.",
+    useCase: "Moving into a detail shot, doorway, or next room with a little extra energy.",
     buildSceneJoinArgs: buildCrossZoomSceneJoinArgs,
   },
 } satisfies SceneTransitionEffectDefinitionMap;

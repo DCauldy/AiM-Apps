@@ -55,6 +55,7 @@ const project: RenderableTourProject = {
       sortOrder: 0,
       included: false,
       cameraMotion: "static_hold",
+      transitionEffect: "swipe-on-top",
       authoritativePhoto: garagePhoto,
       sourcePhotos: [garagePhoto],
       proofedFacts: [{ id: "fact-excluded", text: "Do not send", sortOrder: 1, sourcePhotoId: null }],
@@ -65,6 +66,7 @@ const project: RenderableTourProject = {
       sortOrder: 1,
       included: true,
       cameraMotion: "slow_push",
+      transitionEffect: "swipe-on-top",
       authoritativePhoto: kitchenPhoto,
       sourcePhotos: [kitchenPhoto],
       proofedFacts: [{ id: "fact-1", text: "Quartz counters", sortOrder: 1, sourcePhotoId: "photo-1" }],
@@ -412,6 +414,88 @@ describe("planTourScriptStage", () => {
     await expect(
       planTourScriptStage({
         project: autoProject,
+        repository,
+        runId: "run-1",
+        userId: "user-1",
+        provider,
+        options: { reuseExistingAssets: false },
+      })
+    ).rejects.toMatchObject({
+      code: "PROVIDER_RESPONSE_INVALID",
+    });
+  });
+
+  it("preserves planner-selected transition effects for auto transition scenes", async () => {
+    const autoTransitionProject: RenderableTourProject = {
+      ...project,
+      scenes: [
+        {
+          ...project.scenes[1]!,
+          transitionEffect: "auto",
+        },
+      ],
+    };
+    const repository = createRepository();
+    const provider = createProvider({
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Kitchen narration.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            spokenText: "Kitchen narration.",
+            selectedTransitionEffect: "cross-dissolve",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    });
+
+    const result = await planTourScriptStage({
+      project: autoTransitionProject,
+      repository,
+      runId: "run-1",
+      userId: "user-1",
+      provider,
+      options: { reuseExistingAssets: false },
+    });
+
+    expect(result.plan.sceneTimings[0]).toEqual(
+      expect.objectContaining({
+        sceneId: "scene-1",
+        selectedTransitionEffect: "cross-dissolve",
+      })
+    );
+  });
+
+  it("rejects auto transition scenes when the provider omits selected transition effect", async () => {
+    const autoTransitionProject: RenderableTourProject = {
+      ...project,
+      scenes: [
+        {
+          ...project.scenes[1]!,
+          transitionEffect: "auto",
+        },
+      ],
+    };
+    const repository = createRepository();
+    const provider = createProvider({
+      planScript: vi.fn().mockResolvedValue({
+        fullScript: "Kitchen narration.",
+        sceneTimings: [
+          {
+            sceneId: "scene-1",
+            spokenText: "Kitchen narration.",
+            durationSeconds: 5,
+          },
+        ],
+        model: "test-model",
+      }),
+    });
+
+    await expect(
+      planTourScriptStage({
+        project: autoTransitionProject,
         repository,
         runId: "run-1",
         userId: "user-1",

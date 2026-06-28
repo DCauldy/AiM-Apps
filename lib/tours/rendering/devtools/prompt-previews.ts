@@ -8,6 +8,7 @@ import {
 import { buildOpenRouterSceneClipPrompt } from "../scenes/openrouter-scene-clip-prompts";
 import type { TourRenderOptions } from "../preflight/preflight";
 import type { TourSceneCameraMotion } from "@/lib/tours/scenes.core";
+import type { SceneTransitionEffect } from "../transitions/scene-transition-effects";
 import type { TourProjectType } from "@/lib/tours/projects/project-types";
 
 export type TourRenderPromptPreviewScene = {
@@ -16,6 +17,7 @@ export type TourRenderPromptPreviewScene = {
   sortOrder: number;
   included: boolean;
   cameraMotion: TourSceneCameraMotion;
+  transitionEffect?: SceneTransitionEffect;
   authoritativePhoto?: {
     id: string;
     previewUrl: string | null;
@@ -98,6 +100,7 @@ export function buildTourRenderScriptPlannerPromptPreview(input: {
       id: scene.id,
       title: scene.title,
       cameraMotion: scene.cameraMotion,
+      transitionEffect: scene.transitionEffect ?? "auto",
       proofedFacts: (scene.facts ?? [])
         .filter((fact) => fact.proofStatus === "proofed")
         .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id))

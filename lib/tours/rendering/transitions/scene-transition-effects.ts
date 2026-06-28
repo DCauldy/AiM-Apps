@@ -18,30 +18,27 @@ import { formatTransitionSeconds, roundTransitionSeconds } from "./scene-transit
 export const SCENE_TRANSITION_EFFECT_SECONDS = 0.5;
 export const SCENE_TRANSITION_EFFECT_HANDLE_POLICY_VERSION = "tour-scene-transition-handles-v1";
 
-export const SCENE_TRANSITION_EFFECT_OPTIONS = [
-  { value: "swipe-on-top", label: "Swipe on top" },
-  { value: "cross-dissolve", label: "Cross dissolve" },
-  { value: "fade", label: "Fade" },
-  { value: "cross-blur", label: "Cross blur" },
-  { value: "cross-zoom", label: "Cross zoom" },
-  { value: "iris", label: "Iris" },
-  { value: "soft-wipe", label: "Soft wipe" },
-  { value: "split-reveal", label: "Split reveal" },
-  { value: "whip-pan", label: "Whip pan" },
+export const RESOLVED_SCENE_TRANSITION_EFFECTS = [
+  "swipe-on-top",
+  "cross-dissolve",
+  "fade",
+  "cross-blur",
+  "cross-zoom",
+  "iris",
+  "soft-wipe",
+  "split-reveal",
+  "whip-pan",
 ] as const;
 
-export type SceneTransitionEffect = (typeof SCENE_TRANSITION_EFFECT_OPTIONS)[number]["value"];
+export type ResolvedSceneTransitionEffect = (typeof RESOLVED_SCENE_TRANSITION_EFFECTS)[number];
+export type SceneTransitionEffect = "auto" | ResolvedSceneTransitionEffect;
 
 export type SceneTransitionEffectOption = {
   value: SceneTransitionEffect;
   label: string;
+  description: string;
+  useCase: string;
 };
-
-export const DEFAULT_SCENE_TRANSITION_EFFECT: SceneTransitionEffect = "swipe-on-top";
-
-const SCENE_TRANSITION_EFFECT_SET = new Set<SceneTransitionEffect>(
-  SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => option.value)
-);
 
 export const SCENE_TRANSITION_EFFECT_DEFINITIONS = {
   "swipe-on-top": swipeOnTopEffect,
@@ -53,12 +50,49 @@ export const SCENE_TRANSITION_EFFECT_DEFINITIONS = {
   "soft-wipe": softWipeEffect,
   "split-reveal": splitRevealEffect,
   "whip-pan": whipPanEffect,
-} satisfies Record<SceneTransitionEffect, SceneTransitionEffectDefinition> &
+} satisfies Record<ResolvedSceneTransitionEffect, SceneTransitionEffectDefinition> &
   SceneTransitionEffectDefinitionMap;
+
+export const RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS = RESOLVED_SCENE_TRANSITION_EFFECTS.map(
+  (effect) => ({
+    value: effect,
+    label: SCENE_TRANSITION_EFFECT_DEFINITIONS[effect].label,
+    description: SCENE_TRANSITION_EFFECT_DEFINITIONS[effect].description,
+    useCase: SCENE_TRANSITION_EFFECT_DEFINITIONS[effect].useCase,
+  })
+) satisfies Array<{
+  value: ResolvedSceneTransitionEffect;
+  label: string;
+  description: string;
+  useCase: string;
+}>;
+
+export const SCENE_TRANSITION_EFFECT_OPTIONS = [
+  {
+    value: "auto",
+    label: "Auto",
+    description:
+      "Let the script planner choose the best transition from the scene image and tour pacing.",
+    useCase:
+      "Default per-scene choice when the transition should be selected from visual context.",
+  },
+  ...RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS,
+] satisfies SceneTransitionEffectOption[];
+
+export const DEFAULT_SCENE_TRANSITION_EFFECT: SceneTransitionEffect = "auto";
+export const DEFAULT_RESOLVED_SCENE_TRANSITION_EFFECT: ResolvedSceneTransitionEffect =
+  "swipe-on-top";
+
+const SCENE_TRANSITION_EFFECT_SET = new Set<SceneTransitionEffect>(
+  SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => option.value)
+);
+const RESOLVED_SCENE_TRANSITION_EFFECT_SET = new Set<ResolvedSceneTransitionEffect>(
+  RESOLVED_SCENE_TRANSITION_EFFECTS
+);
 
 export type SceneTransitionEffectSettings = {
   durationSeconds: number;
-  effect: SceneTransitionEffect;
+  effect: ResolvedSceneTransitionEffect;
   handlePolicyVersion: string;
 };
 
@@ -86,7 +120,7 @@ export type JoinedSceneTransitionEffectSegment = {
 };
 
 export type SceneTransitionJoinArgsInput = BuildSceneTransitionJoinArgsInput & {
-  sceneTransitionEffects?: readonly SceneTransitionEffect[];
+  sceneTransitionEffects?: readonly ResolvedSceneTransitionEffect[];
 };
 
 type TransitionFilterInput = {
@@ -94,7 +128,7 @@ type TransitionFilterInput = {
   index: number;
   plan: SceneClipHandlePlan;
   nextPlan: SceneClipHandlePlan;
-  effect: SceneTransitionEffect;
+  effect: ResolvedSceneTransitionEffect;
   transitionSeconds: number;
   formattedTransitionSeconds: string;
   width: number;
@@ -110,13 +144,22 @@ export function isSceneTransitionEffect(value: unknown): value is SceneTransitio
   );
 }
 
+export function isResolvedSceneTransitionEffect(
+  value: unknown
+): value is ResolvedSceneTransitionEffect {
+  return (
+    typeof value === "string" &&
+    RESOLVED_SCENE_TRANSITION_EFFECT_SET.has(value as ResolvedSceneTransitionEffect)
+  );
+}
+
 export function getSceneTransitionEffectDefinition(
-  effect: SceneTransitionEffect
+  effect: ResolvedSceneTransitionEffect
 ): SceneTransitionEffectDefinition {
   return SCENE_TRANSITION_EFFECT_DEFINITIONS[effect];
 }
 
-export function getSceneTransitionEffectLabel(effect: SceneTransitionEffect): string {
+export function getSceneTransitionEffectLabel(effect: string): string {
   return (
     SCENE_TRANSITION_EFFECT_OPTIONS.find((option) => option.value === effect)?.label ??
     effect
@@ -124,11 +167,11 @@ export function getSceneTransitionEffectLabel(effect: SceneTransitionEffect): st
 }
 
 export function resolveSceneTransitionEffectSettings(options?: {
-  effect?: SceneTransitionEffect;
+  effect?: ResolvedSceneTransitionEffect;
 }): SceneTransitionEffectSettings {
   return {
     durationSeconds: SCENE_TRANSITION_EFFECT_SECONDS,
-    effect: options?.effect ?? DEFAULT_SCENE_TRANSITION_EFFECT,
+    effect: options?.effect ?? DEFAULT_RESOLVED_SCENE_TRANSITION_EFFECT,
     handlePolicyVersion: SCENE_TRANSITION_EFFECT_HANDLE_POLICY_VERSION,
   };
 }
@@ -260,7 +303,7 @@ export function buildSwipeOnTopSceneJoinArgs(input: BuildSceneTransitionJoinArgs
 function getBoundaryTransitionEffect(
   input: SceneTransitionJoinArgsInput,
   outgoingSceneIndex: number
-): SceneTransitionEffect {
+): ResolvedSceneTransitionEffect {
   const incomingSceneEffect = input.sceneTransitionEffects?.[outgoingSceneIndex + 1];
   return incomingSceneEffect ?? input.transitionSettings.effect;
 }
@@ -525,7 +568,7 @@ function validateJoinInput(input: SceneTransitionJoinArgsInput): void {
     throw new Error("Scene transition join requires at least two clips.");
   }
   for (const effect of input.sceneTransitionEffects ?? []) {
-    if (!isSceneTransitionEffect(effect)) {
+    if (!isResolvedSceneTransitionEffect(effect)) {
       throw new Error(`Unsupported scene transition effect: ${String(effect)}.`);
     }
   }

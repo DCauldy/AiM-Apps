@@ -30,6 +30,11 @@ export const sceneTransitionEffects = Object.fromEntries(
     effect,
     {
       effect,
+      label: "Swipe on top",
+      description:
+        "The incoming scene slides across the outgoing frame and covers it cleanly.",
+      useCase:
+        "Simulated walking direction, entering a room, opening into a space, or revealing a feature wall.",
       buildSceneJoinArgs: buildPushSlideSceneJoinArgs,
     } satisfies SceneTransitionEffectDefinition,
   ])

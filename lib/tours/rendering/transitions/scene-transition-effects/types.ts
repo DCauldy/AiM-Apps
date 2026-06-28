@@ -18,6 +18,9 @@ export type BuildSceneTransitionJoinArgsInput = {
 
 export type SceneTransitionEffectDefinition = {
   effect: string;
+  label: string;
+  description: string;
+  useCase: string;
   outputExtension?: "mp4" | "mov";
   buildSceneJoinArgs(input: BuildSceneTransitionJoinArgsInput): string[];
 };

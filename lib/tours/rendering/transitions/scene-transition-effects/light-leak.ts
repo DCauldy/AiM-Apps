@@ -17,6 +17,10 @@ import { formatTransitionSeconds, roundTransitionSeconds } from "./utils";
 export const sceneTransitionEffects = {
   "light-leak": {
     effect: "light-leak",
+    label: "Light leak",
+    description:
+      "A soft warm flare or glow passes over the frame while the next scene appears.",
+    useCase: "Luxury, sunset, exterior, pool, and lifestyle shots.",
     buildSceneJoinArgs: buildLightLeakSceneJoinArgs,
   },
 } satisfies SceneTransitionEffectDefinitionMap;

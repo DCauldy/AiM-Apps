@@ -1,15 +1,19 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  DEFAULT_SCENE_TRANSITION_EFFECT,
+  RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS,
   SCENE_TRANSITION_EFFECT_OPTIONS,
   buildSceneTransitionJoinArgs,
   isSceneTransitionEffect,
+  isResolvedSceneTransitionEffect,
   resolveSceneTransitionEffectSettings,
 } from "./scene-transition-effects";
 
 describe("scene transition effects", () => {
   test("accepts only canonical public transition ids", () => {
     expect(SCENE_TRANSITION_EFFECT_OPTIONS.map((option) => option.value)).toEqual([
+      "auto",
       "swipe-on-top",
       "cross-dissolve",
       "fade",
@@ -24,6 +28,16 @@ describe("scene transition effects", () => {
     for (const option of SCENE_TRANSITION_EFFECT_OPTIONS) {
       expect(isSceneTransitionEffect(option.value)).toBe(true);
     }
+    expect(DEFAULT_SCENE_TRANSITION_EFFECT).toBe("auto");
+    expect(isResolvedSceneTransitionEffect("auto")).toBe(false);
+    expect(RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS[0]).toEqual(
+      expect.objectContaining({
+        value: "swipe-on-top",
+        label: "Swipe on top",
+        description: expect.any(String),
+        useCase: expect.any(String),
+      })
+    );
 
     for (const alias of [
       "dip-to-black",

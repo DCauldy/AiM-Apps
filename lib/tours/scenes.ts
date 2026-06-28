@@ -261,7 +261,7 @@ async function createSupabaseTourScenesRepository(): Promise<TourScenesRepositor
         .update({ transition_effect: transitionEffect, updated_at: new Date().toISOString() })
         .eq("project_id", projectId)
         .eq("id", sceneId)
-        .select(SCENE_SELECT)
+        .select(SCENE_WITH_TRANSITION_SELECT)
         .maybeSingle<TourSceneRow>();
 
       if (sceneError || !scene) {

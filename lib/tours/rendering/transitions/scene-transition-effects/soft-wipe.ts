@@ -26,6 +26,10 @@ export const sceneTransitionEffects = Object.fromEntries(
     effect,
     {
       effect,
+      label: "Soft wipe",
+      description:
+        "Scene B is revealed across Scene A by a moving feathered edge.",
+      useCase: "Moving from one room to another while keeping the transition smooth and understated.",
       buildSceneJoinArgs: buildSoftWipeSceneJoinArgs,
     } satisfies SceneTransitionEffectDefinition,
   ])

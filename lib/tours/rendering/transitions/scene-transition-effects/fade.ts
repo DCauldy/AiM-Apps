@@ -24,6 +24,11 @@ export const sceneTransitionEffects = Object.fromEntries(
     effect,
     {
       effect,
+      label: "Fade",
+      description:
+        "Scene A fades out and Scene B fades in with a soft pause between spaces.",
+      useCase:
+        "Slower luxury pacing, exterior-to-interior changes, or clear section breaks.",
       buildSceneJoinArgs: buildFadeSceneJoinArgs,
     } satisfies SceneTransitionEffectDefinition,
   ])

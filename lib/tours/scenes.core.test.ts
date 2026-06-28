@@ -5,6 +5,7 @@ import {
   TOUR_SCENE_CAMERA_MOTIONS,
   createTourSceneFromAuthoritativePhoto,
   getAuthoritativeSourcePhoto,
+  getInitialSceneTransitionEffect,
   getInitialTourSceneCameraMotion,
   listTourScenesForProject,
   mapTourScene,
@@ -92,7 +93,7 @@ test("creates an included TourScene with ordering, safe camera motion, and autho
       listSceneRowsForProject: async () => [],
       updateSceneInclusion: async () => null,
       updateSceneCameraMotion: async () => null,
-    updateSceneTransitionEffect: async () => null,
+      updateSceneTransitionEffect: async () => null,
     }
   );
 
@@ -122,6 +123,11 @@ test("creates an included TourScene with ordering, safe camera motion, and autho
 test("defaults new TourScenes to auto camera motion", () => {
   assert.equal(getInitialTourSceneCameraMotion(0), "auto");
   assert.equal(getInitialTourSceneCameraMotion(12), "auto");
+});
+
+test("defaults new TourScenes to auto scene transition", () => {
+  assert.equal(getInitialSceneTransitionEffect(0), "auto");
+  assert.equal(getInitialSceneTransitionEffect(12), "auto");
 });
 
 test("represents the highest-priority source photo as authoritative", () => {

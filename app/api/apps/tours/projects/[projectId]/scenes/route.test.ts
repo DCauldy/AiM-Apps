@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   reorderTourScenes: vi.fn(),
   toggleTourSceneInclusion: vi.fn(),
   updateTourSceneCameraMotion: vi.fn(),
+  updateSceneTransitionEffect: vi.fn(),
   deleteTourScene: vi.fn(),
   listTourSceneFactsForScene: vi.fn(),
   createHumanTourSceneFact: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock("@/lib/tours/scenes", () => ({
   reorderTourScenes: mocks.reorderTourScenes,
   toggleTourSceneInclusion: mocks.toggleTourSceneInclusion,
   updateTourSceneCameraMotion: mocks.updateTourSceneCameraMotion,
+  updateSceneTransitionEffect: mocks.updateSceneTransitionEffect,
   deleteTourScene: mocks.deleteTourScene,
 }));
 
@@ -287,6 +289,36 @@ test("update TourScene camera motion delegates valid payload to the scene servic
     projectId: "project-1",
     sceneId: "scene-1",
     cameraMotion: "hero_reveal",
+  });
+});
+
+test("update TourScene transition validates known effects before service delegation", async () => {
+  allowAccess();
+
+  const response = await updateScene(jsonRequest({ transitionEffect: "sparkle-cut" }), sceneParams);
+
+  expect(response.status).toBe(400);
+  await expect(response.json()).resolves.toEqual({ error: "Choose a valid scene transition." });
+  expect(mocks.updateSceneTransitionEffect).not.toHaveBeenCalled();
+});
+
+test("update TourScene transition delegates auto payload to the scene service", async () => {
+  allowAccess();
+  mocks.updateSceneTransitionEffect.mockResolvedValue({
+    ok: true,
+    scene: { id: "scene-1", transitionEffect: "auto" },
+  });
+
+  const response = await updateScene(jsonRequest({ transitionEffect: "auto" }), sceneParams);
+
+  expect(response.status).toBe(200);
+  await expect(response.json()).resolves.toEqual({
+    scene: { id: "scene-1", transitionEffect: "auto" },
+  });
+  expect(mocks.updateSceneTransitionEffect).toHaveBeenCalledWith({
+    projectId: "project-1",
+    sceneId: "scene-1",
+    transitionEffect: "auto",
   });
 });
 

@@ -3,11 +3,15 @@ import {
   TOUR_SCENE_CAMERA_MOTION_LABELS,
   type TourSceneCameraMotion,
 } from "@/lib/tours/scenes.core";
+import {
+  RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS,
+  type SceneTransitionEffect,
+} from "@/lib/tours/rendering/transitions/scene-transition-effects";
 import type { TourProjectType } from "@/lib/tours/projects/project-types";
 
 export const DEFAULT_TOUR_SCRIPT_PLANNING_MODEL = "google/gemini-2.5-flash";
 export const TOUR_SCRIPT_PLANNING_PROMPT_VERSION =
-  "tour-script-plan-v2-elevenlabs-v3-tags";
+  "tour-script-plan-v3-transition-effects";
 
 export type TourScriptPlanningPromptInput = {
   project: {
@@ -21,6 +25,7 @@ export type TourScriptPlanningPromptInput = {
     id: string;
     title: string;
     cameraMotion: TourSceneCameraMotion;
+    transitionEffect: SceneTransitionEffect;
     proofedFacts: Array<{
       text: string;
     }>;
@@ -50,7 +55,7 @@ export function buildOpenRouterScriptPlanPrompt(
 ): string {
   return [
     "Create a scene-ordered tour script plan for a photo-based real-estate tour.",
-    `Return JSON shape: {"fullScript":"clean spoken narration only","voicePromptScript":"ElevenLabs v3 prompt text","sceneTimings":[{"sceneId":"...","spokenText":"...","voicePromptText":"[tag] ...","deliveryTags":["[tag]"],"selectedCameraMotion":"slow_push","durationSeconds":${input.timing.fallbackDurationSeconds}}]}.`,
+    `Return JSON shape: {"fullScript":"clean spoken narration only","voicePromptScript":"ElevenLabs v3 prompt text","sceneTimings":[{"sceneId":"...","spokenText":"...","voicePromptText":"[tag] ...","deliveryTags":["[tag]"],"selectedCameraMotion":"slow_push","selectedTransitionEffect":"cross-dissolve","durationSeconds":${input.timing.fallbackDurationSeconds}}]}.`,
     `durationSeconds must be between ${input.timing.minDurationSeconds} and ${input.timing.maxDurationSeconds}.`,
     `Prompt version: ${input.promptVersion}.`,
     "The final renderer will use each still image with camera motion, so write narration that works over a photo-based tour.",
@@ -60,6 +65,11 @@ export function buildOpenRouterScriptPlanPrompt(
     "If a scene's cameraMotion is auto, inspect its image and set selectedCameraMotion to the best concrete motion for an Instagram real-estate hook.",
     "If a scene's cameraMotion is not auto, set selectedCameraMotion to that supplied concrete value.",
     "Choose motion based on composition: strong centered feature can use slow_push or snap_push, wide rooms can use slow_pan or hero_reveal, finishes can use detail_glide, tall foyers/stairs/windows/facades can use vertical_rise, and already-perfect compositions can use static_hold.",
+    `Available concrete scene transitions: ${formatResolvedSceneTransitionEffectOptions()}.`,
+    "A scene's transitionEffect controls the transition into that scene from the previous scene. The first scene still needs a selectedTransitionEffect value, but it will not create an incoming transition.",
+    "If a scene's transitionEffect is auto, inspect the scene image and neighboring scene order, then set selectedTransitionEffect to the best concrete transition for the visual shift and pacing.",
+    "If a scene's transitionEffect is not auto, set selectedTransitionEffect to that supplied concrete value.",
+    "Choose transitions by use case: use calm dissolves or fades for luxury pacing, cross-blur when rooms feel visually unrelated, cross-zoom or swipe-on-top for movement into another space, iris for focal details, soft-wipe for smooth understated room changes, split-reveal for comparisons, and whip-pan for fast social hooks.",
     "",
     "ElevenLabs v3 delivery tags:",
     "- Add one short square-bracket tag at the start of each scene's voicePromptText.",
@@ -94,6 +104,7 @@ export function buildOpenRouterScriptPlanPrompt(
         `${index + 1}. sceneId: ${scene.id}`,
         `title: ${scene.title}`,
         `cameraMotion: ${scene.cameraMotion}`,
+        `transitionEffect: ${scene.transitionEffect}`,
         `facts: ${facts}`,
       ].join("\n");
     }),
@@ -104,4 +115,11 @@ function formatResolvedCameraMotionOptions(): string {
   return RESOLVED_TOUR_SCENE_CAMERA_MOTIONS.map(
     (motion) => `${motion} (${TOUR_SCENE_CAMERA_MOTION_LABELS[motion]})`
   ).join(", ");
+}
+
+function formatResolvedSceneTransitionEffectOptions(): string {
+  return RESOLVED_SCENE_TRANSITION_EFFECT_OPTIONS.map(
+    (effect) =>
+      `${effect.value} (${effect.label}) - ${effect.description} Use case: ${effect.useCase}`
+  ).join("; ");
 }

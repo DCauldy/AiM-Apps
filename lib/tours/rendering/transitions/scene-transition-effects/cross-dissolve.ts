@@ -16,6 +16,10 @@ import { formatTransitionSeconds, roundTransitionSeconds } from "./utils";
 export const sceneTransitionEffects = {
   "cross-dissolve": {
     effect: "cross-dissolve",
+    label: "Cross dissolve",
+    description:
+      "Scene A fades down while Scene B fades up underneath for a soft double-exposure blend.",
+    useCase: "General room-to-room transitions when the pacing should feel calm and polished.",
     buildSceneJoinArgs: buildCrossDissolveSceneJoinArgs,
   },
 } satisfies SceneTransitionEffectDefinitionMap;

@@ -10,7 +10,7 @@ import {
   joinedSceneTransitionEffectSegments,
   resolveSceneTransitionEffectSettings,
   type SceneClipHandlePlan,
-  type SceneTransitionEffect,
+  type ResolvedSceneTransitionEffect,
   type SceneTransitionEffectSettings,
 } from "../transitions/scene-transition-effects";
 import {
@@ -44,7 +44,7 @@ export type FinalRenderStageOptions = {
   muxSettings?: FinalRenderSettings;
   outputPreset?: "vertical_1080p_h264_aac";
   sceneTransitions?: {
-    effect?: SceneTransitionEffect;
+    effect?: ResolvedSceneTransitionEffect;
   };
 };
 
@@ -53,7 +53,7 @@ export type FinalRenderSceneClip = {
   durationSeconds: number;
   requestedDurationSeconds: number;
   handlePlan: SceneClipHandlePlan;
-  transitionEffect?: SceneTransitionEffect;
+  transitionEffect?: ResolvedSceneTransitionEffect;
   asset: TourRenderAsset;
   fingerprintHash: string;
 };
@@ -81,7 +81,7 @@ export type JoinedScenesFingerprint = {
   boundaryTransitionEffects: Array<{
     fromSceneId: string;
     toSceneId: string;
-    effect: SceneTransitionEffect;
+    effect: ResolvedSceneTransitionEffect;
     durationSeconds: number;
   }>;
   expectedDurationSeconds: number;

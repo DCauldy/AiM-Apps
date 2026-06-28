@@ -16,6 +16,10 @@ import { formatTransitionSeconds, roundTransitionSeconds } from "./utils";
 export const sceneTransitionEffects = {
   "cross-blur": {
     effect: "cross-blur",
+    label: "Cross blur",
+    description:
+      "Scene A softens into blur while Scene B appears blurred, then sharpens into focus.",
+    useCase: "Joining two rooms or compositions that look visually unrelated.",
     buildSceneJoinArgs: buildCrossBlurSceneJoinArgs,
   },
 } satisfies SceneTransitionEffectDefinitionMap;

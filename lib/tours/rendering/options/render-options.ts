@@ -4,9 +4,9 @@ import type {
 } from "../preflight/preflight";
 import { TOUR_PROJECT_TYPES, type TourProjectType } from "../../projects/project-types";
 import {
-  DEFAULT_SCENE_TRANSITION_EFFECT,
-  isSceneTransitionEffect,
-  type SceneTransitionEffect,
+  DEFAULT_RESOLVED_SCENE_TRANSITION_EFFECT,
+  isResolvedSceneTransitionEffect,
+  type ResolvedSceneTransitionEffect,
 } from "../transitions/scene-transition-effects";
 
 type TourRenderOptionValidationResult =
@@ -39,7 +39,7 @@ export type TourRenderAdvancedControlsState = {
   renderMode: TourRenderMode;
   scriptPlanningModelId: string;
   sceneClipProviderModelId: string;
-  sceneTransitionEffect: SceneTransitionEffect;
+  sceneTransitionEffect: ResolvedSceneTransitionEffect;
   reuse: Record<SupportedReuseFlag, boolean>;
 };
 
@@ -250,7 +250,7 @@ export function getAdvancedControlsStateForPreset(
     scriptPlanningModelId: options.scriptPlanningModelId ?? "",
     sceneClipProviderModelId: options.sceneClipProviderModelId ?? "",
     sceneTransitionEffect:
-      options.sceneTransitions?.effect ?? DEFAULT_SCENE_TRANSITION_EFFECT,
+      options.sceneTransitions?.effect ?? DEFAULT_RESOLVED_SCENE_TRANSITION_EFFECT,
     reuse: {
       ...REUSE_ALL_SUPPORTED_ASSETS,
       ...(options.reuse ?? {}),
@@ -329,7 +329,7 @@ export function sanitizeTourRenderInvestigationOptions(
 
   if (
     isRecord(value.sceneTransitions) &&
-    isSceneTransitionEffect(value.sceneTransitions.effect)
+    isResolvedSceneTransitionEffect(value.sceneTransitions.effect)
   ) {
     options.sceneTransitions = {
       effect: value.sceneTransitions.effect,
@@ -428,7 +428,7 @@ export function parseTourRenderOptionsInput(
         if (effect === undefined) {
           continue;
         }
-        if (!isSceneTransitionEffect(effect)) {
+        if (!isResolvedSceneTransitionEffect(effect)) {
           errors.push("sceneTransitions.effect must be a supported scene transition effect.");
           continue;
         }

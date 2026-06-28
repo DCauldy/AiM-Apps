@@ -32,6 +32,7 @@ Ordered scene records owned by a Tour Project. These are the durable backbone fo
 | `sort_order` | Saved scene order within the project. Unique per project. |
 | `included` | Whether the scene participates in downstream script/render workflows. New scenes default to included. |
 | `camera_motion` | Camera-motion preset from the controlled set: `auto`, `slow_push`, `slow_pan`, `static_hold`, `hero_reveal`, `detail_glide`, `vertical_rise`, `snap_push`. New scenes default to `auto`, which lets script planning choose the concrete render motion from the scene image. |
+| `transition_effect` | Scene-transition preset from the controlled set: `auto`, `swipe-on-top`, `cross-dissolve`, `fade`, `cross-blur`, `cross-zoom`, `iris`, `soft-wipe`, `split-reveal`, `whip-pan`. New scenes default to `auto`, which lets script planning choose the concrete transition effect from scene context. |
 | `created_at` | When the scene was created. |
 | `updated_at` | When the scene was last updated. |
 

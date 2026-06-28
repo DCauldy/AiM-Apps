@@ -96,6 +96,7 @@ describe("tour render prompt previews", () => {
             id: "scene-1",
             title: "Kitchen",
             cameraMotion: "slow_push",
+            transitionEffect: "auto",
             proofedFacts: [
               {
                 text: "Quartz waterfall island",

@@ -27,6 +27,7 @@ import {
 import { prepareHeyGenAvatarStage } from "../avatars/tour-avatar";
 import {
   applyScriptPlannedCameraMotions,
+  applyScriptPlannedTransitionEffects,
   buildAvatarBatchItem,
   isProviderReachableUrl,
   needsAvatar,
@@ -37,6 +38,7 @@ import {
   shouldReuseAsset,
   summarizePreflightFailure,
   summarizeSceneCameraMotions,
+  summarizeSceneTransitionEffects,
 } from "./generate-tour-project-video.helpers";
 import {
   markShellFailed,
@@ -438,12 +440,22 @@ export async function generateTourProjectVideo(
       }
     }
 
-    const renderableProject = applyScriptPlannedCameraMotions(project, scriptPlanResult.plan);
+    const cameraResolvedProject = applyScriptPlannedCameraMotions(project, scriptPlanResult.plan);
+    const renderableProject = applyScriptPlannedTransitionEffects(
+      cameraResolvedProject,
+      scriptPlanResult.plan
+    );
     const finalSceneCameraMotions = summarizeSceneCameraMotions(renderableProject);
+    const finalSceneTransitionEffects = summarizeSceneTransitionEffects(renderableProject);
     console.log("Tour render scene camera motions resolved.", {
       projectId: input.projectId,
       runId: input.renderRunId,
       sceneCameraMotions: finalSceneCameraMotions,
+    });
+    console.log("Tour render scene transition effects resolved.", {
+      projectId: input.projectId,
+      runId: input.renderRunId,
+      sceneTransitionEffects: finalSceneTransitionEffects,
     });
 
     await recordProgress(repository, input, {
@@ -456,6 +468,7 @@ export async function generateTourProjectVideo(
       metadata: {
         renderMode: input.options?.renderMode ?? preflightResult.summary.renderMode,
         sceneCameraMotions: finalSceneCameraMotions,
+        sceneTransitionEffects: finalSceneTransitionEffects,
       },
     });
 
@@ -533,6 +546,7 @@ export async function generateTourProjectVideo(
         sceneClipAssetIds: sceneClipResult.clips.map((clip) => clip.asset.id),
         reusedCount: sceneClipResult.clips.filter((clip) => clip.reused).length,
         sceneCameraMotions: finalSceneCameraMotions,
+        sceneTransitionEffects: finalSceneTransitionEffects,
       },
     });
 

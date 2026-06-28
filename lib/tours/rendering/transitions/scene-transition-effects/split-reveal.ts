@@ -26,6 +26,10 @@ export const sceneTransitionEffects = Object.fromEntries(
     effect,
     {
       effect,
+      label: "Split reveal",
+      description:
+        "Scene A separates into panels that move apart to reveal Scene B underneath.",
+      useCase: "Before/after, staged/unstaged, day/night variants, or paired visual comparisons.",
       buildSceneJoinArgs: buildSplitRevealSceneJoinArgs,
     } satisfies SceneTransitionEffectDefinition,
   ])

@@ -126,6 +126,7 @@ test("surfaces scene transition options in the dropdown", async () => {
 
   await user.click(screen.getByLabelText("Scene transition"));
 
+  assert.ok(screen.getByRole("option", { name: "Auto" }));
   assert.ok(screen.getByRole("option", { name: "Swipe on top" }));
   assert.ok(screen.getByRole("option", { name: "Cross dissolve" }));
   assert.ok(screen.queryByRole("option", { name: "Light leak" }) === null);

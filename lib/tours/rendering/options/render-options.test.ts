@@ -243,6 +243,17 @@ describe("tour render investigation options", () => {
     expect(
       parseTourRenderOptionsInput({
         sceneTransitions: {
+          effect: "auto",
+        },
+      }),
+    ).toEqual({
+      ok: false,
+      errors: ["sceneTransitions.effect must be a supported scene transition effect."],
+    });
+
+    expect(
+      parseTourRenderOptionsInput({
+        sceneTransitions: {
           effect: "dip-to-black",
         },
       }),
