@@ -78,11 +78,39 @@ export function CampaignsClient({
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [launchCampaign, setLaunchCampaign] = useState<HlCampaign | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
 
   const refresh = async () => {
     const res = await fetch("/api/apps/hyperlocal/campaigns");
     const json = await res.json();
     setCampaigns(json.campaigns ?? []);
+  };
+
+  // One-click run: launch straight into the Magic experience using the
+  // profile's default CRM + sender. Falls back to the launcher dialog when a
+  // default can't be resolved (no CRM/email yet).
+  const runCampaign = async (c: HlCampaign) => {
+    setRunningId(c.id);
+    try {
+      const res = await fetch(`/api/apps/hyperlocal/campaigns/${c.id}/run`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (json.code === "needs_selection") {
+        setLaunchCampaign(c); // fall back to the manual picker
+        return;
+      }
+      if (!res.ok || !json.runId) {
+        toast.error(json.error ?? "Couldn't start the run.");
+        return;
+      }
+      window.dispatchEvent(new Event("hyperlocal-usage-updated"));
+      router.push(`/apps/hyperlocal/runs/${json.runId}?magic=1`);
+    } catch {
+      toast.error("Couldn't start the run.");
+    } finally {
+      setRunningId(null);
+    }
   };
 
   const startEdit = (c: HlCampaign) => {
@@ -320,7 +348,7 @@ export function CampaignsClient({
           onClose={() => setLaunchCampaign(null)}
           onLaunched={(runId) => {
             setLaunchCampaign(null);
-            router.push(`/apps/hyperlocal/runs/${runId}`);
+            router.push(`/apps/hyperlocal/runs/${runId}?magic=1`);
           }}
         />
       )}
@@ -408,9 +436,11 @@ export function CampaignsClient({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setLaunchCampaign(c)}
+                      onClick={() => runCampaign(c)}
+                      disabled={runningId === c.id}
                     >
-                      <Play className="h-4 w-4 mr-1" /> Run
+                      <Play className="h-4 w-4 mr-1" />
+                      {runningId === c.id ? "Starting…" : "Run"}
                     </Button>
                     <Button
                       variant="ghost"
