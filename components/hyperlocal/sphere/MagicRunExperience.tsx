@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CampaignBuildProgress,
   type BuildPhase,
 } from "@/components/hyperlocal/sphere/CampaignBuildProgress";
+import { InlineDraftEditor } from "@/components/hyperlocal/sphere/InlineDraftEditor";
+import { cn } from "@/lib/utils";
 import type { HlRun, HlSegment, HlEmail, RunPhase } from "@/types/hyperlocal";
 
 // ============================================================
@@ -113,9 +115,23 @@ export function MagicRunExperience({
   });
   const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which draft is expanded for inline review/edit (accordion).
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const autoExpanded = useRef(false);
   // Displayed build percent — eases from the current step's floor toward its
   // ceiling so the bar always feels alive between 3s polls.
   const [pct, setPct] = useState(5);
+
+  // Merge an edited email back into local state (review phase doesn't poll, so
+  // this is the source of truth once drafts are ready).
+  const updateEmail = useCallback((updated: HlEmail) => {
+    setData((d) => ({
+      ...d,
+      emails: d.emails.map((e) =>
+        e.id === updated.id ? { ...e, ...updated } : e,
+      ),
+    }));
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -173,6 +189,19 @@ export function MagicRunExperience({
     }
   }, [data.run.phase, router, runId]);
 
+  // Auto-expand the first draft when drafts land, so the preview is visible
+  // immediately (no extra click to start reviewing).
+  useEffect(() => {
+    if (
+      data.run.phase === "review" &&
+      !autoExpanded.current &&
+      data.emails.length > 0
+    ) {
+      autoExpanded.current = true;
+      setExpandedId(data.emails[0].id);
+    }
+  }, [data.run.phase, data.emails]);
+
   const approveAll = useCallback(async () => {
     setApproving(true);
     setError(null);
@@ -199,7 +228,12 @@ export function MagicRunExperience({
   const { run, emails } = data;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
+    <div
+      className={cn(
+        "mx-auto px-4 py-12",
+        run.phase === "review" ? "max-w-3xl" : "max-w-2xl",
+      )}
+    >
       {/* Working — live multi-step build progress */}
       {working && (
         <CampaignBuildProgress
@@ -217,13 +251,23 @@ export function MagicRunExperience({
             <h1 className="text-2xl font-semibold">Your drafts are ready ✨</h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {emails.length} neighborhood email{emails.length === 1 ? "" : "s"},
-              written in your voice. Send them all, or open the editor to tweak.
+              written in your voice. Expand any to preview &amp; tweak, then send
+              them all.
             </p>
           </div>
 
           <div className="mt-6 space-y-2">
             {emails.map((e) => (
-              <DraftCard key={e.id} email={e} />
+              <InlineDraftEditor
+                key={e.id}
+                runId={runId}
+                email={e}
+                open={expandedId === e.id}
+                onToggle={() =>
+                  setExpandedId((id) => (id === e.id ? null : e.id))
+                }
+                onUpdated={updateEmail}
+              />
             ))}
           </div>
 
@@ -311,30 +355,6 @@ export function MagicRunExperience({
   );
 }
 
-function DraftCard({ email }: { email: HlEmail }) {
-  const snippet = htmlSnippet(
-    email.html ??
-      email.seller_perspective_html ??
-      email.buyer_perspective_html ??
-      "",
-  );
-  return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <p className="text-sm font-semibold">
-        {email.subject || "Writing subject…"}
-      </p>
-      {email.preheader && (
-        <p className="mt-0.5 text-xs text-muted-foreground">{email.preheader}</p>
-      )}
-      {snippet && (
-        <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-          {snippet}
-        </p>
-      )}
-    </div>
-  );
-}
-
 /** A spinning, glowing orb — the "AI at work" motif. Pure CSS. */
 function MagicOrb() {
   return (
@@ -342,14 +362,4 @@ function MagicOrb() {
       <div className="h-full w-full animate-spin rounded-full border-[3px] border-[#F43F5E]/20 border-t-[#F43F5E] [animation-duration:1.2s]" />
     </div>
   );
-}
-
-function htmlSnippet(html: string, max = 140): string {
-  const text = html
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return text.length > max ? `${text.slice(0, max)}…` : text;
 }
