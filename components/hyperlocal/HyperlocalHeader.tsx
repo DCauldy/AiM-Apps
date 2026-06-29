@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from "react";
 import { ProductHeader } from "@/components/app-shell/ProductHeader";
 import { HyperlocalUpgradeModal } from "@/components/hyperlocal/HyperlocalUpgradeModal";
 import { UNLIMITED } from "@/lib/hyperlocal-packs";
-import { FEATURES } from "@/lib/feature-flags";
 import { cn } from "@/lib/utils";
 
 type HyperlocalUsageStatus = {
@@ -18,24 +17,16 @@ type HyperlocalUsageStatus = {
   nudge: boolean;
 };
 
-// Map-first nav: "Sphere" (the living map) is home, the legacy dashboard is
-// preserved as "Stats". Falls back to the classic nav when the flag is off.
-const NAV_ITEMS = FEATURES.HYPERLOCAL_MAP_HOME
-  ? [
-      { label: "Launch", href: "/apps/hyperlocal/map" },
-      { label: "Campaigns", href: "/apps/hyperlocal/campaigns" },
-      { label: "Stats", href: "/apps/hyperlocal/dashboard" },
-      { label: "Settings", href: "/apps/hyperlocal/settings" },
-    ]
-  : [
-      { label: "Dashboard", href: "/apps/hyperlocal/dashboard" },
-      { label: "Campaigns", href: "/apps/hyperlocal/campaigns" },
-      { label: "Settings", href: "/apps/hyperlocal/settings" },
-    ];
+// Map-first nav: "Launch" (the living map) is home; the dashboard is the
+// "Stats" tab.
+const NAV_ITEMS = [
+  { label: "Launch", href: "/apps/hyperlocal/map" },
+  { label: "Campaigns", href: "/apps/hyperlocal/campaigns" },
+  { label: "Stats", href: "/apps/hyperlocal/dashboard" },
+  { label: "Settings", href: "/apps/hyperlocal/settings" },
+];
 
-const HOME_HREF = FEATURES.HYPERLOCAL_MAP_HOME
-  ? "/apps/hyperlocal/map"
-  : "/apps/hyperlocal/dashboard";
+const HOME_HREF = "/apps/hyperlocal/map";
 
 function isHyperlocalActive(href: string, pathname: string | null) {
   if (href === HOME_HREF) {

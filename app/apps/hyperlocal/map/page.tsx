@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireActiveProfileOrRedirect } from "@/lib/profiles/require-active";
-import { FEATURES } from "@/lib/feature-flags";
 import { SphereMapClient } from "@/components/hyperlocal/sphere/SphereMapClient";
 
 export default async function HyperlocalMapPage({
@@ -9,10 +8,6 @@ export default async function HyperlocalMapPage({
 }: {
   searchParams: Promise<{ campaign?: string }>;
 }) {
-  if (!FEATURES.HYPERLOCAL_MAP_HOME) {
-    redirect("/apps/hyperlocal/dashboard");
-  }
-
   const supabase = await createClient();
   const {
     data: { user },

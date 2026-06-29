@@ -2,7 +2,6 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { RunClient } from "./run-client";
 import { MagicRunExperience } from "@/components/hyperlocal/sphere/MagicRunExperience";
-import { FEATURES } from "@/lib/feature-flags";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +31,7 @@ export default async function RunPage({
 
   // Magic launches drop into the streamlined one-click experience; everything
   // else (incl. Control mode) uses the classic phase-by-phase run client.
-  if (magic === "1" && FEATURES.HYPERLOCAL_MAP_HOME) {
+  if (magic === "1") {
     return <MagicRunExperience runId={id} initialRun={run} />;
   }
 
