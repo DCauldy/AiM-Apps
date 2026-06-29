@@ -206,12 +206,7 @@ export function CampaignsClient({
           </p>
         </div>
         {!creating && !editingId && (
-          <Button
-            onClick={() => {
-              setCreating(true);
-              setForm(EMPTY);
-            }}
-          >
+          <Button onClick={() => router.push("/apps/hyperlocal/map")}>
             <Plus className="h-4 w-4 mr-2" /> New campaign
           </Button>
         )}
@@ -340,11 +335,10 @@ export function CampaignsClient({
           {campaigns.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-12 text-center">
               <p className="text-sm text-muted-foreground mb-3">
-                No campaigns yet. Create one to start sending hyperlocal market
-                reports.
+                No campaigns yet. Head to Launch to build one on the map.
               </p>
-              <Button onClick={() => setCreating(true)}>
-                <Plus className="h-4 w-4 mr-2" /> Create campaign
+              <Button onClick={() => router.push("/apps/hyperlocal/map")}>
+                <Plus className="h-4 w-4 mr-2" /> New campaign
               </Button>
             </div>
           ) : (
