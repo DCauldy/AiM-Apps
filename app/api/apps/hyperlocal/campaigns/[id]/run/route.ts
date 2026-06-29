@@ -71,20 +71,23 @@ export async function POST(
     return Response.json({ error: "No active profile" }, { status: 400 });
   }
 
-  // Resolve defaults. Missing either → tell the client to use the dialog.
+  // CRM is the only hard requirement (we can't pull contacts without it). The
+  // sender resolves to the profile default when present, else null — exactly
+  // like the map "Send it" flow; the approve step surfaces a friendly prompt
+  // if no sender is set, rather than blocking the launch behind a dialog.
   const crmConnectionId = await resolveSphereCrmConnectionId(user.id, profileId);
+  if (!crmConnectionId) {
+    return Response.json(
+      { error: "Connect a CRM to your profile to run a campaign.", code: "no_crm" },
+      { status: 400 },
+    );
+  }
   const defaultEmail = await getDefaultAppEmailConnection(
     service,
     user.id,
     profileId,
     "hyperlocal",
   );
-  if (!crmConnectionId || !defaultEmail) {
-    return Response.json(
-      { code: "needs_selection" },
-      { status: 200 },
-    );
-  }
 
   const { data: run, error: runErr } = await service
     .from("hl_runs")
@@ -92,7 +95,7 @@ export async function POST(
       user_id: user.id,
       campaign_id: campaignId,
       crm_connection_id: crmConnectionId,
-      email_connection_id: defaultEmail.connection.id,
+      email_connection_id: defaultEmail?.connection.id ?? null,
       profile_id: profileId,
       phase: "discover",
       started_at: new Date().toISOString(),

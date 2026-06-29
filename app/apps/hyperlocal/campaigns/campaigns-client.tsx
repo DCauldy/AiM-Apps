@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
 import { useHlDialog } from "@/components/hyperlocal/ui/HlDialog";
-import { RunLauncherDialog } from "@/components/hyperlocal/runs/RunLauncherDialog";
 import { HyperlocalMap } from "@/components/hyperlocal/map/HyperlocalMap";
 import type {
   HlCampaign,
@@ -77,7 +76,6 @@ export function CampaignsClient({
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
-  const [launchCampaign, setLaunchCampaign] = useState<HlCampaign | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
 
   const refresh = async () => {
@@ -87,8 +85,7 @@ export function CampaignsClient({
   };
 
   // One-click run: launch straight into the Magic experience using the
-  // profile's default CRM + sender. Falls back to the launcher dialog when a
-  // default can't be resolved (no CRM/email yet).
+  // profile's default CRM + sender — no dialog.
   const runCampaign = async (c: HlCampaign) => {
     setRunningId(c.id);
     try {
@@ -96,10 +93,6 @@ export function CampaignsClient({
         method: "POST",
       });
       const json = await res.json();
-      if (json.code === "needs_selection") {
-        setLaunchCampaign(c); // fall back to the manual picker
-        return;
-      }
       if (!res.ok || !json.runId) {
         toast.error(json.error ?? "Couldn't start the run.");
         return;
@@ -340,17 +333,6 @@ export function CampaignsClient({
             </Button>
           </div>
         </div>
-      )}
-
-      {launchCampaign && (
-        <RunLauncherDialog
-          campaign={launchCampaign}
-          onClose={() => setLaunchCampaign(null)}
-          onLaunched={(runId) => {
-            setLaunchCampaign(null);
-            router.push(`/apps/hyperlocal/runs/${runId}?magic=1`);
-          }}
-        />
       )}
 
       {!creating && !editingId && (
