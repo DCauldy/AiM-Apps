@@ -272,11 +272,12 @@ async function processSegment(
   const supabase = createServiceRoleClient();
   const metrics = (segment.mls_metrics as MlsMetrics | null) ?? null;
 
-  // Compose sections by campaign lens
-  const lens = ctx.campaign.lens;
-  const perspectives: Perspective[] = [];
-  if (lens === "seller" || lens === "balanced") perspectives.push("seller");
-  if (lens === "buyer" || lens === "balanced") perspectives.push("buyer");
+  // Every email carries BOTH a homeowner and a buyer section — same market
+  // data framed two ways (matches the legacy Cowork agent). The campaign lens
+  // (seller/buyer/balanced) controls which side leads and gets more weight,
+  // NOT whether a section exists. A homeowner might sell, buy, or both, so we
+  // never withhold a perspective.
+  const perspectives: Perspective[] = ["seller", "buyer"];
 
   let sellerHtml: string | null = null;
   let buyerHtml: string | null = null;

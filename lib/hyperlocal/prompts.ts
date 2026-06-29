@@ -66,12 +66,42 @@ function formatTrends(t: TrendContext | undefined): string {
   return `\n\nTREND CONTEXT — weave one of these naturally if it strengthens the story; never both:\n${lines.join("\n")}`;
 }
 
+/** Human phrase for the data scope (price band + home type) so the writer
+ *  frames the numbers honestly — "based on single-family homes $300–500K". */
+function formatScope(
+  campaign: Pick<
+    HlCampaign,
+    "property_type_filters" | "price_range_low" | "price_range_high"
+  >,
+): string {
+  const typeMap: Record<string, string> = {
+    single_family: "single-family homes",
+    condo: "condos",
+    townhome: "townhomes",
+  };
+  const types = (campaign.property_type_filters ?? [])
+    .map((t) => typeMap[t])
+    .filter(Boolean);
+  const typePhrase = types.length > 0 ? types.join(" and ") : "homes";
+  const lo = campaign.price_range_low;
+  const hi = campaign.price_range_high;
+  let pricePhrase = "";
+  if (lo && hi) pricePhrase = ` priced ${formatMoney(lo)}–${formatMoney(hi)}`;
+  else if (lo) pricePhrase = ` priced ${formatMoney(lo)}+`;
+  else if (hi) pricePhrase = ` priced under ${formatMoney(hi)}`;
+  if (typePhrase === "homes" && !pricePhrase) return "";
+  return `\n\nDATA SCOPE: These numbers reflect ${typePhrase}${pricePhrase} in the area — frame the story around that slice (e.g. "for ${typePhrase}${pricePhrase} here…"). Don't imply it covers every property.`;
+}
+
 export function getEmailWriterPrompt(opts: {
   sender: PlatformSenderProfile | null;
   segment: HlSegment;
   metrics: MlsMetrics | null;
   perspective: Perspective;
-  campaign: Pick<HlCampaign, "lens">;
+  campaign: Pick<
+    HlCampaign,
+    "lens" | "property_type_filters" | "price_range_low" | "price_range_high"
+  >;
   trends?: TrendContext;
 }): string {
   const { sender, segment, metrics, perspective, campaign, trends } = opts;
@@ -79,19 +109,33 @@ export function getEmailWriterPrompt(opts: {
     ? `Sender: ${sender.full_name}${sender.title ? `, ${sender.title}` : ""}${sender.brokerage ? `, ${sender.brokerage}` : ""}.`
     : "Sender details will be appended.";
 
-  return `You are writing a hyperlocal market report email for the ${segment.geo_label || segment.geo_key} area. ${senderBlock}
+  // The email always contains both sections; the campaign lens decides which
+  // one LEADS and carries more weight. A section that matches the lens is the
+  // hero (fuller, more detailed); the off-lens section is a tighter companion.
+  const isLead =
+    campaign.lens === "balanced" || campaign.lens === perspective;
+  const emphasisNote =
+    campaign.lens === "balanced"
+      ? `EMPHASIS: Balanced campaign — give this section equal weight to its counterpart.`
+      : isLead
+        ? `EMPHASIS: This campaign leans ${campaign.lens}, so this is the LEAD section — make it the fuller, more detailed half of the email.`
+        : `EMPHASIS: This campaign leans ${campaign.lens}, so this section is the shorter companion to the lead — keep it tight and complementary, not competing.`;
+  const lengthGuide = isLead ? "120–180 words" : "60–100 words";
+
+  return `You are writing one section of a hyperlocal market report email for the ${segment.geo_label || segment.geo_key} area. The full email contains BOTH a homeowner section and a buyer section drawn from the same data — you are writing the ${perspective} section. ${senderBlock}
 
 CAMPAIGN LENS: ${campaign.lens}
 SECTION PERSPECTIVE: ${perspective}
+${emphasisNote}
 
 ${PERSPECTIVE_GUIDANCE[perspective]}
 
 REAL MARKET DATA — do not invent numbers, only use what's here:
-${formatMetrics(metrics)}${formatTrends(trends)}
+${formatMetrics(metrics)}${formatTrends(trends)}${formatScope(campaign)}
 
 OUTPUT FORMAT: clean HTML, no <html> or <body> wrapper. Use <p>, <strong>, <em>, and one <ul> if you call out 2–4 data points as bullets. NO emojis. NO marketing fluff. Sound like a knowledgeable agent texting a neighbor, not a brochure.
 
-LENGTH: 120–180 words for this section.
+LENGTH: ${lengthGuide} for this section.
 
 TONE: Conversational, confident, specific. Cite the actual numbers above. Add brief context for what the numbers mean (e.g. "a 12-day DOM means homes are moving fast"). End with a single soft CTA — something like "happy to share what I'm seeing on the ground" — not a hard sell.
 

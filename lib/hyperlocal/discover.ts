@@ -44,6 +44,37 @@ export interface RunHlDiscoverResult {
   failureReason?: string;
 }
 
+/** Map our property-type filters to the Zillow provider's home_type vocab.
+ *  Empty/unknown → all home types. */
+function zillowHomeTypes(filters: string[] | null | undefined): string | undefined {
+  if (!filters || filters.length === 0) return undefined; // provider default = homes
+  const map: Record<string, string> = {
+    single_family: "Houses",
+    condo: "Condos",
+    townhome: "Townhomes",
+  };
+  const mapped = filters.map((f) => map[f]).filter(Boolean);
+  return mapped.length > 0 ? mapped.join(",") : undefined;
+}
+
+/** Read the Magic/Control marker written at launch (storage, no schema). */
+async function readRunMode(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  userId: string,
+  runId: string,
+): Promise<"magic" | "control" | null> {
+  const { data } = await supabase.storage
+    .from("hyperlocal-uploads")
+    .download(`${userId}/run-mode/${runId}.json`);
+  if (!data) return null;
+  try {
+    const parsed = JSON.parse(await data.text()) as { mode?: string };
+    return parsed.mode === "control" ? "control" : "magic";
+  } catch {
+    return null;
+  }
+}
+
 export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult> {
   const supabase = createServiceRoleClient();
 
@@ -235,23 +266,80 @@ export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult>
     })
     .eq("id", runId);
 
-  // Compute MLS requirements (only for full-size segments)
+  // Full-size segments that need market numbers.
   const pendingBuckets = buckets.filter((b) => !b.below_min_size);
-  const requirements = computeRequiredMlsExports(pendingBuckets, campaign);
+
+  // ---- 2b. Auto-fill market data (Full report, no manual upload) ----
+  //
+  // Try to auto-fetch market numbers per ZIP from the Zillow market-data
+  // provider (cached 24h). Segments we successfully fill are marked ready;
+  // any we can't (no key, no data, or a non-ZIP geo) stay pending and fall
+  // through to the manual MLS upload — the "use my own MLS data" override is
+  // always available.
+  // Mode marker written at launch (Magic vs Control). Control keeps segments
+  // PENDING after auto-fill so the agent can still enrich with their own MLS
+  // export; Magic marks them ready and proceeds straight to generation.
+  const runMode = await readRunMode(supabase, runRow.user_id, runId);
+  const isControl = runMode === "control";
+
+  const filledKeys = new Set<string>();
+  if (hasServiceArea && pendingBuckets.length > 0) {
+    const { getMarketMetricsForZip, isMarketDataAvailable } = await import(
+      "@/lib/hyperlocal/market-data",
+    );
+    if (isMarketDataAvailable()) {
+      const opts = {
+        minPrice: campaign.price_range_low ?? null,
+        maxPrice: campaign.price_range_high ?? null,
+        homeTypes: zillowHomeTypes(campaign.property_type_filters),
+      };
+      // Sequential — the provider is rate-limited and the client spaces calls.
+      for (const b of pendingBuckets) {
+        if (!/^\d{5}$/.test(b.geo_key)) continue; // only real ZIPs resolve
+        const metrics = await getMarketMetricsForZip(b.geo_key, opts).catch(
+          () => null,
+        );
+        if (!metrics) continue;
+        // Control: write the base metrics but keep the segment pending so the
+        // MLS-upload step still offers to sharpen it. Magic: mark ready.
+        const { error: updErr } = await supabase
+          .from("hl_segments")
+          .update({
+            mls_metrics: metrics,
+            ...(isControl ? {} : { status: "ready" }),
+          })
+          .eq("run_id", runId)
+          .eq("geo_key", b.geo_key);
+        if (!updErr && !isControl) filledKeys.add(b.geo_key);
+      }
+      if (filledKeys.size > 0 || isControl) {
+        console.log(
+          `[hl-discover] auto-filled market data for ${pendingBuckets.length} segments ` +
+            `(mode=${runMode ?? "magic"}, run ${runId})`,
+        );
+      }
+    }
+  }
+
+  // Segments still needing data after auto-fill drive the manual-upload phase.
+  const stillPendingBuckets = pendingBuckets.filter(
+    (b) => !filledKeys.has(b.geo_key),
+  );
+  const requirements = computeRequiredMlsExports(stillPendingBuckets, campaign);
 
   // ---- 3. Transition phase ----
   //
-  // Three possible next states:
+  // Possible next states:
   //   - awaiting_service_area: campaign has no service_area_zips set,
   //       user must pick which ZIPs to send to from the discovered list
-  //   - awaiting_mls: service area known + at least one full-size
-  //       segment needs market data
-  //   - generate: service area known + every segment is sub-threshold
-  //       (no MLS needed because Claude writes without numbers)
+  //   - awaiting_mls: service area known + at least one full-size segment
+  //       still needs market data (auto-fill missed it — manual fallback)
+  //   - generate: service area known + every segment has data (auto-filled
+  //       or sub-threshold) — no manual upload needed
   let nextPhase: HlDiscoverNextPhase;
   if (!hasServiceArea) {
     nextPhase = "awaiting_service_area";
-  } else if (pendingBuckets.length > 0) {
+  } else if (stillPendingBuckets.length > 0) {
     nextPhase = "awaiting_mls";
   } else {
     nextPhase = "generate";
@@ -269,7 +357,7 @@ export async function runHlDiscover(runId: string): Promise<RunHlDiscoverResult>
     nextPhase,
     contactsFetched: contacts.length,
     segmentsCount: buckets.length,
-    pendingSegmentsCount: pendingBuckets.length,
+    pendingSegmentsCount: stillPendingBuckets.length,
     hasServiceArea,
     requirements,
   };

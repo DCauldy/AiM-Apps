@@ -5,6 +5,7 @@ import {
   Map as MapboxMap,
   Source,
   Layer,
+  AttributionControl,
   type MapRef,
   type MapMouseEvent,
 } from "react-map-gl/mapbox";
@@ -34,6 +35,14 @@ export interface HyperlocalMapProps {
   fitToSelected?: boolean;
   /** Optional chip rendered top-left over the map (e.g. "10 ZIPs · 5,949 contacts"). */
   overlayChip?: string;
+  /** ZIPs to gently pulse (the "opportunity" neighborhoods on the front door).
+   *  Default off, so the map's other usages are unaffected. */
+  pulseZips?: Set<string>;
+  /** ZIPs to zoom/frame the viewport around. Fires once each time
+   *  `focusNonce` changes — so the campaign auto-build can frame the cluster
+   *  without re-zooming on every manual selection toggle. */
+  focusZips?: Set<string>;
+  focusNonce?: number;
 }
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -55,6 +64,9 @@ export function HyperlocalMap({
   className,
   fitToSelected,
   overlayChip,
+  pulseZips,
+  focusZips,
+  focusNonce,
 }: HyperlocalMapProps) {
   const mapRef = useRef<MapRef | null>(null);
   const [geo, setGeo] = useState<GeoJSON.FeatureCollection | null>(null);
@@ -83,6 +95,7 @@ export function HyperlocalMap({
         contact_count: number;
         selected: 0 | 1;
         below_min: 0 | 1;
+        pulse: 0 | 1;
       }
     >();
     for (const s of segments) {
@@ -93,10 +106,11 @@ export function HyperlocalMap({
         contact_count: s.contact_count ?? 0,
         selected: selectedZips?.has(z) ? 1 : 0,
         below_min: s.below_min_size ? 1 : 0,
+        pulse: pulseZips?.has(z) ? 1 : 0,
       });
     }
     return m;
-  }, [segments, selectedZips]);
+  }, [segments, selectedZips, pulseZips]);
 
   // Load + filter GeoJSON for the segments' states
   useEffect(() => {
@@ -147,19 +161,34 @@ export function HyperlocalMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segments]);
 
-  // Fit viewport when GeoJSON loads or selection changes (when fitToSelected).
-  // Depends on mapLoaded so we never call fitBounds before the map's
-  // internal state is ready — Mapbox silently drops those calls,
-  // which is why some users would see the unzoomed continental view.
+  // Fit viewport. Depends on mapLoaded so we never call fitBounds before the
+  // map's internal state is ready — Mapbox silently drops those calls, which
+  // is why some users would see the unzoomed continental view.
+  //
+  // Critical: the broad "fit to all" must run ONCE per geo load, not on every
+  // selection toggle — otherwise clicking a ZIP (which changes selectedZips)
+  // re-fits to the whole sphere and zooms the user back out. We track the geo
+  // we last fit so re-renders from selection don't re-trigger it. Only the
+  // explicit fitToSelected mode re-frames as the selection changes.
+  const fittedGeoRef = useRef<GeoJSON.FeatureCollection | null>(null);
   useEffect(() => {
     if (!geo || !mapLoaded || !mapRef.current) return;
+    // When a focus target is set, the dedicated focus effect below frames the
+    // map instead — skip the broad fit so we don't fight it with a zoom-out.
+    if (focusZips && focusZips.size > 0) return;
 
-    let toFit: GeoJSON.Feature[] = geo.features;
+    let toFit: GeoJSON.Feature[];
     if (fitToSelected && selectedZips && selectedZips.size > 0) {
+      // Re-frame to the current selection (intentionally follows clicks).
       toFit = geo.features.filter((f) => {
         const z = (f.properties as { zip?: string } | null)?.zip;
         return z && selectedZips.has(z);
       });
+    } else {
+      // Broad fit — once per geo only, so clicks don't zoom back out.
+      if (fittedGeoRef.current === geo) return;
+      fittedGeoRef.current = geo;
+      toFit = geo.features;
     }
     if (toFit.length === 0) return;
 
@@ -173,7 +202,61 @@ export function HyperlocalMap({
       ],
       { padding: 40, duration: 600 }
     );
-  }, [geo, fitToSelected, selectedZips, mapLoaded]);
+  }, [geo, fitToSelected, selectedZips, mapLoaded, focusZips]);
+
+  // One-shot focus: zoom/frame the map to a specific cluster of ZIPs each time
+  // focusNonce changes (e.g. when the campaign auto-builds). Deliberately keyed
+  // on the nonce — NOT focusZips — so manual selection toggles never re-zoom.
+  useEffect(() => {
+    if (!focusNonce || !focusZips || focusZips.size === 0) return;
+    if (!geo || !mapLoaded || !mapRef.current) return;
+    const toFit = geo.features.filter((f) => {
+      const z = (f.properties as { zip?: string } | null)?.zip;
+      return z && focusZips.has(z);
+    });
+    if (toFit.length === 0) return;
+    const bounds = bbox({ type: "FeatureCollection", features: toFit });
+    if (!bounds) return;
+    mapRef.current.fitBounds(
+      [
+        [bounds[0], bounds[1]],
+        [bounds[2], bounds[3]],
+      ],
+      // Generous padding + a maxZoom cap so a tight cluster doesn't slam to
+      // street level; reads as "here are your picks" without losing context.
+      { padding: 80, duration: 800, maxZoom: 10 },
+    );
+    // focusZips intentionally omitted — fire only on nonce change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce, geo, mapLoaded]);
+
+  // Animate the pulse layer — a slow breathe on the opportunity ZIPs.
+  // Cheap: one setPaintProperty pair per frame on a single filtered layer.
+  const hasPulse = useMemo(
+    () => Array.from(zipMetaMap.values()).some((m) => m.pulse === 1),
+    [zipMetaMap],
+  );
+  useEffect(() => {
+    if (!hasPulse || !mapLoaded || !geo || !mapRef.current) return;
+    const map = mapRef.current.getMap();
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      // ~2.4s period sine, 0..1
+      const t = (Math.sin(((now - start) / 2400) * Math.PI * 2) + 1) / 2;
+      try {
+        if (map.getLayer("hl-zip-pulse")) {
+          map.setPaintProperty("hl-zip-pulse", "line-width", 2 + t * 5);
+          map.setPaintProperty("hl-zip-pulse", "line-opacity", 0.35 + t * 0.5);
+        }
+      } catch {
+        /* layer not ready this frame */
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [hasPulse, mapLoaded, geo]);
 
   const onClick = (e: MapMouseEvent) => {
     if (!onToggleZip) return;
@@ -226,7 +309,7 @@ export function HyperlocalMap({
   return (
     <div
       className={
-        "relative rounded-lg overflow-hidden border border-border " +
+        "hl-map relative rounded-lg overflow-hidden border border-border " +
         (className ?? "")
       }
       style={{ height }}
@@ -235,6 +318,10 @@ export function HyperlocalMap({
         ref={mapRef}
         mapboxAccessToken={MAPBOX_TOKEN}
         mapStyle="mapbox://styles/mapbox/dark-v11"
+        // Disable the default (always-expanded) attribution so we can render
+        // a compact ⓘ version below. Required OSM/Mapbox credit is preserved —
+        // just collapsed — keeping us within the data license + Mapbox ToS.
+        attributionControl={false}
         initialViewState={{
           longitude: -98.5,
           latitude: 39.5,
@@ -262,6 +349,9 @@ export function HyperlocalMap({
         cursor={onToggleZip && hovered ? "pointer" : undefined}
         style={{ width: "100%", height: "100%" }}
       >
+        {/* Compact attribution — small ⓘ in the corner that expands on click.
+            Keeps the required OSM/Mapbox credit without the wide footer bar. */}
+        <AttributionControl compact position="bottom-right" />
         {geo && (
           <Source id="hl-zips" type="geojson" data={geo}>
             <Layer
@@ -311,6 +401,20 @@ export function HyperlocalMap({
                   2.5,
                   0.5,
                 ],
+              }}
+            />
+            {/* Pulsing glow on opportunity ZIPs. line-width/opacity are
+                animated each frame by the effect below. Filtered to pulse
+                features so non-pulse ZIPs are untouched. */}
+            <Layer
+              id="hl-zip-pulse"
+              type="line"
+              filter={["==", ["get", "pulse"], 1]}
+              paint={{
+                "line-color": "#F43F5E",
+                "line-width": 3,
+                "line-opacity": 0.6,
+                "line-blur": 2,
               }}
             />
             <Layer

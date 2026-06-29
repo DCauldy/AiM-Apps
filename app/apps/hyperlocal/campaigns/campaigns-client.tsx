@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
 import { useHlDialog } from "@/components/hyperlocal/ui/HlDialog";
-import { RunLauncherDialog } from "@/components/hyperlocal/runs/RunLauncherDialog";
 import { HyperlocalMap } from "@/components/hyperlocal/map/HyperlocalMap";
+import { HyperlocalUpgradeModal } from "@/components/hyperlocal/HyperlocalUpgradeModal";
 import type {
   HlCampaign,
   SegmentationType,
@@ -52,10 +52,22 @@ const LENS_OPTIONS: { value: CampaignLens; label: string }[] = [
   { value: "balanced", label: "Balanced (both)" },
 ];
 
+/** Campaign + the most-recent-run timestamp the list API attaches. */
+type CampaignWithMeta = HlCampaign & { last_run_at?: string | null };
+
+/** "Jun 28, 2026" — compact absolute date for the last-run line. */
+function formatRunDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function CampaignsClient({
   initialCampaigns,
 }: {
-  initialCampaigns: HlCampaign[];
+  initialCampaigns: CampaignWithMeta[];
 }) {
   const toast = useHlToast();
   const { confirm, dialog } = useHlDialog();
@@ -65,12 +77,47 @@ export function CampaignsClient({
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
-  const [launchCampaign, setLaunchCampaign] = useState<HlCampaign | null>(null);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [upgrade, setUpgrade] = useState<{
+    campaignsThisMonth: number;
+    campaignsLimit: number;
+    periodEnd?: string;
+  } | null>(null);
 
   const refresh = async () => {
     const res = await fetch("/api/apps/hyperlocal/campaigns");
     const json = await res.json();
     setCampaigns(json.campaigns ?? []);
+  };
+
+  // One-click run: launch straight into the Magic experience using the
+  // profile's default CRM + sender — no dialog.
+  const runCampaign = async (c: HlCampaign) => {
+    setRunningId(c.id);
+    try {
+      const res = await fetch(`/api/apps/hyperlocal/campaigns/${c.id}/run`, {
+        method: "POST",
+      });
+      const json = await res.json();
+      if (!res.ok || !json.runId) {
+        if (json.code === "pack_limit_reached" && json.usage) {
+          setUpgrade({
+            campaignsThisMonth: json.usage.campaignsThisMonth,
+            campaignsLimit: json.usage.campaignsLimit,
+            periodEnd: json.usage.periodEnd,
+          });
+        } else {
+          toast.error(json.error ?? "Couldn't start the run.");
+        }
+        return;
+      }
+      window.dispatchEvent(new Event("hyperlocal-usage-updated"));
+      router.push(`/apps/hyperlocal/runs/${json.runId}?magic=1`);
+    } catch {
+      toast.error("Couldn't start the run.");
+    } finally {
+      setRunningId(null);
+    }
   };
 
   const startEdit = (c: HlCampaign) => {
@@ -164,6 +211,20 @@ export function CampaignsClient({
   return (
     <div className="container max-w-4xl mx-auto px-4 py-8 space-y-6">
       {dialog}
+      <HyperlocalUpgradeModal
+        open={!!upgrade}
+        onClose={() => setUpgrade(null)}
+        reason="limit"
+        periodEnd={upgrade?.periodEnd}
+        currentUsage={
+          upgrade
+            ? {
+                campaignsThisMonth: upgrade.campaignsThisMonth,
+                campaignsLimit: upgrade.campaignsLimit,
+              }
+            : undefined
+        }
+      />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Campaigns</h1>
@@ -173,12 +234,7 @@ export function CampaignsClient({
           </p>
         </div>
         {!creating && !editingId && (
-          <Button
-            onClick={() => {
-              setCreating(true);
-              setForm(EMPTY);
-            }}
-          >
+          <Button onClick={() => router.push("/apps/hyperlocal/map")}>
             <Plus className="h-4 w-4 mr-2" /> New campaign
           </Button>
         )}
@@ -302,27 +358,15 @@ export function CampaignsClient({
         </div>
       )}
 
-      {launchCampaign && (
-        <RunLauncherDialog
-          campaign={launchCampaign}
-          onClose={() => setLaunchCampaign(null)}
-          onLaunched={(runId) => {
-            setLaunchCampaign(null);
-            router.push(`/apps/hyperlocal/runs/${runId}`);
-          }}
-        />
-      )}
-
       {!creating && !editingId && (
         <>
           {campaigns.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-12 text-center">
               <p className="text-sm text-muted-foreground mb-3">
-                No campaigns yet. Create one to start sending hyperlocal market
-                reports.
+                No campaigns yet. Head to Launch to build one on the map.
               </p>
-              <Button onClick={() => setCreating(true)}>
-                <Plus className="h-4 w-4 mr-2" /> Create campaign
+              <Button onClick={() => router.push("/apps/hyperlocal/map")}>
+                <Plus className="h-4 w-4 mr-2" /> New campaign
               </Button>
             </div>
           ) : (
@@ -364,20 +408,50 @@ export function CampaignsClient({
                         {c.property_type_filters.length > 0 &&
                           ` · ${c.property_type_filters.length} property type${c.property_type_filters.length === 1 ? "" : "s"}`}
                       </p>
+
+                      {/* The actual ZIP codes so the campaign is identifiable */}
+                      {(c.service_area_zips?.length ?? 0) > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {c.service_area_zips.slice(0, 8).map((z) => (
+                            <span
+                              key={z}
+                              className="rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground"
+                            >
+                              {z}
+                            </span>
+                          ))}
+                          {c.service_area_zips.length > 8 && (
+                            <span className="px-1 py-0.5 text-[11px] text-muted-foreground">
+                              +{c.service_area_zips.length - 8} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Last run / never run */}
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {(c as CampaignWithMeta).last_run_at
+                          ? `Last run ${formatRunDate((c as CampaignWithMeta).last_run_at as string)}`
+                          : "Never run"}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setLaunchCampaign(c)}
+                      onClick={() => runCampaign(c)}
+                      disabled={runningId === c.id}
                     >
-                      <Play className="h-4 w-4 mr-1" /> Run
+                      <Play className="h-4 w-4 mr-1" />
+                      {runningId === c.id ? "Starting…" : "Run"}
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => startEdit(c)}
+                      onClick={() =>
+                        router.push(`/apps/hyperlocal/map?campaign=${c.id}`)
+                      }
                     >
                       <Edit3 className="h-4 w-4" />
                     </Button>
