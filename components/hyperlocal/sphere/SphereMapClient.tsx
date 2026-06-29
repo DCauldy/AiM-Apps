@@ -421,7 +421,13 @@ export function SphereMapClient({
             selectedZips={selected}
             onToggleZip={toggleZip}
             pulseZips={suggestion ? new Set(suggestion.zips) : undefined}
-            focusZips={suggestion ? new Set(suggestion.zips) : undefined}
+            focusZips={
+              editing
+                ? new Set(selected)
+                : suggestion
+                  ? new Set(suggestion.zips)
+                  : undefined
+            }
             focusNonce={panelKey}
             height={MAP_HEIGHT}
             overlayChip={

@@ -313,6 +313,29 @@ export function CampaignDialPanel({
         </div>
       )}
 
+      {/* Editing filler — the campaign's neighborhoods, so the panel has no
+          dead space and the ZIP list is visible while you tweak the map. */}
+      {editing && (
+        <div className="mt-1 flex flex-1 flex-col rounded-xl border border-border bg-background/40 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Neighborhoods in this campaign
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1 overflow-y-auto">
+            {selectedZips.map((z) => (
+              <span
+                key={z}
+                className="rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground"
+              >
+                {z}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Click ZIPs on the map to add or remove.
+          </p>
+        </div>
+      )}
+
       </div>
       {/* end scrollable body */}
 
