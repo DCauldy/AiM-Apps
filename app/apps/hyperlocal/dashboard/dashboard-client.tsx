@@ -8,8 +8,6 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
-  Loader2,
-  Sparkles,
   MapPin,
   Flame,
 } from "lucide-react";
@@ -22,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type {
   DashboardData,
-  HeroRun,
   CampaignStory,
   HotContact,
   NeighborhoodRow,
@@ -30,47 +27,103 @@ import type {
   HealthRail as HealthRailType,
 } from "@/lib/hyperlocal/dashboard-data";
 
-const PHASE_BLURB: Record<string, string> = {
-  review: "Drafts ready for your eyes",
-  awaiting_service_area: "Pick your service area to continue",
-  awaiting_mls: "Waiting for your MLS upload",
-  sending: "Sending now",
-  generate: "Drafting emails",
-  discover: "Pulling contacts from your CRM",
-  completed: "Your most recent send",
-};
 
 export function HyperlocalDashboardClient({ data }: { data: DashboardData }) {
-  const { hero, this_week, recent_campaigns, hot_contacts, neighborhoods, health } = data;
+  const { this_week, recent_campaigns, hot_contacts, neighborhoods, health } = data;
 
   return (
     <PageFrame>
       <PageHeader
-        title="Hyperlocal"
-        description="What's happening across your sphere this week."
+        title="Performance"
+        description="How your hyperlocal campaigns are landing."
         actions={
-          <Link href="/apps/hyperlocal/campaigns">
+          <Link href="/apps/hyperlocal/map">
             <Button className="gap-2">
               <Plus className="h-4 w-4" />
-              New Campaign
+              New campaign
             </Button>
           </Link>
         }
       />
 
+      {/* Weekly KPIs — the headline numbers */}
+      <WeeklyKpis summary={this_week} />
+
       <HealthRailRow health={health} />
 
-      <HeroAttentionCard hero={hero} />
-
-      <ThisWeekSentenceCard summary={this_week} />
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <HotContactsCard contacts={hot_contacts} />
         <NeighborhoodLeaderboardCard rows={neighborhoods} />
+        <HotContactsCard contacts={hot_contacts} />
       </div>
 
       <RecentCampaignStoriesCard stories={recent_campaigns} />
     </PageFrame>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Weekly KPIs — scannable stat tiles + sparkline (replaces the hero +
+// narrative sentence; this is a stats page, not an action surface).
+// ---------------------------------------------------------------------------
+
+function WeeklyKpis({ summary }: { summary: ThisWeekSummary }) {
+  const hasData = summary.sends > 0;
+  const delta = summary.vs_prior_week_open_rate_delta;
+  const TrendIcon = delta > 0.01 ? TrendingUp : delta < -0.01 ? TrendingDown : Minus;
+  const trendColor =
+    delta > 0.01
+      ? "text-emerald-400"
+      : delta < -0.01
+        ? "text-rose-400"
+        : "text-muted-foreground";
+
+  if (!hasData) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          No sends in the last 7 days — launch a campaign and your weekly
+          performance shows up here.
+        </p>
+      </div>
+    );
+  }
+
+  const tiles: { label: string; value: string; sub?: React.ReactNode }[] = [
+    { label: "Sent", value: summary.sends.toLocaleString() },
+    {
+      label: "Open rate",
+      value: pct(summary.open_rate),
+      sub: (
+        <span className={cn("flex items-center gap-1 text-xs", trendColor)}>
+          <TrendIcon className="h-3 w-3" />
+          {delta === 0
+            ? "vs last week"
+            : `${delta > 0 ? "+" : ""}${pct(delta)} vs last week`}
+        </span>
+      ),
+    },
+    { label: "Click rate", value: pct(summary.click_rate) },
+    { label: "Opened", value: summary.opens.toLocaleString(), sub: "people saw your name" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          This week
+        </p>
+        <Sparkline values={summary.spark_daily_sends} />
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label}>
+            <p className="text-2xl font-semibold tabular-nums">{t.value}</p>
+            <p className="text-xs text-muted-foreground">{t.label}</p>
+            {t.sub && <div className="mt-1">{t.sub}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -127,212 +180,6 @@ function HealthRailRow({ health }: { health: HealthRailType }) {
           Settings
         </Link>
       </span>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Hero — adaptive by variant (review | in_flight | recap | empty)
-// ---------------------------------------------------------------------------
-
-function HeroAttentionCard({ hero }: { hero: HeroRun | null }) {
-  if (!hero) {
-    return (
-      <div className="rounded-xl border border-dashed border-border/70 bg-gradient-to-br from-card to-card/60 p-10 text-center">
-        <Sparkles className="h-7 w-7 mx-auto mb-3 text-primary/80" />
-        <h2 className="text-lg font-semibold">Send your first neighborhood report</h2>
-        <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
-          Pull contacts from your CRM, drop in your MLS export, and we'll write a market story for each
-          neighborhood you serve.
-        </p>
-        <Link href="/apps/hyperlocal/campaigns" className="inline-block mt-4">
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            Create your first campaign
-          </Button>
-        </Link>
-      </div>
-    );
-  }
-
-  const variant = hero.variant;
-  const eyebrow = (() => {
-    if (variant === "review") return "Awaiting your review";
-    if (variant === "in_flight") return PHASE_BLURB[hero.phase] ?? "In progress";
-    if (variant === "recap") return "Latest send";
-    return "";
-  })();
-
-  const eyebrowColor =
-    variant === "review"
-      ? "text-primary"
-      : variant === "in_flight"
-        ? "text-amber-400"
-        : "text-emerald-400";
-
-  const headline =
-    hero.geo_headline
-      ? `${hero.geo_headline} market report`
-      : hero.campaign_name ?? "Untitled run";
-
-  const subline = hero.subject_preview ?? hero.campaign_name ?? "";
-
-  const cta = (() => {
-    if (variant === "review") {
-      return (
-        <Link href={`/apps/hyperlocal/runs/${hero.run_id}`}>
-          <Button size="lg" className="gap-2">
-            Review &amp; send
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
-      );
-    }
-    if (variant === "in_flight") {
-      return (
-        <Link href={`/apps/hyperlocal/runs/${hero.run_id}`}>
-          <Button size="lg" variant="secondary" className="gap-2">
-            View progress
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Link>
-      );
-    }
-    return (
-      <Link href={`/apps/hyperlocal/runs/${hero.run_id}`}>
-        <Button size="lg" variant="secondary" className="gap-2">
-          See full results
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      </Link>
-    );
-  })();
-
-  return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-xl border bg-gradient-to-br p-6 sm:p-8",
-        variant === "review" && "border-primary/30 from-primary/10 via-card to-card",
-        variant === "in_flight" && "border-amber-500/20 from-amber-500/5 via-card to-card",
-        variant === "recap" && "border-border from-card to-card/80",
-      )}
-    >
-      {variant === "in_flight" && (
-        <Loader2 className="absolute right-6 top-6 h-4 w-4 text-amber-400 animate-spin" />
-      )}
-
-      <p className={cn("text-xs font-semibold uppercase tracking-wider", eyebrowColor)}>
-        {eyebrow}
-      </p>
-
-      <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-2">{headline}</h2>
-
-      {subline && headline !== subline && (
-        <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">{subline}</p>
-      )}
-
-      {hero.preheader_preview && (
-        <p className="text-xs text-muted-foreground/80 mt-1 italic max-w-2xl truncate">
-          “{hero.preheader_preview}”
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 text-sm">
-        {hero.segments_count > 0 && (
-          <Stat label="segments" value={hero.segments_count} />
-        )}
-        <Stat label="recipients" value={hero.recipients_count.toLocaleString()} />
-        {hero.lens && <Stat label="lens" value={hero.lens} />}
-        {hero.email_address && <Stat label="from" value={hero.email_address} mono />}
-      </div>
-
-      {variant === "recap" && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 text-sm text-muted-foreground border-t border-border/60 pt-4">
-          <span><b className="text-foreground">{hero.opens ?? 0}</b> opened</span>
-          <span>·</span>
-          <span><b className="text-foreground">{hero.clicks ?? 0}</b> clicks</span>
-          <span>·</span>
-          <span><b className="text-foreground">{hero.bounces ?? 0}</b> bounced</span>
-          <span>·</span>
-          <span><b className="text-foreground">{hero.unsubscribes ?? 0}</b> unsubscribed</span>
-        </div>
-      )}
-
-      <div className="mt-6">{cta}</div>
-    </div>
-  );
-}
-
-function Stat({ label, value, mono }: { label: string; value: string | number; mono?: boolean }) {
-  return (
-    <span className="flex items-baseline gap-1.5">
-      <span className={cn("font-semibold text-foreground", mono && "font-mono text-[13px]")}>
-        {value}
-      </span>
-      <span className="text-xs text-muted-foreground">{label}</span>
-    </span>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// This week — narrative summary with sparkline.
-// ---------------------------------------------------------------------------
-
-function ThisWeekSentenceCard({ summary }: { summary: ThisWeekSummary }) {
-  const hasData = summary.sends > 0;
-  const TrendIcon =
-    summary.vs_prior_week_open_rate_delta > 0.01
-      ? TrendingUp
-      : summary.vs_prior_week_open_rate_delta < -0.01
-        ? TrendingDown
-        : Minus;
-  const trendColor =
-    summary.vs_prior_week_open_rate_delta > 0.01
-      ? "text-emerald-400"
-      : summary.vs_prior_week_open_rate_delta < -0.01
-        ? "text-rose-400"
-        : "text-muted-foreground";
-
-  return (
-    <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-            This week
-          </p>
-          {hasData ? (
-            <p className="text-base sm:text-lg leading-relaxed text-foreground/90">
-              Your sends reached{" "}
-              <b className="text-foreground">{summary.sends.toLocaleString()}</b> contacts.{" "}
-              <b className="text-foreground">{pct(summary.open_rate)}</b> opened,{" "}
-              <b className="text-foreground">{pct(summary.click_rate)}</b> clicked.
-              {summary.opens > 0 && (
-                <span className="text-muted-foreground">
-                  {" "}
-                  That's <b className="text-foreground">{summary.opens.toLocaleString()}</b> people
-                  who saw your name in their inbox.
-                </span>
-              )}
-            </p>
-          ) : (
-            <p className="text-base text-muted-foreground">
-              No sends in the last 7 days — once you send a campaign, your weekly recap shows up here.
-            </p>
-          )}
-        </div>
-
-        {hasData && (
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <Sparkline values={summary.spark_daily_sends} />
-            <span className={cn("text-xs flex items-center gap-1", trendColor)}>
-              <TrendIcon className="h-3 w-3" />
-              {summary.vs_prior_week_open_rate_delta === 0
-                ? "vs last week"
-                : `${summary.vs_prior_week_open_rate_delta > 0 ? "+" : ""}${pct(summary.vs_prior_week_open_rate_delta)} open rate vs last week`}
-            </span>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
