@@ -18,6 +18,7 @@ import {
   SphereModeLauncher,
   type SphereMode,
 } from "@/components/hyperlocal/sphere/SphereModeLauncher";
+import { HyperlocalUpgradeModal } from "@/components/hyperlocal/HyperlocalUpgradeModal";
 import type { SphereSnapshot, SphereZip } from "@/lib/hyperlocal/sphere";
 
 interface SphereResponse {
@@ -51,6 +52,12 @@ export function SphereMapClient({
   const [progressMsg, setProgressMsg] = useState<string>("");
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Upgrade modal shown when a launch hits the monthly campaign cap.
+  const [upgrade, setUpgrade] = useState<{
+    campaignsThisMonth: number;
+    campaignsLimit: number;
+    periodEnd?: string;
+  } | null>(null);
   // Chosen at the mode picker. Null = picker still showing. When editing a
   // saved campaign we skip the picker entirely (mode is irrelevant to a save).
   const [mode, setMode] = useState<SphereMode | null>(editing ? "magic" : null);
@@ -269,7 +276,16 @@ export function SphereMapClient({
         });
         const data = await res.json();
         if (!res.ok) {
-          setError(data.error ?? "Couldn't start the campaign.");
+          // Monthly cap → upgrade modal, not a red banner.
+          if (data.code === "pack_limit_reached" && data.usage) {
+            setUpgrade({
+              campaignsThisMonth: data.usage.campaignsThisMonth,
+              campaignsLimit: data.usage.campaignsLimit,
+              periodEnd: data.usage.periodEnd,
+            });
+          } else {
+            setError(data.error ?? "Couldn't start the campaign.");
+          }
           setLaunching(false);
           return;
         }
@@ -488,6 +504,21 @@ export function SphereMapClient({
           )}
         </div>
       </div>
+
+      <HyperlocalUpgradeModal
+        open={!!upgrade}
+        onClose={() => setUpgrade(null)}
+        reason="limit"
+        periodEnd={upgrade?.periodEnd}
+        currentUsage={
+          upgrade
+            ? {
+                campaignsThisMonth: upgrade.campaignsThisMonth,
+                campaignsLimit: upgrade.campaignsLimit,
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

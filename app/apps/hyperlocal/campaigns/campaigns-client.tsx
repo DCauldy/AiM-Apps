@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { useHlToast } from "@/components/hyperlocal/use-hl-toast";
 import { useHlDialog } from "@/components/hyperlocal/ui/HlDialog";
 import { HyperlocalMap } from "@/components/hyperlocal/map/HyperlocalMap";
+import { HyperlocalUpgradeModal } from "@/components/hyperlocal/HyperlocalUpgradeModal";
 import type {
   HlCampaign,
   SegmentationType,
@@ -77,6 +78,11 @@ export function CampaignsClient({
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [upgrade, setUpgrade] = useState<{
+    campaignsThisMonth: number;
+    campaignsLimit: number;
+    periodEnd?: string;
+  } | null>(null);
 
   const refresh = async () => {
     const res = await fetch("/api/apps/hyperlocal/campaigns");
@@ -94,7 +100,15 @@ export function CampaignsClient({
       });
       const json = await res.json();
       if (!res.ok || !json.runId) {
-        toast.error(json.error ?? "Couldn't start the run.");
+        if (json.code === "pack_limit_reached" && json.usage) {
+          setUpgrade({
+            campaignsThisMonth: json.usage.campaignsThisMonth,
+            campaignsLimit: json.usage.campaignsLimit,
+            periodEnd: json.usage.periodEnd,
+          });
+        } else {
+          toast.error(json.error ?? "Couldn't start the run.");
+        }
         return;
       }
       window.dispatchEvent(new Event("hyperlocal-usage-updated"));
@@ -197,6 +211,20 @@ export function CampaignsClient({
   return (
     <div className="container max-w-4xl mx-auto px-4 py-8 space-y-6">
       {dialog}
+      <HyperlocalUpgradeModal
+        open={!!upgrade}
+        onClose={() => setUpgrade(null)}
+        reason="limit"
+        periodEnd={upgrade?.periodEnd}
+        currentUsage={
+          upgrade
+            ? {
+                campaignsThisMonth: upgrade.campaignsThisMonth,
+                campaignsLimit: upgrade.campaignsLimit,
+              }
+            : undefined
+        }
+      />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Campaigns</h1>
