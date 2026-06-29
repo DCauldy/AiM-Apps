@@ -57,7 +57,10 @@ export interface CampaignDialPanelProps {
    *  Control = your MLS upload + full editor. Drives the data depth (the old
    *  Depth dial) and the launch CTA. */
   mode: "magic" | "control";
-  /** Launch a run. */
+  /** When set, the panel edits a saved campaign instead of launching: the CTA
+   *  becomes "Save changes" and the preview/launch copy is hidden. */
+  editing?: boolean;
+  /** Launch a run (or save, when editing). */
   onLaunch: (values: DialValues, mode: "magic" | "control") => Promise<void>;
   launching?: boolean;
   /** AI-suggested starting positions (the "pre-set" magic). */
@@ -87,6 +90,7 @@ export function CampaignDialPanel({
   selectedZips,
   sphereZips,
   mode,
+  editing = false,
   onLaunch,
   launching = false,
   initial,
@@ -271,50 +275,52 @@ export function CampaignDialPanel({
         )}
       </div>
 
-      {/* Preview — "what each email will include". Fills the remaining height
-          so the panel never shows dead space, and reassures before sending. */}
-      <div className="mt-1 flex flex-1 flex-col justify-center rounded-xl border border-border bg-background/40 p-3">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-          Each email includes
-        </p>
-        <ul className="mt-2 space-y-1.5 text-xs text-foreground">
-          <li className="flex gap-2">
-            <span>✉️</span>
-            <span className="text-muted-foreground">
-              Subject like{" "}
-              <span className="italic text-foreground">“{sampleSubject}”</span>
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span>📊</span>
-            <span className="text-muted-foreground">
-              A {topName} market snapshot —{" "}
-              {mode === "magic" ? "live market data" : "sharpened by your MLS"}
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span>🏡</span>
-            <span className="text-muted-foreground">
-              A homeowner section <em>and</em> a buyer section
-            </span>
-          </li>
-          <li className="flex gap-2">
-            <span>🎨</span>
-            <span className="text-muted-foreground">
-              Your brand, headshot &amp; sign-off
-            </span>
-          </li>
-        </ul>
-      </div>
+      {/* Preview — "what each email will include". Hidden when editing a saved
+          campaign (no send happening). Fills the remaining height otherwise. */}
+      {!editing && (
+        <div className="mt-1 flex flex-1 flex-col justify-center rounded-xl border border-border bg-background/40 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Each email includes
+          </p>
+          <ul className="mt-2 space-y-1.5 text-xs text-foreground">
+            <li className="flex gap-2">
+              <span>✉️</span>
+              <span className="text-muted-foreground">
+                Subject like{" "}
+                <span className="italic text-foreground">“{sampleSubject}”</span>
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span>📊</span>
+              <span className="text-muted-foreground">
+                A {topName} market snapshot —{" "}
+                {mode === "magic" ? "live market data" : "sharpened by your MLS"}
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span>🏡</span>
+              <span className="text-muted-foreground">
+                A homeowner section <em>and</em> a buyer section
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span>🎨</span>
+              <span className="text-muted-foreground">
+                Your brand, headshot &amp; sign-off
+              </span>
+            </li>
+          </ul>
+        </div>
+      )}
 
       </div>
       {/* end scrollable body */}
 
-      {/* Launch — pinned to the bottom so the panel bottom aligns with the map. */}
+      {/* CTA — pinned to the bottom so the panel bottom aligns with the map. */}
       <div className="mt-3 shrink-0 border-t border-border pt-3">
         <button
           type="button"
-          disabled={launching || recipientCount === 0}
+          disabled={launching || (!editing && recipientCount === 0)}
           onClick={() =>
             onLaunch(
               {
@@ -331,15 +337,21 @@ export function CampaignDialPanel({
           className="w-full rounded-lg bg-[#F43F5E] px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {launching
-            ? "Starting…"
-            : mode === "magic"
-              ? "✨ Send it"
-              : "🤓 Build my report"}
+            ? editing
+              ? "Saving…"
+              : "Starting…"
+            : editing
+              ? "💾 Save changes"
+              : mode === "magic"
+                ? "✨ Send it"
+                : "🤓 Build my report"}
         </button>
         <p className="mt-2 text-center text-[11px] text-muted-foreground">
-          {mode === "magic"
-            ? "We'll pull live market data and draft every email for you."
-            : "Next you'll see exactly which MLS fields to export for the deepest report."}
+          {editing
+            ? "Updates this campaign's neighborhoods, angle, and data scope."
+            : mode === "magic"
+              ? "We'll pull live market data and draft every email for you."
+              : "Next you'll see exactly which MLS fields to export for the deepest report."}
         </p>
       </div>
     </div>

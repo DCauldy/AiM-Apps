@@ -7,6 +7,8 @@ import { HyperlocalMap, type MapSegment } from "@/components/hyperlocal/map/Hype
 import {
   CampaignDialPanel,
   type DialValues,
+  type DialLens,
+  type PropertyType,
 } from "@/components/hyperlocal/sphere/CampaignDialPanel";
 import {
   suggestCampaign,
@@ -33,8 +35,13 @@ function zipsToSegments(zips: SphereZip[]): MapSegment[] {
   }));
 }
 
-export function SphereMapClient() {
+export function SphereMapClient({
+  editCampaignId = null,
+}: {
+  editCampaignId?: string | null;
+}) {
   const router = useRouter();
+  const editing = !!editCampaignId;
   const [zips, setZips] = useState<SphereZip[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -44,20 +51,58 @@ export function SphereMapClient() {
   const [progressMsg, setProgressMsg] = useState<string>("");
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Chosen at the mode picker. Null = picker still showing.
-  const [mode, setMode] = useState<SphereMode | null>(null);
+  // Chosen at the mode picker. Null = picker still showing. When editing a
+  // saved campaign we skip the picker entirely (mode is irrelevant to a save).
+  const [mode, setMode] = useState<SphereMode | null>(editing ? "magic" : null);
+  // The campaign being edited (name + initial dial values).
+  const [editCampaign, setEditCampaign] = useState<{
+    name: string;
+    lens: DialLens;
+    propertyType: PropertyType;
+    priceMin: number | null;
+    priceMax: number | null;
+  } | null>(null);
   // The pre-built campaign suggestion (the "we built this for you" magic).
   const [suggestion, setSuggestion] = useState<CampaignSuggestion | null>(null);
   // Remount key so the dial panel re-seeds from a fresh suggestion.
   const [panelKey, setPanelKey] = useState(0);
   const esRef = useRef<EventSource | null>(null);
-  // Once the user clicks the map themselves, we stop auto-building.
-  const userTouched = useRef(false);
+  // Once the user clicks the map themselves, we stop auto-building. When
+  // editing, this starts true so the auto-suggest never overrides the saved
+  // campaign's selection.
+  const userTouched = useRef(editing);
   // Snapshot kept around so picking a mode after load can apply the suggestion.
   const snapshotRef = useRef<SphereSnapshot | null>(null);
   // Mirror of `mode` for stable reads inside the EventSource/fetch closures.
   const modeRef = useRef<SphereMode | null>(null);
   modeRef.current = mode;
+
+  // Load the saved campaign when editing: pre-select its ZIPs + seed the dials.
+  useEffect(() => {
+    if (!editCampaignId) return;
+    let cancelled = false;
+    fetch(`/api/apps/hyperlocal/campaigns/${editCampaignId}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then(({ campaign: c }) => {
+        if (cancelled || !c) return;
+        const type = (c.property_type_filters?.[0] ?? "all") as PropertyType;
+        setEditCampaign({
+          name: c.name,
+          lens: (c.lens ?? "balanced") as DialLens,
+          propertyType: type,
+          priceMin: c.price_range_low ?? null,
+          priceMax: c.price_range_high ?? null,
+        });
+        setSelected(new Set<string>(c.service_area_zips ?? []));
+        setPanelKey((k) => k + 1);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn't load that campaign.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editCampaignId]);
 
   // Pre-light the densest neighborhoods + pre-set the dials from the sphere.
   // Only Magic mode auto-builds; Control starts blank so the agent curates.
@@ -174,6 +219,39 @@ export function SphereMapClient() {
     async (values: DialValues, mode: "magic" | "control") => {
       setLaunching(true);
       setError(null);
+
+      // Editing a saved campaign → PATCH its config, then back to the list.
+      if (editCampaignId) {
+        try {
+          const res = await fetch(
+            `/api/apps/hyperlocal/campaigns/${editCampaignId}`,
+            {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                service_area_zips: Array.from(selected),
+                lens: values.lens,
+                property_type_filters:
+                  values.propertyType === "all" ? [] : [values.propertyType],
+                price_range_low: values.priceMin,
+                price_range_high: values.priceMax,
+              }),
+            },
+          );
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            setError(data.error ?? "Couldn't save changes.");
+            setLaunching(false);
+            return;
+          }
+          router.push("/apps/hyperlocal/campaigns");
+        } catch {
+          setError("Couldn't save changes.");
+          setLaunching(false);
+        }
+        return;
+      }
+
       try {
         const res = await fetch("/api/apps/hyperlocal/sphere/launch", {
           method: "POST",
@@ -205,10 +283,19 @@ export function SphereMapClient() {
         setLaunching(false);
       }
     },
-    [selected, router, mode],
+    [selected, router, mode, editCampaignId],
   );
 
-  const segments = zipsToSegments(zips);
+  // Include any selected ZIP that isn't in the current sphere snapshot (e.g. an
+  // edited campaign's saved ZIP) so it still renders + can be toggled.
+  const segments = (() => {
+    const base = zipsToSegments(zips);
+    const present = new Set(base.map((s) => s.zip));
+    const extra: MapSegment[] = Array.from(selected)
+      .filter((z) => !present.has(z))
+      .map((z) => ({ zip: z, geo_label: z, contact_count: 0 }));
+    return [...base, ...extra];
+  })();
   const totalContacts = zips.reduce((s, z) => s + z.contact_count, 0);
   const hasSelection = selected.size > 0;
 
@@ -249,19 +336,27 @@ export function SphereMapClient() {
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold">Your sphere</h1>
+            <h1 className="text-xl font-semibold">
+              {editing ? "Edit campaign" : "Your sphere"}
+            </h1>
             <span className="rounded-full border border-[#F43F5E]/30 bg-[#F43F5E]/10 px-2 py-0.5 text-[10px] font-medium text-[#F43F5E]">
-              {mode === "magic" ? "✨ AI Magic" : "🤓 Control Freak"}
+              {editing
+                ? editCampaign?.name ?? "Loading…"
+                : mode === "magic"
+                  ? "✨ AI Magic"
+                  : "🤓 Control Freak"}
             </span>
           </div>
           <p className="text-sm text-muted-foreground">
-            {loading
-              ? "Loading your neighborhoods…"
-              : `${zips.length} neighborhood${zips.length === 1 ? "" : "s"} · ${totalContacts.toLocaleString()} contacts`}
+            {editing
+              ? "Adjust the neighborhoods, angle, and data scope, then save."
+              : loading
+                ? "Loading your neighborhoods…"
+                : `${zips.length} neighborhood${zips.length === 1 ? "" : "s"} · ${totalContacts.toLocaleString()} contacts`}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {hasSelection && (
+          {hasSelection && !editing && (
             <button
               type="button"
               onClick={() => {
@@ -274,18 +369,27 @@ export function SphereMapClient() {
               Start over
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              setMode(null);
-              setSuggestion(null);
-              setSelected(new Set());
-              userTouched.current = false;
-            }}
-            className="text-xs text-muted-foreground hover:text-foreground"
-          >
-            ← Change mode
-          </button>
+          {editing ? (
+            <Link
+              href="/apps/hyperlocal/campaigns"
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                setMode(null);
+                setSuggestion(null);
+                setSelected(new Set());
+                userTouched.current = false;
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              ← Change mode
+            </button>
+          )}
         </div>
       </div>
 
@@ -344,18 +448,26 @@ export function SphereMapClient() {
             <CampaignDialPanel
               key={panelKey}
               mode={mode}
+              editing={editing}
               selectedZips={Array.from(selected)}
               sphereZips={zips}
               onLaunch={handleLaunch}
               launching={launching}
               initial={
-                suggestion
+                editing && editCampaign
                   ? {
-                      lens: suggestion.lens,
-                      depth: suggestion.depth,
-                      reach: suggestion.reach,
+                      lens: editCampaign.lens,
+                      propertyType: editCampaign.propertyType,
+                      priceMin: editCampaign.priceMin,
+                      priceMax: editCampaign.priceMax,
                     }
-                  : undefined
+                  : suggestion
+                    ? {
+                        lens: suggestion.lens,
+                        depth: suggestion.depth,
+                        reach: suggestion.reach,
+                      }
+                    : undefined
               }
             />
           ) : (

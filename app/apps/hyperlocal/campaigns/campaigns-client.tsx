@@ -421,7 +421,9 @@ export function CampaignsClient({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => startEdit(c)}
+                      onClick={() =>
+                        router.push(`/apps/hyperlocal/map?campaign=${c.id}`)
+                      }
                     >
                       <Edit3 className="h-4 w-4" />
                     </Button>
