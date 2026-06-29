@@ -225,7 +225,7 @@ export const renderTourFinalVideoTask = task({
     name: "tour-final-video-renders",
     concurrencyLimit: 1,
   },
-  machine: "medium-1x",
+  machine: "large-1x",
   retry: { maxAttempts: 1 },
   maxDuration: 30 * 60,
   run: async (
