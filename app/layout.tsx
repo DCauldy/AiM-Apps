@@ -1,12 +1,20 @@
 import type { Metadata } from "next";
-import { Space_Grotesk } from "next/font/google";
+import { Suspense } from "react";
+import { Space_Grotesk, Archivo } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { GlobalNavigationLoader } from "@/components/navigation/GlobalNavigationLoader";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   weight: ["300", "400", "500", "600", "700"],
   variable: "--font-space-grotesk",
+});
+
+const archivo = Archivo({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-archivo",
 });
 
 export const metadata: Metadata = {
@@ -26,11 +34,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${spaceGrotesk.variable} font-sans`} suppressHydrationWarning>
+      <body className={`${spaceGrotesk.variable} ${archivo.variable} font-sans`} suppressHydrationWarning>
+        {/* All product apps lock themselves to dark via the
+            `product-app-theme` class scope; admin keeps the
+            ThemeToggle for its own header chrome. We default to
+            dark + disable system detection so there's no flash of
+            light mode before product-app-theme paints. */}
         <ThemeProvider
           attribute="class"
-          defaultTheme="light"
-          enableSystem
+          defaultTheme="dark"
+          enableSystem={false}
         >
           {/* Global SVG gradient definition for help icon */}
           <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
@@ -41,10 +54,12 @@ export default function RootLayout({
               </linearGradient>
             </defs>
           </svg>
+          <Suspense fallback={null}>
+            <GlobalNavigationLoader />
+          </Suspense>
           {children}
         </ThemeProvider>
       </body>
     </html>
   );
 }
-

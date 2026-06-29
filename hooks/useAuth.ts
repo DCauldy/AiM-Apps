@@ -11,6 +11,8 @@ export function useAuth() {
 
   useEffect(() => {
     const getUser = async () => {
+      // Refresh the session first to pick up any metadata changes (e.g. tier upgrades)
+      await supabase.auth.refreshSession();
       const {
         data: { user },
       } = await supabase.auth.getUser();

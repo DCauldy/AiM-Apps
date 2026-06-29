@@ -26,3 +26,6 @@ export function truncate(text: string, length: number): string {
   return text.slice(0, length) + "...";
 }
 
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

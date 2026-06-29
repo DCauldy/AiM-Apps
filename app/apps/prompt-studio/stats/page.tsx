@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart3, Upload, Heart, Bookmark, ThumbsUp, MessageSquare, Calendar } from "lucide-react";
+import { StatsPageSkeleton } from "@/components/prompt-studio/StatsPageSkeleton";
 
 interface StatsData {
   publishedPromptsCount: number;
@@ -61,11 +62,7 @@ export default function StatsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Loading stats...</div>
-      </div>
-    );
+    return <StatsPageSkeleton />;
   }
 
   if (!stats) {
@@ -82,48 +79,48 @@ export default function StatsPage() {
       value: stats.publishedPromptsCount,
       icon: Upload,
       description: "Prompts you've shared with the community",
-      colorClass: "border-blue-200 bg-blue-50/50",
-      iconColorClass: "text-blue-600",
+      colorClass: "border-sky-500/30 bg-sky-500/5",
+      iconColorClass: "text-sky-400",
     },
     {
       title: "Total Likes Received",
       value: stats.totalLikesReceived,
       icon: Heart,
       description: "Upvotes on your published prompts",
-      colorClass: "border-emerald-200 bg-emerald-50/50",
-      iconColorClass: "text-emerald-600",
+      colorClass: "border-emerald-500/30 bg-emerald-500/5",
+      iconColorClass: "text-emerald-400",
     },
     {
       title: "Total Times Saved",
       value: stats.totalTimesSaved,
       icon: Bookmark,
       description: "How many times your prompts were saved",
-      colorClass: "border-blue-200 bg-blue-50/50",
-      iconColorClass: "text-blue-600",
+      colorClass: "border-sky-500/30 bg-sky-500/5",
+      iconColorClass: "text-sky-400",
     },
     {
       title: "Prompts I've Upvoted",
       value: stats.promptsIveUpvoted,
       icon: ThumbsUp,
       description: "Prompts you've liked from others",
-      colorClass: "border-emerald-200 bg-emerald-50/50",
-      iconColorClass: "text-emerald-600",
+      colorClass: "border-emerald-500/30 bg-emerald-500/5",
+      iconColorClass: "text-emerald-400",
     },
     {
       title: "Prompts I've Saved",
       value: stats.promptsIveSaved,
       icon: Bookmark,
       description: "Prompts you've bookmarked",
-      colorClass: "border-blue-200 bg-blue-50/50",
-      iconColorClass: "text-blue-600",
+      colorClass: "border-sky-500/30 bg-sky-500/5",
+      iconColorClass: "text-sky-400",
     },
     {
       title: "Total Conversations",
       value: stats.totalConversations,
       icon: MessageSquare,
       description: "Total chat conversations",
-      colorClass: "border-emerald-200 bg-emerald-50/50",
-      iconColorClass: "text-emerald-600",
+      colorClass: "border-emerald-500/30 bg-emerald-500/5",
+      iconColorClass: "text-emerald-400",
     },
   ];
 

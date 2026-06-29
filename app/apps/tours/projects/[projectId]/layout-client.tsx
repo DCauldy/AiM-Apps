@@ -1,0 +1,340 @@
+"use client";
+
+import { Mic2, UserRound, Video } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useCallback, useEffect } from "react";
+import { PageFrame } from "@/components/app-shell/PagePrimitives";
+import { Badge } from "@/components/ui/badge";
+import { useToursBreadcrumbs } from "@/components/tours/ToursBreadcrumbsContext";
+import {
+  ConfirmDialog,
+  ErrorMessage,
+  ProjectActionsMenuItems,
+  ProjectDetailsDialog,
+} from "@/components/tours/workspace/WorkspacePresentation";
+import { SplitActionMenuButton } from "@/components/tours/workspace/SplitActionMenuButton";
+import { TourProjectQaRenderLab } from "@/components/tours/workspace/TourProjectQaRenderLab";
+import { useTourRenderRuns } from "@/components/tours/workspace/useTourRenderRuns";
+import {
+  TourProjectWorkspaceProvider,
+  useTourProjectWorkspace,
+} from "@/components/tours/workspace/useTourProjectWorkspace";
+import {
+  TOUR_PROJECT_TYPE_LABELS,
+  type TourProjectType,
+} from "@/lib/tours/projects/project-types";
+import { toursApiRoutes } from "@/components/tours/tours-api-client";
+import { getTourProjectConfiguration } from "@/lib/tours/projects/project-configuration";
+import type { TourProjectWorkspaceViewModel } from "@/lib/tours/workspace";
+
+const TOUR_PROJECT_TYPE_ICONS: Record<TourProjectType, typeof Video> = {
+  tour_video: Video,
+  tour_video_voice_over: Mic2,
+  tour_video_avatar: UserRound,
+};
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getSceneIdFromToursPathname(
+  pathname: string | null,
+  projectId: string,
+) {
+  if (!pathname) {
+    return null;
+  }
+
+  const projectRoute = `/apps/tours/projects/${projectId}`;
+  const sceneRouteMatch = pathname.match(
+    new RegExp(`^${escapeRegExp(projectRoute)}/([^/]+)$`),
+  );
+  const routeSegment = sceneRouteMatch?.[1];
+
+  if (!routeSegment || routeSegment === "rendering") {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(routeSegment);
+  } catch {
+    return routeSegment;
+  }
+}
+
+export function TourProjectLayoutClient({
+  initialViewModel,
+  isQaRenderLabAvailable,
+  children,
+}: {
+  initialViewModel: TourProjectWorkspaceViewModel;
+  isQaRenderLabAvailable: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <TourProjectWorkspaceProvider initialViewModel={initialViewModel}>
+      <TourProjectLayoutContent isQaRenderLabAvailable={isQaRenderLabAvailable}>
+        {children}
+      </TourProjectLayoutContent>
+    </TourProjectWorkspaceProvider>
+  );
+}
+
+function TourProjectLayoutContent({
+  isQaRenderLabAvailable,
+  children,
+}: {
+  isQaRenderLabAvailable: boolean;
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const { setBreadcrumbItems, resetBreadcrumbItems } = useToursBreadcrumbs();
+  const {
+    viewModel,
+    projectDetails,
+    setProjectDetails,
+    isProjectDetailsOpen,
+    setIsProjectDetailsOpen,
+    isProjectDeleteOpen,
+    setIsProjectDeleteOpen,
+    updateProjectMutation,
+    archiveProjectMutation,
+    handleProjectDetailsSubmit,
+  } = useTourProjectWorkspace();
+  const TourTypeIcon = TOUR_PROJECT_TYPE_ICONS[viewModel.project.tourType];
+  const projectConfiguration = getTourProjectConfiguration(
+    viewModel.project.tourType,
+  );
+  const renderingHref = `/apps/tours/projects/${viewModel.project.id}/rendering`;
+  const renderRuns = useTourRenderRuns(viewModel.project.id, {
+    loadRecentRuns: pathname === renderingHref,
+  });
+  const isProjectRendering =
+    renderRuns.currentRun?.status === "queued" ||
+    renderRuns.currentRun?.status === "running";
+  const includedSceneCount = viewModel.tourScenes.filter(
+    (scene) => scene.included,
+  ).length;
+  const latestDownloadHref = renderRuns.latestDownloadableRun
+    ? toursApiRoutes.renderRunDownload(
+        viewModel.project.id,
+        renderRuns.latestDownloadableRun.id,
+      )
+    : null;
+  const projectHref = `/apps/tours/projects/${viewModel.project.id}`;
+  const routeSceneId = getSceneIdFromToursPathname(
+    pathname,
+    viewModel.project.id,
+  );
+  const routeScene = routeSceneId
+    ? viewModel.tourScenes.find((scene) => scene.id === routeSceneId)
+    : null;
+  const getPromptPreviewProject = useCallback(
+    () => ({
+      id: viewModel.project.id,
+      name: viewModel.project.name,
+      propertyAddress: viewModel.listing.address,
+      listingUrl: viewModel.listing.listingUrl,
+      tourType: viewModel.project.tourType,
+      scenes: viewModel.tourScenes.map((scene) => ({
+        id: scene.id,
+        title: scene.title,
+        sortOrder: scene.sortOrder,
+        included: scene.included,
+        cameraMotion: scene.cameraMotion,
+        transitionEffect: scene.transitionEffect,
+        authoritativePhoto: {
+          id: scene.authoritativePhoto.id,
+          previewUrl: scene.authoritativePhoto.previewUrl,
+        },
+        sourcePhotos: scene.sourcePhotos.map((photo) => ({
+          id: photo.id,
+          previewUrl: photo.previewUrl,
+        })),
+        facts: scene.facts.map((fact) => ({
+          id: fact.id,
+          text: fact.text,
+          sourcePhotoId: fact.sourcePhotoId,
+          proofStatus: fact.proofStatus,
+          sortOrder: fact.sortOrder,
+        })),
+      })),
+    }),
+    [
+      viewModel.listing.address,
+      viewModel.listing.listingUrl,
+      viewModel.project.id,
+      viewModel.project.name,
+      viewModel.project.tourType,
+      viewModel.tourScenes,
+    ],
+  );
+
+  useEffect(() => {
+    const items = [
+      { href: "/apps/tours", label: "Projects" },
+      { href: projectHref, label: viewModel.project.name },
+    ];
+
+    if (routeSceneId) {
+      items.push({
+        href: `${projectHref}/${encodeURIComponent(routeSceneId)}`,
+        label: routeScene?.title ?? "Scene",
+      });
+    }
+
+    setBreadcrumbItems(items);
+
+    return () => resetBreadcrumbItems();
+  }, [
+    projectHref,
+    resetBreadcrumbItems,
+    routeScene?.title,
+    routeSceneId,
+    setBreadcrumbItems,
+    viewModel.project.name,
+  ]);
+
+  return (
+    <PageFrame className="max-w-none px-4 py-4 sm:px-6 lg:px-8">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <h1 className="truncate text-xl font-semibold tracking-tight text-foreground">
+              {viewModel.project.name}
+            </h1>
+            <Badge
+              variant="outline"
+              className="shrink-0 gap-1.5 border-primary/50 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
+            >
+              <TourTypeIcon className="h-3 w-3" />
+              {TOUR_PROJECT_TYPE_LABELS[viewModel.project.tourType]}
+            </Badge>
+          </div>
+          <p className="mt-1 truncate text-sm text-muted-foreground">
+            {viewModel.listing.address}
+          </p>
+        </div>
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <TourProjectRenderActions
+            sceneCount={viewModel.tourScenes.length}
+            renderRuns={renderRuns}
+            isProjectRendering={isProjectRendering}
+            renderingHref={renderingHref}
+            projectActions={
+              <ProjectActionsMenuItems
+                latestDownloadHref={latestDownloadHref}
+                renderingHref={renderingHref}
+                downloadTitle={viewModel.project.name}
+                canGenerateReuseAssets={
+                  viewModel.tourScenes.length > 0 &&
+                  !renderRuns.isCreatingAnyRenderRun &&
+                  !isProjectRendering
+                }
+                isGeneratingReuseAssets={renderRuns.isCreatingRenderRun}
+                onGenerateReuseAssets={() => {
+                  if (!isProjectRendering) {
+                    renderRuns.createRenderRun();
+                  }
+                }}
+                onEdit={() => setIsProjectDetailsOpen(true)}
+                onDelete={() => setIsProjectDeleteOpen(true)}
+              />
+            }
+          />
+        </div>
+      </header>
+
+      {renderRuns.error ? (
+        <div className="mt-4">
+          <ErrorMessage>{renderRuns.error.message}</ErrorMessage>
+        </div>
+      ) : null}
+
+      {children}
+
+      <ProjectDetailsDialog
+        open={isProjectDetailsOpen}
+        details={projectDetails}
+        tourType={viewModel.project.tourType}
+        showVoiceId={projectConfiguration.supportsVoiceSelection}
+        showAvatarSettings={projectConfiguration.supportsAvatarSettings}
+        error={updateProjectMutation.error}
+        isSaving={updateProjectMutation.isPending}
+        onOpenChange={setIsProjectDetailsOpen}
+        onChange={setProjectDetails}
+        onSubmit={handleProjectDetailsSubmit}
+      />
+      <ConfirmDialog
+        open={isProjectDeleteOpen}
+        title="Delete project?"
+        body="This removes the project from open Tours work by archiving it. Existing records stay available for history."
+        confirmText="Delete project"
+        error={archiveProjectMutation.error}
+        isPending={archiveProjectMutation.isPending}
+        onOpenChange={setIsProjectDeleteOpen}
+        onConfirm={() => archiveProjectMutation.mutate()}
+      />
+      <TourProjectQaRenderLab
+        isAvailable={isQaRenderLabAvailable}
+        includedSceneCount={includedSceneCount}
+        tourType={viewModel.project.tourType}
+        getPromptPreviewProject={getPromptPreviewProject}
+        currentRun={renderRuns.currentRun}
+        isSubmitting={renderRuns.isCreatingOptionsRenderRun}
+        onSubmitOptions={renderRuns.createOptionsRenderRun}
+      />
+    </PageFrame>
+  );
+}
+
+function TourProjectRenderActions({
+  sceneCount,
+  renderRuns,
+  isProjectRendering,
+  renderingHref,
+  projectActions,
+}: {
+  sceneCount: number;
+  renderRuns: ReturnType<typeof useTourRenderRuns>;
+  isProjectRendering: boolean;
+  renderingHref: string;
+  projectActions: React.ReactNode;
+}) {
+  if (isProjectRendering) {
+    return (
+      <SplitActionMenuButton
+        asChild
+        menuAriaLabel="Open project actions"
+        menuAlign="center"
+        menuContentClassName="w-56 sm:left-auto sm:right-0 sm:translate-x-0"
+        menuContent={projectActions}
+      >
+        <Link href={renderingHref}>
+          <Video className="h-4 w-4" />
+          View progress
+        </Link>
+      </SplitActionMenuButton>
+    );
+  }
+
+  return (
+    <SplitActionMenuButton
+      type="button"
+      disabled={sceneCount === 0 || renderRuns.isCreatingAnyRenderRun}
+      menuAriaLabel="Open project actions"
+      menuAlign="center"
+      menuContentClassName="w-56 sm:left-auto sm:right-0 sm:translate-x-0"
+      menuContent={projectActions}
+      onClick={() => {
+        renderRuns.createFreshRenderRun();
+      }}
+    >
+      <Video className="h-4 w-4" />
+      {renderRuns.isCreatingFreshRenderRun
+        ? "Starting video..."
+        : "Generate video"}
+    </SplitActionMenuButton>
+  );
+}

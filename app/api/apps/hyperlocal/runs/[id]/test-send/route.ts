@@ -1,0 +1,285 @@
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
+import { getPlatformEmailConnection } from "@/lib/platform/connections";
+import { dispatchEmail } from "@/lib/hyperlocal/email/dispatch";
+import {
+  generateUnsubscribeToken,
+  buildUnsubscribeUrl,
+} from "@/lib/hyperlocal/email/unsubscribe";
+import { isSuppressed } from "@/lib/hyperlocal/email/suppressions";
+import { NextRequest } from "next/server";
+import type { PlatformSenderProfile } from "@/types/hyperlocal";
+
+export const dynamic = "force-dynamic";
+
+const MAX_TEST_ADDRESSES = 3;
+const SUBJECT_PREFIX = "[TEST] ";
+const VALID_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * POST /api/apps/hyperlocal/runs/:id/test-send
+ * Body: { test_emails?: string[], email_id?: string }
+ *
+ * Sends drafts as test copies to the given addresses (or to the user's auth
+ * email if none provided).
+ *   - If `email_id` is provided → only that one draft (per-draft test, default UX)
+ *   - Otherwise → every draft for this run (bulk test, advanced)
+ *
+ * Bypasses Inngest, doesn't touch hl_recipients, prefixes each subject with
+ * [TEST]. Use to verify deliverability + formatting before doing the real blast.
+ */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id: runId } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json().catch(() => ({}));
+  const provided = Array.isArray(body.test_emails)
+    ? (body.test_emails as unknown[])
+        .map((e) => String(e).trim().toLowerCase())
+        .filter((e) => VALID_EMAIL.test(e))
+    : [];
+  const onlyEmailId =
+    typeof body.email_id === "string" && body.email_id.trim().length > 0
+      ? body.email_id.trim()
+      : null;
+
+  const testEmails =
+    provided.length > 0
+      ? provided.slice(0, MAX_TEST_ADDRESSES)
+      : user.email
+        ? [user.email.toLowerCase()]
+        : [];
+
+  if (testEmails.length === 0) {
+    return Response.json(
+      { error: "No valid test email addresses provided" },
+      { status: 400 },
+    );
+  }
+
+  const service = createServiceRoleClient();
+
+  // Load run with its profile + email connection (need service role to read
+  // encrypted OAuth tokens / Resend keys). Sender identity now lives on
+  // platform_profiles, referenced by run.profile_id.
+  const { data: run } = await service
+    .from("hl_runs")
+    .select("id, user_id, phase, profile_id, email_connection_id")
+    .eq("id", runId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!run) return Response.json({ error: "Run not found" }, { status: 404 });
+  if (!run.email_connection_id) {
+    return Response.json(
+      { error: "No email connection configured for this run" },
+      { status: 400 },
+    );
+  }
+  if (!run.profile_id) {
+    return Response.json(
+      { error: "No Profile configured for this run" },
+      { status: 400 },
+    );
+  }
+
+  // Build the emails query. When `email_id` is provided we scope to that
+  // single draft; otherwise we pull every draft for the run.
+  let emailsQuery = service
+    .from("hl_emails")
+    .select("id, subject, html, plain_text, segment_id")
+    .eq("run_id", runId)
+    .in("status", ["draft", "approved", "sending", "sent"])
+    .order("created_at", { ascending: true });
+  if (onlyEmailId) {
+    emailsQuery = emailsQuery.eq("id", onlyEmailId);
+  }
+
+  const [connection, { data: profile }, { data: emails }] = await Promise.all([
+    getPlatformEmailConnection(service, user.id, run.email_connection_id),
+    service
+      .from("platform_profiles")
+      .select(
+        "id, display_name, full_name, title, brokerage, phone, reply_to_email, license_number, physical_address, sign_off",
+      )
+      .eq("id", run.profile_id)
+      .single(),
+    emailsQuery,
+  ]);
+
+  // Shape the row into the Sender-like object the downstream renderer expects.
+  const sender = profile
+    ? {
+        id: profile.id,
+        full_name: profile.full_name ?? profile.display_name,
+        title: profile.title,
+        brokerage: profile.brokerage,
+        phone: profile.phone,
+        reply_to_email: profile.reply_to_email,
+        license_number: profile.license_number,
+        physical_address: profile.physical_address,
+        sign_off: profile.sign_off,
+      }
+    : null;
+
+  if (!connection) {
+    return Response.json(
+      { error: "Email connection not found" },
+      { status: 404 },
+    );
+  }
+  if (!sender) {
+    return Response.json(
+      { error: "Sender profile not found" },
+      { status: 404 },
+    );
+  }
+  if (!emails || emails.length === 0) {
+    return Response.json(
+      {
+        error: onlyEmailId
+          ? "Draft not found for this run"
+          : "No drafts to test-send. Run hasn't generated yet.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Mirror the per-send compliance gate so test sends can't bypass it:
+  //   - inactive / paused connection blocks the whole batch
+  //   - suppressed test addresses are dropped (other addresses still go)
+  // Paused lives on app_email_connection_state — pull it via the service
+  // role since we already have it on hand.
+  if (!connection.is_active) {
+    return Response.json(
+      {
+        error:
+          "Email connection is inactive — re-verify your sending domain before test-sending.",
+      },
+      { status: 400 },
+    );
+  }
+  const { data: stateRow } = await service
+    .from("app_email_connection_state")
+    .select("paused, paused_reason")
+    .eq("connection_id", connection.id)
+    .eq("app", "hyperlocal")
+    .maybeSingle();
+  if (stateRow?.paused) {
+    return Response.json(
+      {
+        error:
+          stateRow.paused_reason ??
+          "Email connection is paused — resolve the deliverability issue before test-sending.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const suppressedTestEmails = new Set<string>();
+  for (const addr of testEmails) {
+    if (await isSuppressed(user.id, addr)) suppressedTestEmails.add(addr);
+  }
+  const deliverableTestEmails = testEmails.filter(
+    (e) => !suppressedTestEmails.has(e),
+  );
+  if (deliverableTestEmails.length === 0) {
+    return Response.json(
+      {
+        error:
+          "All provided test addresses are on your suppression list. Remove them from Settings → Suppression or use a different address.",
+      },
+      { status: 400 },
+    );
+  }
+
+  // Fire each test send sequentially. Throughput isn't critical here —
+  // typically 10 drafts × 1 test recipient = 10 sends, ~5–10 sec total.
+  const results: Array<{
+    email_id: string;
+    subject: string;
+    to: string;
+    ok: boolean;
+    error?: string;
+  }> = [];
+
+  for (const email of emails) {
+    for (const to of deliverableTestEmails) {
+      const unsubscribeToken = await generateUnsubscribeToken(user.id, to);
+      const unsubscribeUrl = buildUnsubscribeUrl(unsubscribeToken);
+
+      const finalHtml = (email.html ?? "")
+        .replace(
+          /\{\{UNSUBSCRIBE_URL:\{\{UNSUBSCRIBE_TOKEN\}\}\}\}/g,
+          unsubscribeUrl,
+        )
+        .replace(/\{\{UNSUBSCRIBE_URL\}\}/g, unsubscribeUrl);
+      const finalText = (email.plain_text ?? "")
+        .replace(
+          /\{\{UNSUBSCRIBE_URL:\{\{UNSUBSCRIBE_TOKEN\}\}\}\}/g,
+          unsubscribeUrl,
+        )
+        .replace(/\{\{UNSUBSCRIBE_URL\}\}/g, unsubscribeUrl);
+
+      try {
+        const result = await dispatchEmail(connection, {
+          from: {
+            email: connection.email_address,
+            name: (sender as PlatformSenderProfile).full_name,
+          },
+          reply_to:
+            (sender as PlatformSenderProfile).reply_to_email ?? undefined,
+          to: { email: to },
+          subject: SUBJECT_PREFIX + (email.subject ?? "(no subject)"),
+          html: finalHtml,
+          text: finalText,
+          headers: {
+            "List-Unsubscribe": `<${unsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+            "X-Hyperlocal-Test": "1",
+          },
+          tags: {
+            run_id: runId,
+            email_id: email.id,
+            mode: "test",
+          },
+        });
+        results.push({
+          email_id: email.id,
+          subject: email.subject ?? "",
+          to,
+          ok: result.success,
+          error: result.error,
+        });
+      } catch (e) {
+        results.push({
+          email_id: email.id,
+          subject: email.subject ?? "",
+          to,
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+  }
+
+  const successCount = results.filter((r) => r.ok).length;
+  const failCount = results.length - successCount;
+
+  return Response.json({
+    sent: successCount,
+    failed: failCount,
+    total: results.length,
+    test_emails: deliverableTestEmails,
+    suppressed_test_emails:
+      suppressedTestEmails.size > 0
+        ? Array.from(suppressedTestEmails)
+        : undefined,
+    results,
+  });
+}

@@ -5,7 +5,7 @@ const AIM_BASE_URL = process.env.NEXT_PUBLIC_AIM_BASE_URL ?? "https://aimarketin
 
 export async function GET(request: NextRequest) {
   const token       = request.nextUrl.searchParams.get("token");
-  const redirectTo  = request.nextUrl.searchParams.get("redirect") ?? "/apps/prompt-studio/chat";
+  const redirectTo  = request.nextUrl.searchParams.get("redirect") ?? "/apps";
   const failUrl     = new URL("/apps", AIM_BASE_URL);
 
   if (!token) {

@@ -70,7 +70,42 @@ See [SETUP.md](./SETUP.md) for complete step-by-step instructions.
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 
+## Supabase Migrations
+
+When adding or changing Supabase migrations, run them against the local database before handing off the work:
+
+```bash
+supabase migration up
+```
+
+If the change is to schema that may already be applied locally, create a follow-up migration instead of editing only the old migration. Verify important functions, policies, or tables exist with `psql` when the app depends on them.
+
+For production pushes and schema-drift repairs, use [Supabase Production Migrations](./docs/supabase-production-migrations.md). The helper script runs local migrations, dry-runs or applies the linked remote push, and can verify production RPC signatures:
+
+```bash
+scripts/supabase-production-migrations.sh --verify-function "public.delete_tour_scene(p_project_id uuid, p_scene_id uuid)"
+```
+
+## App UI Patterns
+
+Before adding or refactoring app UI surfaces, read [App Surface Patterns](./docs/app-surface-patterns.md). Use the shared `components/app-shell` primitives for app shells, product headers, welcome screens, dashboard/page structure, upgrade dialogs, and onboarding chat presentation.
+
+## Optimistic Sortable Lists
+
+When building a persisted drag-and-drop or move-button list, use `hooks/useOptimisticSortableList.ts`.
+
+This hook is the project pattern for snappy list reordering:
+
+- Render from the hook's `items`, not stale server props.
+- Pass the hook's `itemIds` to `SortableContext`.
+- Call `reorderById(active.id, over?.id)` from dnd-kit `onDragEnd`.
+- Call `moveItem(id, "up" | "down")` for keyboard/button reordering.
+- Persist with `onPersistOrder(orderedIds)` and let the hook keep the new order visible while the network request runs.
+- On failure, the hook rolls back to the previous order and exposes `error`.
+- Provide `getSyncKey` when item content can change without item IDs changing.
+
+Agents should use this hook for future persisted sortable lists instead of rebuilding optimistic reorder state by hand. Server APIs must still validate a complete ordered ID list before writing, so the optimistic UI is backed by a trustworthy mutation.
+
 ## License
 
 ISC
-

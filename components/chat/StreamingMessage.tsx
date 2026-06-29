@@ -41,7 +41,7 @@ function LoadingDots() {
 function PromptGenerationLoading() {
   return (
     <>
-      <div className="flex items-center gap-2 text-[#2D323C] opacity-70 mb-4 animate-fade-in">
+      <div className="flex items-center gap-2 text-foreground opacity-70 mb-4 animate-fade-in">
         <LoadingDots />
         <span className="text-sm font-medium">Creating your prompt...</span>
       </div>
@@ -63,7 +63,7 @@ function PromptGenerationLoading() {
 // Regular conversation loading UI
 function RegularLoadingIndicator() {
   return (
-    <div className="flex items-center gap-2 text-[#2D323C] opacity-70">
+    <div className="flex items-center gap-2 text-foreground opacity-70">
       <LoadingDots />
     </div>
   );
@@ -158,16 +158,16 @@ export function StreamingMessage({
                     remarkPlugins={[remarkGfm]}
                     components={{
                       p: ({ node, ...props }: any) => (
-                        <p className="mt-2 mb-2 last:mb-0 leading-relaxed text-[#2D323C]" {...props} />
+                        <p className="mt-2 mb-2 last:mb-0 leading-relaxed text-foreground" {...props} />
                       ),
                       h1: ({ node, ...props }: any) => (
-                        <h1 className="text-xl font-bold mt-4 mb-2 text-[#2D323C]" {...props} />
+                        <h1 className="text-xl font-bold mt-4 mb-2 text-foreground" {...props} />
                       ),
                       h2: ({ node, ...props }: any) => (
-                        <h2 className="text-lg font-bold mt-3 mb-2 text-[#2D323C]" {...props} />
+                        <h2 className="text-lg font-bold mt-3 mb-2 text-foreground" {...props} />
                       ),
                       h3: ({ node, ...props }: any) => (
-                        <h3 className="text-base font-bold mt-2 mb-2 text-[#2D323C]" {...props} />
+                        <h3 className="text-base font-bold mt-2 mb-2 text-foreground" {...props} />
                       ),
                       ul: ({ node, ...props }: any) => (
                         <ul className="my-2 pl-6 list-disc list-outside" {...props} />
@@ -176,7 +176,7 @@ export function StreamingMessage({
                         <ol className="my-2 pl-6 list-decimal list-outside" {...props} />
                       ),
                       li: ({ node, ...props }: any) => (
-                        <li className="my-1 pl-2 text-[#2D323C]" {...props} />
+                        <li className="my-1 pl-2 text-foreground" {...props} />
                       ),
                       code: ({ node, inline, ...props }: any) => {
                         if (inline) {
@@ -197,7 +197,7 @@ export function StreamingMessage({
                   </ReactMarkdown>
                 </div>
                 {/* Show loading indicator below content while streaming */}
-                <div className="flex items-center gap-2 text-[#2D323C] opacity-70 mt-3">
+                <div className="flex items-center gap-2 text-foreground opacity-70 mt-3">
                   <LoadingDots />
                 </div>
               </div>
