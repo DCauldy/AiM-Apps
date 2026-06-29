@@ -38,7 +38,7 @@ export const renderTourSceneClipTask = task({
     name: "tour-scene-clip-renders",
     concurrencyLimit: 2,
   },
-  machine: "small-1x",
+  machine: "medium-1x",
   maxDuration: 30 * 60,
   run: async (payload: SceneClipBatchItem, { ctx }) => {
     metadata.set("product", "tours");
@@ -178,8 +178,8 @@ function getProviderVisibleSupabaseUrlForLog(): string | null {
   }
 }
 
-function getSceneClipMachinePreset(item: SceneClipBatchItem): "small-1x" | "medium-1x" {
-  return item.options.renderMode === "ken_burns_ffmpeg" ? "medium-1x" : "small-1x";
+function getSceneClipMachinePreset(_item: SceneClipBatchItem): "medium-1x" {
+  return "medium-1x";
 }
 
 export const cleanupSupersededFreshRenderAssetsTask = task({
