@@ -52,10 +52,22 @@ const LENS_OPTIONS: { value: CampaignLens; label: string }[] = [
   { value: "balanced", label: "Balanced (both)" },
 ];
 
+/** Campaign + the most-recent-run timestamp the list API attaches. */
+type CampaignWithMeta = HlCampaign & { last_run_at?: string | null };
+
+/** "Jun 28, 2026" — compact absolute date for the last-run line. */
+function formatRunDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 export function CampaignsClient({
   initialCampaigns,
 }: {
-  initialCampaigns: HlCampaign[];
+  initialCampaigns: CampaignWithMeta[];
 }) {
   const toast = useHlToast();
   const { confirm, dialog } = useHlDialog();
@@ -363,6 +375,32 @@ export function CampaignsClient({
                           : " · pick service area each run"}
                         {c.property_type_filters.length > 0 &&
                           ` · ${c.property_type_filters.length} property type${c.property_type_filters.length === 1 ? "" : "s"}`}
+                      </p>
+
+                      {/* The actual ZIP codes so the campaign is identifiable */}
+                      {(c.service_area_zips?.length ?? 0) > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {c.service_area_zips.slice(0, 8).map((z) => (
+                            <span
+                              key={z}
+                              className="rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground"
+                            >
+                              {z}
+                            </span>
+                          ))}
+                          {c.service_area_zips.length > 8 && (
+                            <span className="px-1 py-0.5 text-[11px] text-muted-foreground">
+                              +{c.service_area_zips.length - 8} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Last run / never run */}
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        {(c as CampaignWithMeta).last_run_at
+                          ? `Last run ${formatRunDate((c as CampaignWithMeta).last_run_at as string)}`
+                          : "Never run"}
                       </p>
                     </div>
                   </div>

@@ -39,7 +39,32 @@ export async function GET() {
     .order("updated_at", { ascending: false });
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
-  return Response.json({ campaigns: data ?? [] });
+
+  // Attach the most recent run timestamp per campaign so the list can show
+  // "last run" / "never run". One query over the user's runs, reduced to a
+  // max(started_at|created_at) per campaign_id.
+  const campaigns = data ?? [];
+  if (campaigns.length > 0) {
+    const { data: runs } = await supabase
+      .from("hl_runs")
+      .select("campaign_id, started_at, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    const lastRun: Record<string, string> = {};
+    for (const r of runs ?? []) {
+      if (!r.campaign_id) continue;
+      const ts = r.started_at ?? r.created_at;
+      if (ts && !lastRun[r.campaign_id]) lastRun[r.campaign_id] = ts;
+    }
+    return Response.json({
+      campaigns: campaigns.map((c) => ({
+        ...c,
+        last_run_at: lastRun[c.id] ?? null,
+      })),
+    });
+  }
+
+  return Response.json({ campaigns });
 }
 
 export async function POST(req: NextRequest) {
