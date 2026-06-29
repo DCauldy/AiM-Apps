@@ -7,7 +7,10 @@ import {
   CampaignBuildProgress,
   type BuildPhase,
 } from "@/components/hyperlocal/sphere/CampaignBuildProgress";
-import { InlineDraftEditor } from "@/components/hyperlocal/sphere/InlineDraftEditor";
+import {
+  DraftListItem,
+  DraftEditorPane,
+} from "@/components/hyperlocal/sphere/InlineDraftEditor";
 import { cn } from "@/lib/utils";
 import type { HlRun, HlSegment, HlEmail, RunPhase } from "@/types/hyperlocal";
 
@@ -115,9 +118,9 @@ export function MagicRunExperience({
   });
   const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Which draft is expanded for inline review/edit (accordion).
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const autoExpanded = useRef(false);
+  // Which draft is selected in the master-detail review.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const autoSelected = useRef(false);
   // Displayed build percent — eases from the current step's floor toward its
   // ceiling so the bar always feels alive between 3s polls.
   const [pct, setPct] = useState(5);
@@ -189,16 +192,16 @@ export function MagicRunExperience({
     }
   }, [data.run.phase, router, runId]);
 
-  // Auto-expand the first draft when drafts land, so the preview is visible
+  // Auto-select the first draft when drafts land, so the preview shows
   // immediately (no extra click to start reviewing).
   useEffect(() => {
     if (
       data.run.phase === "review" &&
-      !autoExpanded.current &&
+      !autoSelected.current &&
       data.emails.length > 0
     ) {
-      autoExpanded.current = true;
-      setExpandedId(data.emails[0].id);
+      autoSelected.current = true;
+      setSelectedId(data.emails[0].id);
     }
   }, [data.run.phase, data.emails]);
 
@@ -227,11 +230,14 @@ export function MagicRunExperience({
 
   const { run, emails } = data;
 
+  const selectedEmail =
+    emails.find((e) => e.id === selectedId) ?? emails[0] ?? null;
+
   return (
     <div
       className={cn(
         "mx-auto px-4 py-12",
-        run.phase === "review" ? "max-w-3xl" : "max-w-2xl",
+        run.phase === "review" ? "max-w-5xl" : "max-w-2xl",
       )}
     >
       {/* Working — live multi-step build progress */}
@@ -256,19 +262,31 @@ export function MagicRunExperience({
             </p>
           </div>
 
-          <div className="mt-6 space-y-2">
-            {emails.map((e) => (
-              <InlineDraftEditor
-                key={e.id}
-                runId={runId}
-                email={e}
-                open={expandedId === e.id}
-                onToggle={() =>
-                  setExpandedId((id) => (id === e.id ? null : e.id))
-                }
-                onUpdated={updateEmail}
-              />
-            ))}
+          {/* Master-detail: editor on the left, draft list on the right. */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_260px]">
+            <div className="order-2 lg:order-1">
+              {selectedEmail ? (
+                <DraftEditorPane
+                  key={selectedEmail.id}
+                  runId={runId}
+                  email={selectedEmail}
+                  onUpdated={updateEmail}
+                />
+              ) : null}
+            </div>
+            <div className="order-1 space-y-2 lg:order-2">
+              <p className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {emails.length} draft{emails.length === 1 ? "" : "s"}
+              </p>
+              {emails.map((e) => (
+                <DraftListItem
+                  key={e.id}
+                  email={e}
+                  active={selectedEmail?.id === e.id}
+                  onClick={() => setSelectedId(e.id)}
+                />
+              ))}
+            </div>
           </div>
 
           {error && (
