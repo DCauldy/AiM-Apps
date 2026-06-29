@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useThreads } from "@/hooks/useThreads";
 import { ChatWindow } from "@/components/chat/ChatWindow";
-import { ChatPageSkeleton } from "@/components/prompt-studio/ChatPageSkeleton";
 import { useToast } from "@/components/ui/toast";
 import { UpgradeModal } from "@/components/trial/UpgradeModal";
 import { FEATURES } from "@/lib/feature-flags";
@@ -64,7 +63,11 @@ export default function ChatPage() {
   };
 
   if (loading) {
-    return <ChatPageSkeleton />;
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-background">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
   }
 
   return (

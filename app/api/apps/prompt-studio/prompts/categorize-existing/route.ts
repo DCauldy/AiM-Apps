@@ -1,7 +1,6 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { generateObject } from 'ai';
 import { model } from '@/lib/openai';
-import { sleep } from "@/lib/utils";
 import { z } from 'zod';
 import { NextRequest } from "next/server";
 
@@ -148,7 +147,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Small delay to avoid rate limiting
-        await sleep(500);
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error: any) {
         console.error(`Error processing message ${message.id}:`, error);
         errorCount++;

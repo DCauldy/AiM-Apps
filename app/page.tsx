@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function RootPage() {
-  redirect("/apps");
+  redirect("/apps/prompt-studio/chat");
 }

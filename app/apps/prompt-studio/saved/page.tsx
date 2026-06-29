@@ -4,7 +4,6 @@ import { PromptCard } from "@/components/library/PromptCard";
 import { useSavedPrompts } from "@/hooks/useSavedPrompts";
 import { useLibrary } from "@/hooks/useLibrary";
 import { Bookmark } from "lucide-react";
-import { LibraryPageSkeleton } from "@/components/prompt-studio/LibraryPageSkeleton";
 
 export default function SavedPromptsPage() {
   const { savedPrompts, loading, fetchSaved } = useSavedPrompts();
@@ -18,7 +17,11 @@ export default function SavedPromptsPage() {
   };
 
   if (loading) {
-    return <LibraryPageSkeleton />;
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-background">
+        <div className="text-muted-foreground">Loading saved prompts...</div>
+      </div>
+    );
   }
 
   return (

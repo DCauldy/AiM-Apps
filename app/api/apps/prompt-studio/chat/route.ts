@@ -1,6 +1,5 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { getSystemPrompt } from "@/lib/prompts";
-import { getPromptStudioProfileContext } from "@/lib/profiles/effective-profile";
 import { getTrialStatus, incrementTrialUsage } from "@/lib/trial";
 import { streamText, convertToModelMessages, generateText } from 'ai';
 import { openai } from '@ai-sdk/openai';
@@ -246,13 +245,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Prepare messages for OpenAI (include system prompt based on prompt type)
-    // Silently inject the active profile context so output stays on-brand for
-    // whichever company identity the user is operating under.
     const systemPrompt = getSystemPrompt(selectedPromptType);
-    const profileContext = await getPromptStudioProfileContext(user.id);
     const openaiMessages = [
       { role: "system" as const, content: systemPrompt },
-      ...(profileContext ? [{ role: "system" as const, content: profileContext }] : []),
       ...modelMessages,
     ];
 

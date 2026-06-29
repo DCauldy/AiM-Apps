@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     // Get profile from profiles table
     const { data: profile, error } = await supabase
       .from("profiles")
-      .select("id, email, full_name, created_at, updated_at, active_profile_id, profile_slot_count, slot_grace_period_ends_at")
+      .select("id, email, full_name, created_at, updated_at")
       .eq("id", user.id)
       .single();
 

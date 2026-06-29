@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
@@ -31,20 +30,14 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
 
   if (!open) return null;
 
-  return createPortal(
-    // `dark` activates the Tailwind dark: utility prefix inside the
-    // portal (the modal is mounted at body level, so it escapes the
-    // AppShell's `dark product-app-theme` wrap and would otherwise
-    // inherit the light-mode root tokens). product-app-theme is
-    // redundant with glass-modal's local var overrides but harmless.
-    <div className="dark product-app-theme font-body fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4 text-foreground sm:p-0">
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center py-4">
       <div
-        className="fixed inset-0 bg-black/75 backdrop-blur-md"
+        className="fixed inset-0 bg-black/50"
         onClick={() => onOpenChange(false)}
       />
       {children}
-    </div>,
-    document.body
+    </div>
   );
 }
 
@@ -52,7 +45,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
   return (
     <div
       className={cn(
-        "relative z-50 w-full max-w-lg glass-modal text-white rounded-2xl overflow-hidden flex flex-col",
+        "relative z-50 w-full max-w-lg bg-white rounded-lg shadow-xl overflow-hidden flex flex-col",
         className
       )}
     >

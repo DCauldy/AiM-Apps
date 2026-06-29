@@ -40,14 +40,8 @@ function LoginContent() {
             priority
           />
         </div>
-        <div className="flex justify-center mb-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse bg-primary" />
-            AiM Automations
-          </div>
-        </div>
         <p className="text-sm text-muted-foreground">
-          One login for every AiM Automations app.
+          AI-powered prompt optimization
         </p>
       </CardHeader>
       <CardContent>

@@ -11,7 +11,6 @@ import { FilterPromptsModal, type FilterState } from "./FilterPromptsModal";
 import { SubmitPromptModal } from "./SubmitPromptModal";
 import { EditPromptModal } from "./EditPromptModal";
 import { cn } from "@/lib/utils";
-import { LibraryPageSkeleton } from "@/components/prompt-studio/LibraryPageSkeleton";
 import type { PublicPrompt, PromptTopic } from "@/types";
 
 type SortOption = "recent" | "popular";
@@ -132,7 +131,11 @@ export function LibraryPage() {
 
   // Early returns AFTER all hooks
   if (loading && prompts.length === 0) {
-    return <LibraryPageSkeleton showSubmitButton />;
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-background">
+        <div className="text-muted-foreground">Loading prompts...</div>
+      </div>
+    );
   }
 
   if (error) {

@@ -7,7 +7,6 @@
 
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from 'openai';
-import { sleep } from '../lib/utils';
 
 // Get environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -127,13 +126,14 @@ async function main() {
     }
 
     // Small delay to avoid rate limiting
-    await sleep(500);
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 
   console.log("\n✓ Completed categorizing all prompts!");
 }
 
 main().catch(console.error);
+
 
 
 

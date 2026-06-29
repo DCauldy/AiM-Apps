@@ -39,19 +39,19 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
                 <h3 className="text-lg font-semibold mb-3 text-primary">How it works</h3>
                 <ol className="space-y-3 text-sm leading-relaxed opacity-90">
                   <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">1</span>
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#1C4C8A] text-white flex items-center justify-center text-xs font-semibold">1</span>
                     <span><strong>Describe your need:</strong> Type your rough idea — or use the microphone to dictate it. Be as brief or detailed as you like. A first draft generates automatically in the right panel while your questions load.</span>
                   </li>
                   <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">2</span>
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#1C4C8A] text-white flex items-center justify-center text-xs font-semibold">2</span>
                     <span><strong>Answer the clarifying questions:</strong> 3–5 smart questions appear one at a time in the left panel. Select from preset options or add your own. Progress dots turn green as you answer each one. Your answers are saved automatically.</span>
                   </li>
                   <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">3</span>
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#1C4C8A] text-white flex items-center justify-center text-xs font-semibold">3</span>
                     <span><strong>Click Improve Prompt:</strong> Your answers are applied to generate a refined, professional prompt that streams live into the right panel.</span>
                   </li>
                   <li className="flex gap-3">
-                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold">4</span>
+                    <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#1C4C8A] text-white flex items-center justify-center text-xs font-semibold">4</span>
                     <span><strong>Copy and use it:</strong> Hit Copy to grab your prompt. Bookmark it to save it, publish it to the community library, or keep refining with another round.</span>
                   </li>
                 </ol>
@@ -186,7 +186,12 @@ export function HowToUseModal({ open, onOpenChange }: HowToUseModalProps) {
           </DialogBody>
 
           <DialogFooter>
-            <Button onClick={() => onOpenChange(false)}>Got it!</Button>
+            <Button
+              onClick={() => onOpenChange(false)}
+              className="!bg-[#1C4C8A] !text-white hover:!bg-[#183f73]"
+            >
+              Got it!
+            </Button>
           </DialogFooter>
         </DialogContent>
       </div>

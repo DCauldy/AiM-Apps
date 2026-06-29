@@ -10,7 +10,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { FilterPromptsModal, type FilterState } from "./FilterPromptsModal";
 import { AddAimPromptModal } from "./AddAimPromptModal";
 import { cn } from "@/lib/utils";
-import { LibraryPageSkeleton } from "@/components/prompt-studio/LibraryPageSkeleton";
 import type { PublicPrompt, PromptTopic } from "@/types";
 
 type SortOption = "recent" | "popular";
@@ -116,7 +115,11 @@ export function AimLibraryPage() {
     (filters.savedOnly ? 1 : 0);
 
   if (loading && prompts.length === 0) {
-    return <LibraryPageSkeleton />;
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-background">
+        <div className="text-muted-foreground">Loading prompts...</div>
+      </div>
+    );
   }
 
   if (error) {

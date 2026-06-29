@@ -201,7 +201,7 @@ export function PromptCard({
         <CardHeader className="flex-1 flex flex-col">
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="flex-1 min-w-0 min-h-[5.25rem]">
-              <h3 className="text-lg font-semibold text-foreground">
+              <h3 className="text-lg font-semibold text-[#2D323C]">
                 {prompt.title || "Untitled Prompt"}
               </h3>
               {prompt.access_tier === "free" && (

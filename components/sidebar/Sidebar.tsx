@@ -2,12 +2,13 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Plus, AlertTriangle } from "lucide-react";
+import { Plus, Sparkles, Bookmark, Library, ChevronUp, ChevronDown, LogOut, User, AlertTriangle, BarChart3, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThreadList } from "./ThreadList";
 import { useThreads } from "@/hooks/useThreads";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/components/ui/toast";
+import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogClose } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { UpgradeModal } from "@/components/trial/UpgradeModal";
@@ -41,7 +42,8 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
   const router = useRouter();
   const pathname = usePathname();
   const { addToast } = useToast();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const [isProfileExpanded, setIsProfileExpanded] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [threadToDelete, setThreadToDelete] = useState<string | null>(null);
   const [sharedPromptsCount, setSharedPromptsCount] = useState(0);
@@ -49,6 +51,24 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
   const [usageStatus, setUsageStatus] = useState<UsageStatus | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+
+  // Get user initials for avatar
+  const getUserInitials = () => {
+    if (!user) return "U";
+    const fullName = user.user_metadata?.full_name;
+    if (fullName) {
+      const names = fullName.trim().split(" ");
+      if (names.length >= 2) {
+        return (names[0][0] + names[names.length - 1][0]).toUpperCase();
+      }
+      return names[0][0].toUpperCase();
+    }
+    const email = user.email;
+    if (email) {
+      return email[0].toUpperCase();
+    }
+    return "U";
+  };
 
   // Debounce function to prevent rapid successive fetches
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -141,35 +161,77 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
     }
   };
 
-  // Per-route active flags (library / saved / aim-library) used to
-  // live here when those nav items rendered inside the sidebar.
-  // Those moved to the header (PromptStudioHeader), so the sidebar
-  // is purely a chat-threads + new-chat surface now. `user` is kept
-  // available for any future per-tier UI we add to the sidebar.
-  void user;
-  void pathname;
+  const isLibraryActive    = pathname === "/apps/prompt-studio/library";
+  const isSavedActive      = pathname === "/apps/prompt-studio/saved";
+  const isAimLibraryActive = pathname === "/apps/prompt-studio/aim-library";
+  const isStandalone       = user?.app_metadata?.account_type === "standalone";
 
   return (
     <>
-      {/* Sidebar — chat threads + new-chat. Sits inside the page
-          area below the PromptStudioHeader; tucks under the
-          fixed-height header on desktop. */}
+      {/* Sidebar */}
       <aside
         className={cn(
-          "top-14 left-0 z-30 border-r border-border bg-card flex flex-col",
-          "h-[calc(100vh-3.5rem)]",
+          "top-0 left-0 z-40 h-screen border-r bg-background flex flex-col",
           "w-[280px]",
           isOpen ? "sm:w-80" : "sm:w-64",
           "fixed transition-all duration-300 ease-in-out",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="p-3 border-b border-border">
+        <div className="p-4 border-b space-y-2">
           <Button onClick={handleNewThread} className="w-full" variant="default">
             <Plus className="mr-2 h-4 w-4" />
-            New chat
+            New Prompt
           </Button>
+          <div className="flex flex-col gap-2">
+            {isStandalone ? (
+              <Button
+                variant="outline"
+                className="w-full justify-start opacity-50 cursor-not-allowed"
+                disabled
+                title="Available to AiM members"
+              >
+                <Lock className="mr-2 h-4 w-4" />
+                Community Prompts
+              </Button>
+            ) : (
+              <Button
+                variant={isLibraryActive ? "default" : "outline"}
+                className="w-full justify-start"
+                onClick={() => {
+                  router.push("/apps/prompt-studio/library");
+                  if (window.innerWidth < 1024) onToggle?.();
+                }}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Community Prompts
+              </Button>
+            )}
+            <Button
+              variant={isAimLibraryActive ? "default" : "outline"}
+              className="w-full justify-start"
+              onClick={() => {
+                router.push("/apps/prompt-studio/aim-library");
+                if (window.innerWidth < 1024) onToggle?.();
+              }}
+            >
+              <Library className="mr-2 h-4 w-4" />
+              AiM Library
+            </Button>
+            <Button
+              variant={isSavedActive ? "default" : "outline"}
+              className="w-full justify-start"
+              onClick={() => {
+                router.push("/apps/prompt-studio/saved");
+                if (window.innerWidth < 1024) onToggle?.();
+              }}
+            >
+              <Bookmark className="mr-2 h-4 w-4" />
+              Bookmarked
+            </Button>
+          </div>
         </div>
+        <Separator />
         <ThreadList
           threads={threads}
           activeThreadId={activeThreadId}
@@ -200,6 +262,66 @@ export function Sidebar({ activeThreadId, onThreadSelect, isOpen = true, onToggl
           </div>
         )}
 
+        {/* Profile section at bottom */}
+        {user && (
+          <div className="mt-auto border-t">
+            <div className="p-3">
+              <button
+                onClick={() => setIsProfileExpanded(!isProfileExpanded)}
+                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-muted transition-colors"
+              >
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-r from-[#1C4C8A] to-[#31DBA5] flex items-center justify-center text-white text-xs font-semibold">
+                  {getUserInitials()}
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-sm font-medium truncate">
+                    {user.user_metadata?.full_name || user.email?.split("@")[0] || "User"}
+                  </p>
+                </div>
+                {isProfileExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                )}
+              </button>
+
+              {isProfileExpanded && (
+                <div className="mt-2 pt-2 border-t space-y-1">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-sm"
+                    onClick={() => {
+                      router.push("/apps/prompt-studio/settings");
+                      if (window.innerWidth < 1024) onToggle?.();
+                    }}
+                  >
+                    <User className="mr-2 h-4 w-4" />
+                    Profile Settings
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-sm"
+                    onClick={() => {
+                      router.push("/apps/prompt-studio/stats");
+                      if (window.innerWidth < 1024) onToggle?.();
+                    }}
+                  >
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    Stats
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start text-sm"
+                    onClick={signOut}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign Out
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </aside>
 
       <UpgradeModal

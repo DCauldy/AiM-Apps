@@ -1,13 +1,14 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
-import { getFeatureFlag, getPromptPacks } from "@/lib/admin-config.server";
+import { FEATURES } from "@/lib/feature-flags";
 import { getStripe } from "@/lib/stripe";
+import { getPackById } from "@/lib/prompt-packs";
 import { NextRequest } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  // Feature flag gate (async, DB-driven)
-  if (!(await getFeatureFlag("PROMPT_PACKS"))) {
+  // Feature flag gate
+  if (!FEATURES.PROMPT_PACKS) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
@@ -38,8 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { packId } = await req.json();
-    const packs = await getPromptPacks();
-    const pack = packs.find((p) => p.id === packId);
+    const pack = getPackById(packId);
 
     if (!pack) {
       return Response.json({ error: "Invalid pack" }, { status: 400 });
