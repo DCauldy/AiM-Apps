@@ -257,13 +257,13 @@ export function MagicRunExperience({
             <h1 className="text-2xl font-semibold">Your drafts are ready ✨</h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {emails.length} neighborhood email{emails.length === 1 ? "" : "s"},
-              written in your voice. Expand any to preview &amp; tweak, then send
+              written in your voice. Pick any to preview &amp; tweak, then send
               them all.
             </p>
           </div>
 
-          {/* Master-detail: editor on the left, draft list on the right. */}
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_260px]">
+          {/* Master-detail: editor on the left, draft list + send on the right. */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_280px]">
             <div className="order-2 lg:order-1">
               {selectedEmail ? (
                 <DraftEditorPane
@@ -274,42 +274,46 @@ export function MagicRunExperience({
                 />
               ) : null}
             </div>
-            <div className="order-1 space-y-2 lg:order-2">
+            <div className="order-1 lg:order-2">
               <p className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {emails.length} draft{emails.length === 1 ? "" : "s"}
               </p>
-              {emails.map((e) => (
-                <DraftListItem
-                  key={e.id}
-                  email={e}
-                  active={selectedEmail?.id === e.id}
-                  onClick={() => setSelectedId(e.id)}
-                />
-              ))}
+              <div className="mt-2 space-y-2">
+                {emails.map((e) => (
+                  <DraftListItem
+                    key={e.id}
+                    email={e}
+                    active={selectedEmail?.id === e.id}
+                    onClick={() => setSelectedId(e.id)}
+                  />
+                ))}
+              </div>
+
+              {/* Send — lives with the list */}
+              <div className="mt-4 border-t border-border pt-4">
+                {error && (
+                  <p className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                    {error}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={approveAll}
+                  disabled={approving || emails.length === 0}
+                  className="w-full rounded-xl bg-[#F43F5E] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60"
+                >
+                  {approving
+                    ? "Sending…"
+                    : `✨ Approve & send all ${emails.length}`}
+                </button>
+                <Link
+                  href={`/apps/hyperlocal/runs/${runId}`}
+                  className="mt-3 block text-center text-xs text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  Open the full editor
+                </Link>
+              </div>
             </div>
-          </div>
-
-          {error && (
-            <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          )}
-
-          <div className="mt-6 flex flex-col items-center gap-3">
-            <button
-              type="button"
-              onClick={approveAll}
-              disabled={approving || emails.length === 0}
-              className="w-full rounded-xl bg-[#F43F5E] px-4 py-3 text-base font-semibold text-white shadow-lg shadow-[#F43F5E]/20 transition hover:bg-[#e11d48] disabled:opacity-60"
-            >
-              {approving ? "Sending…" : `✨ Approve & send all ${emails.length}`}
-            </button>
-            <Link
-              href={`/apps/hyperlocal/runs/${runId}`}
-              className="text-sm text-muted-foreground underline-offset-2 hover:underline"
-            >
-              Review each email in the editor
-            </Link>
           </div>
         </div>
       )}

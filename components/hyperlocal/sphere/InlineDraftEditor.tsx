@@ -65,6 +65,10 @@ export function DraftEditorPane({
   email: DraftEmail;
   onUpdated: (email: HlEmail) => void;
 }) {
+  // The list/run payload omits `html` + refinement counts, so we fetch the
+  // full email when a draft is selected. `full` is the source of truth here.
+  const [full, setFull] = useState<HlEmail | null>(null);
+  const [loading, setLoading] = useState(true);
   const [subject, setSubject] = useState(email.subject ?? "");
   const [preheader, setPreheader] = useState(email.preheader ?? "");
   const [savingMeta, setSavingMeta] = useState(false);
@@ -72,26 +76,52 @@ export function DraftEditorPane({
   const [refining, setRefining] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Re-sync the editable fields when the selected draft changes.
+  const base = `/api/apps/hyperlocal/runs/${runId}/emails/${email.id}`;
+
+  // Fetch the full email (with html + refinement counts) on selection change.
   useEffect(() => {
-    setSubject(email.subject ?? "");
-    setPreheader(email.preheader ?? "");
+    let cancelled = false;
+    setLoading(true);
+    setFull(null);
     setRefine("");
     setError(null);
-  }, [email.id, email.subject, email.preheader]);
+    fetch(base)
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then(({ email: fresh }) => {
+        if (cancelled || !fresh) return;
+        setFull(fresh);
+        setSubject(fresh.subject ?? "");
+        setPreheader(fresh.preheader ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) setError("Couldn't load this draft.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email.id]);
 
+  const current = full ?? email;
   const refinementsLeft =
-    (email.refinements_limit ?? 0) - (email.refinements_used ?? 0);
+    (current.refinements_limit ?? 0) - (current.refinements_used ?? 0);
   const metaDirty =
-    subject !== (email.subject ?? "") || preheader !== (email.preheader ?? "");
-
-  const base = `/api/apps/hyperlocal/runs/${runId}/emails/${email.id}`;
+    subject !== (current.subject ?? "") ||
+    preheader !== (current.preheader ?? "");
 
   const refetch = async () => {
     const res = await fetch(base);
     if (res.ok) {
       const { email: fresh } = await res.json();
-      if (fresh) onUpdated(fresh);
+      if (fresh) {
+        setFull(fresh);
+        setSubject(fresh.subject ?? "");
+        setPreheader(fresh.preheader ?? "");
+        onUpdated(fresh);
+      }
     }
   };
 
@@ -106,7 +136,10 @@ export function DraftEditorPane({
       });
       const json = await res.json();
       if (!res.ok) setError(json.error ?? "Couldn't save.");
-      else if (json.email) onUpdated(json.email);
+      else if (json.email) {
+        setFull(json.email);
+        onUpdated(json.email);
+      }
     } catch {
       setError("Couldn't save.");
     } finally {
@@ -146,12 +179,18 @@ export function DraftEditorPane({
   return (
     <div className="space-y-4">
       {/* Live preview */}
-      <iframe
-        title={`Preview of ${email.subject ?? "email"}`}
-        srcDoc={email.html ?? ""}
-        className="h-[460px] w-full rounded-md border border-border bg-white"
-        sandbox="allow-same-origin"
-      />
+      {loading ? (
+        <div className="flex h-[460px] w-full items-center justify-center rounded-md border border-border bg-card">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <iframe
+          title={`Preview of ${current.subject ?? "email"}`}
+          srcDoc={current.html ?? ""}
+          className="h-[460px] w-full rounded-md border border-border bg-white"
+          sandbox="allow-same-origin"
+        />
+      )}
 
       {/* Subject + preheader */}
       <div className="grid gap-3 sm:grid-cols-2">
