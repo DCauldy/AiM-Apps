@@ -11,6 +11,7 @@ import {
 import type { TourRenderOptions } from "@/lib/tours/rendering/preflight/preflight";
 import {
   createRenderRun,
+  cancelRenderRun as cancelRenderRunRequest,
   fetchRecentRenderRuns,
   fetchRenderRunsSummary,
   fetchRenderRunStatus,
@@ -159,6 +160,38 @@ export function useTourRenderRuns(
     },
   });
 
+  const cancelRenderRunMutation = useMutation({
+    mutationFn: (runId: string) => cancelRenderRunRequest(projectId, runId),
+    onSuccess: (run) => {
+      queryClient.setQueryData<TourRenderRunStatusResponse[]>(
+        recentRunsQueryKey,
+        (runs = []) => [
+          run,
+          ...runs.filter((existingRun) => existingRun.id !== run.id),
+        ],
+      );
+      queryClient.setQueryData<TourRenderRunStatusResponse | null>(
+        tourQueryKeys.activeRenderRun(projectId),
+        isTourRenderRunActive(run) ? run : null,
+      );
+      queryClient.setQueryData<TourRenderRunStatusResponse>(
+        tourQueryKeys.renderRunStatus(projectId, run.id),
+        run,
+      );
+      queryClient.setQueryData<TourRenderRunsSummaryResponse>(
+        tourQueryKeys.renderRunsSummary(projectId),
+        (summary) => ({
+          activeRun: isTourRenderRunActive(run)
+            ? run
+            : summary?.activeRun?.id === run.id
+              ? null
+              : summary?.activeRun ?? null,
+          latestDownloadableRun: summary?.latestDownloadableRun ?? null,
+        }),
+      );
+    },
+  });
+
   return {
     currentRun,
     recentRuns,
@@ -170,7 +203,8 @@ export function useTourRenderRuns(
       recentRunsQuery.error ??
       summaryQuery.error ??
       activeRunStatusQuery.error ??
-      createRenderRunMutation.error,
+      createRenderRunMutation.error ??
+      cancelRenderRunMutation.error,
     createRenderRun: () => createRenderRunMutation.mutate({ fresh: false }),
     createFreshRenderRun: () => createRenderRunMutation.mutate({ fresh: true }),
     createOptionsRenderRun: (options: TourRenderOptions) =>
@@ -178,6 +212,7 @@ export function useTourRenderRuns(
         fresh: false,
         options,
       }),
+    cancelRenderRun: (runId: string) => cancelRenderRunMutation.mutate(runId),
     isCreatingRenderRun:
       createRenderRunMutation.isPending &&
       isPlainReuseRenderRunInput(createRenderRunMutation.variables),
@@ -188,5 +223,6 @@ export function useTourRenderRuns(
       createRenderRunMutation.isPending &&
       isOptionsRenderRunInput(createRenderRunMutation.variables),
     isCreatingAnyRenderRun: createRenderRunMutation.isPending,
+    isCancellingRenderRun: cancelRenderRunMutation.isPending,
   };
 }

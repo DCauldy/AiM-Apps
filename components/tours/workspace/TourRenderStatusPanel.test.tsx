@@ -59,6 +59,16 @@ function failedRun(): TourRenderRunStatusResponse {
   };
 }
 
+function activeRun(): TourRenderRunStatusResponse {
+  return {
+    ...failedRun(),
+    status: "running",
+    step: "rendering_scene_clips",
+    label: "Rendering Scene Clips",
+    error: null,
+  };
+}
+
 function cancelledRun(): TourRenderRunStatusResponse {
   return {
     ...failedRun(),
@@ -115,6 +125,30 @@ test("shows failed render error message", () => {
   renderWithQueryClient(<TourRenderStatusPanel run={failedRun()} />);
 
   assert.ok(screen.getByText("Scene clip rendering failed."));
+});
+
+test("shows cancel render control for active renders", async () => {
+  const user = userEvent.setup();
+  const onCancel = vi.fn();
+
+  renderWithQueryClient(<TourRenderStatusPanel run={activeRun()} onCancel={onCancel} />);
+
+  await user.click(screen.getByRole("button", { name: "Cancel render" }));
+
+  assert.equal(onCancel.mock.calls.length, 1);
+});
+
+test("disables cancel render control while cancelling", () => {
+  renderWithQueryClient(
+    <TourRenderStatusPanel
+      run={activeRun()}
+      onCancel={() => undefined}
+      isCancelling
+    />
+  );
+
+  const cancelButton = screen.getByRole("button", { name: "Canceling render" });
+  assert.equal(cancelButton.hasAttribute("disabled"), true);
 });
 
 test("shows cancelled render message", () => {

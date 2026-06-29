@@ -1,7 +1,10 @@
+import { createWriteStream } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type {
   RenderableTourProject,
   RenderableTourScene,
@@ -812,11 +815,10 @@ async function renderProviderSceneClip(input: {
   }
 
   const providerContentType = rendered.contentType ?? response.headers.get("content-type") ?? "video/mp4";
-  const providerContent = Buffer.from(await response.arrayBuffer());
   const normalized = await normalizeProviderSceneClip({
     scene: input.scene,
     runId: input.runId,
-    content: providerContent,
+    response,
     contentType: providerContentType,
     settings: input.settings,
     normalizer: input.normalizer,
@@ -844,7 +846,7 @@ async function renderProviderSceneClip(input: {
 async function normalizeProviderSceneClip(input: {
   scene: RenderableTourScene;
   runId: string;
-  content: Buffer;
+  response: Response;
   contentType: string;
   settings: ResolvedSceneClipRenderSettings;
   normalizer: ProviderSceneClipNormalizer;
@@ -864,7 +866,7 @@ async function normalizeProviderSceneClip(input: {
 
   try {
     await mkdir(scratchDir, { recursive: true });
-    await writeFile(inputVideoPath, input.content);
+    await writeResponseBodyToFile(input.response, inputVideoPath);
     const normalized = await input.normalizer.normalizeSceneClip({
       inputVideoPath,
       outputVideoPath,
@@ -909,6 +911,18 @@ async function normalizeProviderSceneClip(input: {
   } finally {
     await rm(scratchDir, { recursive: true, force: true });
   }
+}
+
+async function writeResponseBodyToFile(response: Response, outputPath: string): Promise<void> {
+  if (!response.body) {
+    await writeFile(outputPath, Buffer.from(await response.arrayBuffer()));
+    return;
+  }
+
+  await pipeline(
+    Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
+    createWriteStream(outputPath)
+  );
 }
 
 function extensionForContentType(contentType: string): string {

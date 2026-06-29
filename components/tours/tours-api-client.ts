@@ -151,6 +151,8 @@ export const toursApiRoutes = {
   renderRunsSummary: (projectId: string) => `${renderRunsRoute(projectId)}/summary`,
   renderRunStatus: (projectId: string, runId: string) =>
     `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/status`,
+  renderRunCancel: (projectId: string, runId: string) =>
+    `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/cancel`,
   renderRunDownload: (projectId: string, runId: string) =>
     `${renderRunsRoute(projectId)}/${encodeRouteSegment(runId)}/download`,
   renderRunAssets: (runId: string) =>
@@ -434,6 +436,20 @@ export async function createRenderRun(
   const payload = await readToursJsonResponse<TourRenderRunResponse>(
     response,
     "Could not start rendering."
+  );
+  return payload.run;
+}
+
+export async function cancelRenderRun(
+  projectId: string,
+  runId: string
+): Promise<TourRenderRunStatusResponse> {
+  const response = await fetch(toursApiRoutes.renderRunCancel(projectId, runId), {
+    method: "POST",
+  });
+  const payload = await readToursJsonResponse<TourRenderRunResponse>(
+    response,
+    "Could not cancel rendering."
   );
   return payload.run;
 }
