@@ -10,6 +10,7 @@ import {
   isPlainReuseRenderRunInput,
   pickLatestDownloadableRenderRun,
 } from "./useTourRenderRuns";
+import { toursApiRoutes } from "../tours-api-client";
 
 function renderRun(
   overrides: Partial<TourRenderRunStatusResponse> = {},
@@ -159,5 +160,12 @@ test("dev-tool render request body sends explicit options", () => {
         },
       },
     },
+  );
+});
+
+test("cancel render route targets the project-scoped render run", () => {
+  assert.equal(
+    toursApiRoutes.renderRunCancel("project 1", "run/1"),
+    "/api/apps/tours/projects/project%201/render-runs/run%2F1/cancel",
   );
 });

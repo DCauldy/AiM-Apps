@@ -1,25 +1,35 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { ArrowLeft, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from "@/components/tours/workspace/WorkspacePresentation";
 import { TourRenderStatusPanel } from "@/components/tours/workspace/TourRenderStatusPanel";
 import { useTourProjectWorkspace } from "@/components/tours/workspace/useTourProjectWorkspace";
 import { useTourRenderRuns } from "@/components/tours/workspace/useTourRenderRuns";
-import { isTourRenderRunActive } from "@/lib/tours/rendering/contracts/render.contract";
 
 export function TourProjectRenderingClient({
   projectId,
 }: {
   projectId: string;
 }) {
-  const router = useRouter();
   const { viewModel } = useTourProjectWorkspace();
   const renderRuns = useTourRenderRuns(projectId);
   const projectHref = `/apps/tours/projects/${projectId}`;
+  const handleCancelRender = () => {
+    const run = renderRuns.currentRun;
+    if (!run || (run.status !== "queued" && run.status !== "running")) {
+      return;
+    }
+
+    if (
+      window.confirm(
+        "Cancel this render? Any work already completed for this run will stop updating.",
+      )
+    ) {
+      renderRuns.cancelRenderRun(run.id);
+    }
+  };
 
   if (renderRuns.isLoadingRecentRuns) {
     return (
@@ -51,6 +61,8 @@ export function TourProjectRenderingClient({
         <TourRenderStatusPanel
           run={renderRuns.currentRun}
           downloadTitle={viewModel.project.name}
+          onCancel={handleCancelRender}
+          isCancelling={renderRuns.isCancellingRenderRun}
         />
       ) : null}
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Download, LoaderCircle } from "lucide-react";
+import { CheckCircle2, Download, LoaderCircle, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,10 +95,14 @@ export function TourRenderStatusPanel({
   run,
   downloadTitle,
   onDone,
+  onCancel,
+  isCancelling = false,
 }: {
   run: TourRenderRunStatusResponse;
   downloadTitle?: string;
   onDone?: () => void;
+  onCancel?: () => void;
+  isCancelling?: boolean;
 }) {
   const active = isTourRenderRunActive(run);
   const completed = run.status === "completed";
@@ -212,6 +216,25 @@ export function TourRenderStatusPanel({
                   Back to workspace
                 </Button>
               )}
+            </div>
+          )}
+
+          {active && onCancel && (
+            <div className="mt-5">
+              <Button
+                type="button"
+                variant="destructive"
+                className="h-11 sm:w-auto"
+                onClick={onCancel}
+                disabled={isCancelling}
+              >
+                {isCancelling ? (
+                  <LoaderCircle className="h-4 w-4 animate-spin" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                {isCancelling ? "Canceling render" : "Cancel render"}
+              </Button>
             </div>
           )}
 

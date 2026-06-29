@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  cancelTourRenderRun,
   createTourRenderRun,
   getActiveTourRenderRun,
   getTourRenderRunResultUrl,
@@ -577,6 +578,87 @@ describe("toTourRenderRunStatusResponse", () => {
     expect(JSON.stringify(response.options)).not.toContain(
       "sceneClipRenderSettings",
     );
+  });
+});
+
+describe("cancelTourRenderRun", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("requests Trigger cancellation, marks the run cancelled, and records an event", async () => {
+    const activeRun = runWith({
+      id: "run-active",
+      triggerRunId: "trigger-run-active",
+      status: "running",
+      currentStep: "rendering_scene_clips",
+      currentStepLabel: "Rendering Scene Clips",
+    });
+    const repository = createRepository({
+      getRenderRun: vi.fn().mockResolvedValue(activeRun),
+    });
+    const cancelTriggerRun = vi.fn().mockResolvedValue({ id: "trigger-run-active" });
+
+    const result = await cancelTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        runId: "run-active",
+      },
+      {
+        repository,
+        cancelTriggerRun,
+      }
+    );
+
+    expect(result?.status).toBe("cancelled");
+    expect(cancelTriggerRun).toHaveBeenCalledWith("trigger-run-active");
+    expect(repository.markCancelled).toHaveBeenCalledWith({
+      runId: "run-active",
+      projectId: "project-1",
+      userId: "user-1",
+      safeMessage: "Render cancelled by user request.",
+    });
+    expect(repository.appendEvent).toHaveBeenCalledWith({
+      runId: "run-active",
+      projectId: "project-1",
+      step: "cancelled",
+      status: "cancelled",
+      safeMessage: "Render cancelled by user request.",
+      metadata: {
+        reason: "user_cancelled",
+      },
+    });
+  });
+
+  it("does not cancel completed runs", async () => {
+    const repository = createRepository({
+      getRenderRun: vi.fn().mockResolvedValue(
+        runWith({
+          id: "run-completed",
+          status: "completed",
+          currentStep: "completed",
+          currentStepLabel: "Completed",
+        })
+      ),
+    });
+    const cancelTriggerRun = vi.fn();
+
+    const result = await cancelTourRenderRun(
+      {
+        projectId: "project-1",
+        userId: "user-1",
+        runId: "run-completed",
+      },
+      {
+        repository,
+        cancelTriggerRun,
+      }
+    );
+
+    expect(result).toBeNull();
+    expect(cancelTriggerRun).not.toHaveBeenCalled();
+    expect(repository.markCancelled).not.toHaveBeenCalled();
   });
 });
 

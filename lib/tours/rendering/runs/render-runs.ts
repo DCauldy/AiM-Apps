@@ -46,6 +46,7 @@ const RENDER_TASK_ENQUEUE_FAILED_MESSAGE =
   "Could not start the render task. Try again.";
 const RENDER_TASK_SUPERSEDED_MESSAGE =
   "Cancelled because a newer render was started for this tour project.";
+const RENDER_TASK_USER_CANCELLED_MESSAGE = "Render cancelled by user request.";
 const DOWNLOADABLE_RUN_LOOKBACK_LIMIT = 20;
 
 function getDefaultTourRenderOptions(): TourRenderOptions {
@@ -409,6 +410,52 @@ export async function getTourRenderRunStatus(
 ): Promise<TourRenderRun | null> {
   const repository = options.repository ?? (await createTourRenderRepository());
   return repository.getRenderRun(input);
+}
+
+export async function cancelTourRenderRun(
+  input: {
+    projectId: string;
+    userId: string;
+    runId: string;
+  },
+  options: RenderRunServiceOptions & {
+    cancelTriggerRun?: typeof runs.cancel;
+  } = {}
+): Promise<TourRenderRun | null> {
+  const repository = options.repository ?? (await createTourRenderRepository());
+  const run = await repository.getRenderRun(input);
+  if (!run || (run.status !== "queued" && run.status !== "running")) {
+    return null;
+  }
+
+  await cancelTriggerRunSafely(
+    run.triggerRunId,
+    options.cancelTriggerRun ?? runs.cancel,
+  );
+
+  const cancelled = await repository.markCancelled({
+    runId: input.runId,
+    projectId: input.projectId,
+    userId: input.userId,
+    safeMessage: RENDER_TASK_USER_CANCELLED_MESSAGE,
+  });
+
+  if (!cancelled) {
+    return null;
+  }
+
+  await repository.appendEvent({
+    runId: input.runId,
+    projectId: input.projectId,
+    step: "cancelled",
+    status: "cancelled",
+    safeMessage: RENDER_TASK_USER_CANCELLED_MESSAGE,
+    metadata: {
+      reason: "user_cancelled",
+    },
+  });
+
+  return cancelled;
 }
 
 export async function getActiveTourRenderRun(
