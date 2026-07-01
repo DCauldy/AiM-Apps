@@ -61,6 +61,13 @@ export function ProfileMagicChat({
   const correctionRef = useRef<HTMLInputElement>(null);
   const esRef = useRef<EventSource | null>(null);
   const settledRef = useRef(false);
+  // The analysis runs on a background task independent of this SSE stream, so
+  // if the stream drops (e.g. a serverless function hitting its duration cap
+  // mid-analysis) we reconnect to the same runId and resume — subscribeToRun
+  // replays current state, so no progress is lost.
+  const runIdRef = useRef<string | null>(null);
+  const reconnectRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Critical fields the site often doesn't expose — we ask for these.
   const gaps: string[] = draft
@@ -92,33 +99,23 @@ export function ProfileMagicChat({
     return () => {
       esRef.current?.close();
       esRef.current = null;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
     };
   }, []);
 
-  const analyze = async () => {
-    const value = url.trim();
-    if (!value) return;
-    settledRef.current = false;
-    setError(null);
-    setStepText("Starting…");
-    setProgress(0);
-    setProgressTarget(4);
-    setPhase("analyzing");
-    try {
-      const res = await fetch("/api/profiles/onboarding/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: value }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.runId) throw new Error(data.error || "Couldn't start the analysis.");
+  // Max stream reconnects before we give up. Each reconnect is a fresh,
+  // short-lived stream invocation resuming the same background run, so this
+  // comfortably outlasts a multi-minute analysis even when the serverless
+  // function's per-invocation duration is short.
+  const MAX_RECONNECTS = 10;
 
-      const es = new EventSource(
-        `/api/profiles/onboarding/analyze/stream?runId=${encodeURIComponent(data.runId)}`,
-      );
-      esRef.current = es;
+  const openStream = (runId: string) => {
+    const es = new EventSource(
+      `/api/profiles/onboarding/analyze/stream?runId=${encodeURIComponent(runId)}`,
+    );
+    esRef.current = es;
 
-      es.onmessage = (ev) => {
+    es.onmessage = (ev) => {
         let msg: {
           type: string;
           progress?: number;
@@ -155,14 +152,48 @@ export function ProfileMagicChat({
         }
       };
 
-      es.onerror = () => {
-        if (settledRef.current) return; // normal close after done
-        settledRef.current = true;
-        es.close();
-        esRef.current = null;
-        setError("Lost the connection while analyzing. Please try again.");
-        setPhase("error");
-      };
+    es.onerror = () => {
+      if (settledRef.current) return; // normal close after done
+      es.close();
+      esRef.current = null;
+      // The background run keeps going regardless — reconnect and resume
+      // rather than failing on a transient stream drop / function timeout.
+      if (reconnectRef.current < MAX_RECONNECTS) {
+        reconnectRef.current += 1;
+        setStepText("Reconnecting…");
+        reconnectTimerRef.current = setTimeout(() => {
+          if (settledRef.current) return;
+          openStream(runId);
+        }, 1500);
+        return;
+      }
+      settledRef.current = true;
+      setError("Lost the connection while analyzing. Please try again.");
+      setPhase("error");
+    };
+  };
+
+  const analyze = async () => {
+    const value = url.trim();
+    if (!value) return;
+    settledRef.current = false;
+    reconnectRef.current = 0;
+    setError(null);
+    setStepText("Starting…");
+    setProgress(0);
+    setProgressTarget(4);
+    setPhase("analyzing");
+    try {
+      const res = await fetch("/api/profiles/onboarding/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: value }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.runId)
+        throw new Error(data.error || "Couldn't start the analysis.");
+      runIdRef.current = data.runId;
+      openStream(data.runId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setPhase("error");

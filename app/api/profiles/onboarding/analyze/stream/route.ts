@@ -43,9 +43,21 @@ export async function GET(req: NextRequest) {
         if (closed) return;
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
+      // Heartbeat comment every 15s so proxies/serverless don't drop the
+      // connection as idle during the long, quiet Opus-extraction step.
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
+        } catch {
+          /* stream gone */
+        }
+      }, 15_000);
+
       const close = () => {
         if (closed) return;
         closed = true;
+        clearInterval(heartbeat);
         try {
           controller.close();
         } catch {
