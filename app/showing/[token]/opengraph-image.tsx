@@ -122,24 +122,6 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
           </div>
         ) : null}
 
-        {/* brand */}
-        <div
-          style={{
-            position: "absolute",
-            top: 52,
-            right: 48,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            color: "#ffffff",
-            fontSize: 34,
-            fontWeight: 700,
-          }}
-        >
-          <span>🔥</span>
-          <span>Heat</span>
-        </div>
-
         {/* bottom info: listing (left) + agent (right) */}
         <div
           style={{
