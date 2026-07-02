@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { ShowingRequestForm } from "@/components/heat/ShowingRequestForm";
 import { TEMPERATURE_META, type Temperature } from "@/lib/heat/types";
 import { createServiceRoleClient } from "@/lib/supabase/server";
@@ -8,6 +10,53 @@ function money(n: unknown): string {
   const v = typeof n === "number" ? n : 0;
   if (!v) return "—";
   return v >= 1000 ? `$${Math.round(v / 1000).toLocaleString()}k` : `$${v}`;
+}
+
+/** Branded link unfurl (iMessage / email / social) — listing photo + price. */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}): Promise<Metadata> {
+  const { token } = await params;
+  const service = createServiceRoleClient();
+  const { data: share } = await service
+    .from("heat_shares")
+    .select("listing")
+    .eq("token", token)
+    .maybeSingle();
+
+  const l = (share?.listing ?? {}) as Record<string, unknown>;
+  const address = (l.address as string) || "A listing for you";
+  const title = l.price ? `${address} — ${money(l.price)}` : address;
+  const stats = [
+    l.views != null ? `${Number(l.views).toLocaleString()} views` : null,
+    l.saves != null ? `${l.saves} saves` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const description = stats
+    ? `Getting attention — ${stats}. Tap to request a showing.`
+    : "Tap to request a showing.";
+  const img = (l.imgSrc as string) || undefined;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      siteName: "Heat by AiM",
+      type: "website",
+      images: img ? [{ url: img }] : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: img ? [img] : undefined,
+    },
+  };
 }
 
 export default async function ShowingPage({
