@@ -21,11 +21,37 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
   const service = createServiceRoleClient();
   const { data: share } = await service
     .from("heat_shares")
-    .select("listing")
+    .select("listing, user_id")
     .eq("token", token)
     .maybeSingle();
 
   const l = (share?.listing ?? {}) as Record<string, unknown>;
+
+  // Agent identity for the card footer.
+  let agentName: string | null = null;
+  let brokerage: string | null = null;
+  let headshot: string | null = null;
+  if (share?.user_id) {
+    const [sender, branding] = await Promise.all([
+      service
+        .from("platform_sender_profiles")
+        .select("full_name, brokerage")
+        .eq("user_id", share.user_id)
+        .order("is_default", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      service
+        .from("platform_branding_profiles")
+        .select("headshot_url")
+        .eq("user_id", share.user_id)
+        .order("is_default", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+    agentName = (sender.data?.full_name as string) ?? null;
+    brokerage = (sender.data?.brokerage as string) ?? null;
+    headshot = (branding.data?.headshot_url as string) ?? null;
+  }
   const address = (l.address as string) || "A listing for you";
   const price = money(l.price);
   const img = (l.imgSrc as string) || null;
@@ -114,7 +140,7 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
           <span>Heat</span>
         </div>
 
-        {/* bottom info */}
+        {/* bottom info: listing (left) + agent (right) */}
         <div
           style={{
             position: "absolute",
@@ -122,13 +148,44 @@ export default async function OgImage({ params }: { params: Promise<{ token: str
             right: 48,
             bottom: 44,
             display: "flex",
-            flexDirection: "column",
+            justifyContent: "space-between",
+            alignItems: "flex-end",
             color: "#ffffff",
           }}
         >
-          {price ? <div style={{ fontSize: 84, fontWeight: 800, lineHeight: 1.05 }}>{price}</div> : null}
-          <div style={{ fontSize: 40, fontWeight: 600, marginTop: 12, opacity: 0.96 }}>{address}</div>
-          {stats ? <div style={{ fontSize: 30, marginTop: 14, opacity: 0.82 }}>{stats}</div> : null}
+          <div style={{ display: "flex", flexDirection: "column", maxWidth: 720 }}>
+            {price ? <div style={{ fontSize: 84, fontWeight: 800, lineHeight: 1.05 }}>{price}</div> : null}
+            <div style={{ fontSize: 40, fontWeight: 600, marginTop: 12, opacity: 0.96 }}>{address}</div>
+            {stats ? <div style={{ fontSize: 30, marginTop: 14, opacity: 0.82 }}>{stats}</div> : null}
+          </div>
+
+          {agentName || headshot ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+              {headshot ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={headshot}
+                  width={104}
+                  height={104}
+                  style={{
+                    width: 104,
+                    height: 104,
+                    borderRadius: 999,
+                    objectFit: "cover",
+                    border: "3px solid rgba(255,255,255,0.9)",
+                  }}
+                />
+              ) : null}
+              {agentName ? (
+                <div style={{ display: "flex", flexDirection: "column", maxWidth: 300 }}>
+                  <span style={{ fontSize: 32, fontWeight: 700 }}>{agentName}</span>
+                  {brokerage ? (
+                    <span style={{ fontSize: 24, opacity: 0.8, marginTop: 4 }}>{brokerage}</span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     ),
