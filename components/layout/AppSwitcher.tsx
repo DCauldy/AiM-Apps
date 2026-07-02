@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { ChevronDown, Sparkles, FileText, Radar, Mail, Video, Lock, ExternalLink, LayoutGrid, Building2 } from "lucide-react";
+import { ChevronDown, Sparkles, FileText, Radar, Mail, Video, Lock, ExternalLink, LayoutGrid, Building2, Flame } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/components/profile/ProfileProvider";
 import { cn } from "@/lib/utils";
@@ -90,6 +90,15 @@ const APPS: AppDefinition[] = [
     icon: <Video className="h-4 w-4" />,
     requiresPro: true,
     iconClassName: "bg-gradient-to-br from-[#2563EB] to-[#7C3AED]",
+  },
+  {
+    id: "heat",
+    name: "Heat",
+    description: "Hottest listings by buyer demand",
+    route: "/apps/heat",
+    icon: <Flame className="h-4 w-4" />,
+    requiresPro: true,
+    iconClassName: "bg-gradient-to-br from-[#FF3B30] to-[#C2410C]",
   },
 ];
 

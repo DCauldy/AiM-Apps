@@ -30,6 +30,9 @@ import {
   Building2,
   Camera,
   DollarSign,
+  Flame,
+  Eye,
+  Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PurchasePackModal } from "@/components/trial/PurchasePackModal";
@@ -193,6 +196,27 @@ const APPS: AppMeta[] = [
       { icon: <Target className="h-4 w-4" />, text: "Keep project status, property details, and next steps together" },
       { icon: <Users className="h-4 w-4" />, text: "Prepare a workspace for upcoming media and scene planning" },
       { icon: <BarChart3 className="h-4 w-4" />, text: "Archive completed projects without losing project history" },
+    ],
+  },
+  {
+    id: "heat",
+    name: "Heat",
+    description: "Hottest listings by buyer demand",
+    tagline: "See which listings buyers are actually watching — before they sell.",
+    route: "/apps/heat",
+    icon: <Flame className="h-5 w-5" />,
+    previewIcon: <Flame className="h-10 w-10" />,
+    flagKey: "HEAT",
+    requiresPro: true,
+    hasUpgrade: true,
+    gradient: ["#FF3B30", "#C2410C"],
+    accentColor: "#FF6A3D",
+    categories: ["Market", "Demand", "Listings"],
+    features: [
+      { icon: <MapPin className="h-4 w-4" />, text: "Enter a ZIP + price band, get the hottest listings ranked" },
+      { icon: <Eye className="h-4 w-4" />, text: "Ranks by real demand — page views and buyer saves" },
+      { icon: <TrendingUp className="h-4 w-4" />, text: "Surfaces momentum, not stale-but-popular listings" },
+      { icon: <Heart className="h-4 w-4" />, text: "Framed for buyer's agents or listing agents" },
     ],
   },
   {

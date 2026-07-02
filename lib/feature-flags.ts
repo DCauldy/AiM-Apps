@@ -7,4 +7,5 @@ export const FEATURES = {
   HYPERLOCAL: process.env.NEXT_PUBLIC_ENABLE_HYPERLOCAL === "true",
   LISTING_STUDIO: process.env.NEXT_PUBLIC_ENABLE_LISTING_STUDIO === "true",
   TOURS: process.env.NEXT_PUBLIC_ENABLE_TOURS !== "false",
+  HEAT: process.env.NEXT_PUBLIC_ENABLE_HEAT === "true",
 } as const;

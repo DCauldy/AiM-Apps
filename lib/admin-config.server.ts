@@ -34,6 +34,7 @@ export const FEATURE_FLAG_DEFAULTS: Record<string, boolean> = {
   HYPERLOCAL: FEATURES.HYPERLOCAL,
   LISTING_STUDIO: FEATURES.LISTING_STUDIO,
   TOURS: FEATURES.TOURS,
+  HEAT: FEATURES.HEAT,
 };
 
 // `cache()` dedupes within a single SSR render. Both the layout and the
