@@ -42,6 +42,11 @@ const APP_FLAGS: Record<string, { label: string; description: string }> = {
     label: "Tours",
     description: "Listing tour projects with scene planning and render workflow.",
   },
+  HEAT: {
+    label: "Heat",
+    description:
+      "Hottest-listings demand ranking (views/saves vs. sold-comp baseline) with share-to-showing client outreach.",
+  },
 };
 
 export function AppAvailabilityTab() {
