@@ -38,24 +38,12 @@ export async function generateMetadata({
   const description = stats
     ? `Getting attention — ${stats}. Tap to request a showing.`
     : "Tap to request a showing.";
-  const img = (l.imgSrc as string) || undefined;
-
+  // og:image is provided by the sibling opengraph-image.tsx (branded overlay).
   return {
     title,
     description,
-    openGraph: {
-      title,
-      description,
-      siteName: "Heat by AiM",
-      type: "website",
-      images: img ? [{ url: img }] : undefined,
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: img ? [img] : undefined,
-    },
+    openGraph: { title, description, siteName: "Heat by AiM", type: "website" },
+    twitter: { card: "summary_large_image", title, description },
   };
 }
 
