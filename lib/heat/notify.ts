@@ -108,7 +108,9 @@ async function emailAgent(service: ReturnType<typeof createServiceRoleClient>, s
   try {
     const resend = new Resend(key);
     const result = await resend.emails.send({
-      from: process.env.PLATFORM_RESEND_FROM ?? "AiM <noreply@aimarketingacademy.com>",
+      // Heat's own sender (aimarketingacademy.com is domain-verified in
+      // Resend). Override with HEAT_RESEND_FROM if needed.
+      from: process.env.HEAT_RESEND_FROM ?? "AiM Heat <heat@aimarketingacademy.com>",
       to: agentEmail,
       subject: `🔥 Showing request — ${address}`,
       html,
