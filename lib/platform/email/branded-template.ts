@@ -1,5 +1,11 @@
 export const DEFAULT_PLATFORM_APP_URL = "https://apps.aimarketingacademy.com";
 
+// Hosted PNG (Gmail/Outlook won't render our SVG). Stable Supabase public
+// URL so it works regardless of app deploy. Override via PLATFORM_EMAIL_LOGO_URL.
+const EMAIL_LOGO_URL =
+  process.env.PLATFORM_EMAIL_LOGO_URL ??
+  "https://hvnmuknbfzcmdkzliihj.supabase.co/storage/v1/object/public/blog-images/platform/logo-white.png";
+
 export function getPlatformAppUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? DEFAULT_PLATFORM_APP_URL;
 }
@@ -73,7 +79,7 @@ export function renderBrandedEmail(opts: BrandedEmailOpts): string {
           <!-- Header: teal -> blue gradient -->
           <tr>
             <td style="background:linear-gradient(135deg,#17A697 0%,#1B7FB5 100%);background-color:#17A697;padding:32px 32px 28px;text-align:left;">
-              <div style="margin:0 0 18px;font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;font-size:22px;font-weight:800;letter-spacing:-0.01em;color:#ffffff;">AiM</div>
+              <img src="${EMAIL_LOGO_URL}" alt="AiM" height="28" style="display:block;height:28px;width:auto;margin:0 0 18px;border:0;outline:none;text-decoration:none;" />
               <p style="margin:0 0 6px;font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;font-size:11px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.85);">${escapeHtml(opts.eyebrow)}</p>
               <h1 style="margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,sans-serif;font-size:24px;font-weight:700;line-height:1.3;color:#ffffff;">${escapeHtml(opts.title)}</h1>
             </td>
